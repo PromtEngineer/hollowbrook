@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <title>Hollowbrook — an explorable village</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <canvas id="viewport"></canvas>
+
+    <!-- ---------------------------------------------------------------- HUD -->
+    <div id="hud" class="hidden" aria-hidden="true">
+      <div id="crosshair"><span></span><span></span></div>
+      <div id="prompt"></div>
+      <div id="carrying"></div>
+    </div>
+
+    <!-- ------------------------------------------------------------ loading -->
+    <div id="loading">
+      <div class="load-inner">
+        <h1>HOLLOWBROOK</h1>
+        <p class="sub">a village in the western valleys</p>
+        <div class="bar"><i id="load-bar"></i></div>
+        <p id="load-task">warming up…</p>
+        <p id="load-error" class="err hidden"></p>
+      </div>
+    </div>
+
+    <!-- -------------------------------------------------------------- start -->
+    <div id="start" class="overlay hidden">
+      <div class="panel">
+        <h2>Hollowbrook</h2>
+        <p class="lede">Click anywhere to look around.</p>
+        <ul class="keys">
+          <li><b>W A S D</b><span>walk</span></li>
+          <li><b>Mouse</b><span>look</span></li>
+          <li><b>Shift</b><span>sprint</span></li>
+          <li><b>Ctrl / C</b><span>crouch</span></li>
+          <li><b>Space</b><span>jump</span></li>
+          <li><b>E</b><span>pick up / drop</span></li>
+          <li><b>Left click</b><span>throw held object</span></li>
+          <li><b>F</b><span>flashlight (lantern)</span></li>
+          <li><b>Tab</b><span>performance overlay</span></li>
+          <li><b>Esc</b><span>settings</span></li>
+        </ul>
+        <p id="start-note" class="note hidden"></p>
+        <button id="start-btn" type="button">Enter the village</button>
+      </div>
+    </div>
+
+    <!-- ----------------------------------------------------------- settings -->
+    <div id="menu" class="overlay hidden">
+      <div class="panel">
+        <h2>Settings</h2>
+
+        <label class="row">
+          <span>Quality</span>
+          <select id="opt-quality">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="ultra">Ultra</option>
+          </select>
+        </label>
+
+        <label class="row">
+          <span>Adaptive resolution</span>
+          <input id="opt-adaptive" type="checkbox" checked />
+        </label>
+
+        <label class="row">
+          <span>Mouse sensitivity <i id="val-sens">1.00</i></span>
+          <input id="opt-sens" type="range" min="0.2" max="3" step="0.05" value="1" />
+        </label>
+
+        <label class="row">
+          <span>Field of view <i id="val-fov">72</i>°</span>
+          <input id="opt-fov" type="range" min="55" max="100" step="1" value="72" />
+        </label>
+
+        <label class="row">
+          <span>Time of day <i id="val-tod">15:40</i></span>
+          <input id="opt-tod" type="range" min="0" max="1" step="0.001" value="0.66" />
+        </label>
+
+        <label class="row">
+          <span>Bloom <i id="val-bloom">0.55</i></span>
+          <input id="opt-bloom" type="range" min="0" max="2" step="0.01" value="0.55" />
+        </label>
+
+        <label class="row">
+          <span>Exposure <i id="val-exp">1.00</i></span>
+          <input id="opt-exp" type="range" min="0.3" max="2.5" step="0.01" value="1" />
+        </label>
+
+        <label class="row">
+          <span>Ambient occlusion</span>
+          <input id="opt-gtao" type="checkbox" />
+        </label>
+
+        <label class="row">
+          <span>Head bob</span>
+          <input id="opt-bob" type="checkbox" checked />
+        </label>
+
+        <label class="row">
+          <span>Physics debug wireframe</span>
+          <input id="opt-physdebug" type="checkbox" />
+        </label>
+
+        <button id="resume-btn" type="button">Resume</button>
+      </div>
+    </div>
+
+    <!-- ------------------------------------------------------------ perf HUD -->
+    <div id="perf" class="hidden"></div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

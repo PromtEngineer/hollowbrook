@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.tar.gz
+.DS_Store
+*.log
+.vite/
+
+# Screen recordings live alongside the project but are not part of it.
+# GitHub rejects any single file over 100 MB, and these are ~1.4 GB.
+*.mp4
+*.mov
