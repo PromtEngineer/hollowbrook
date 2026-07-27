@@ -498,14 +498,17 @@ function archRing(b, wall, key, cu, springV, a, f, depthN, ringW, rng, tintFn) {
 function thatchPatch(eaveFn, topFn, o) {
   const T = o.thickness ?? THATCH_T;
   const detail = Math.max(0.3, o.detail ?? 1);
-  const rc = T * 0.60;                     // eave lip roll radius, measured up-slope
+  // A deep half-round made the eave read as a padded cylinder. The Blender
+  // silhouette study kept the real 38-46 cm coat thickness but compressed the
+  // turn-under along the slope, producing a dressed, weighty edge instead.
+  const rc = T * 0.44;                     // eave turn-under depth, measured up-slope
   const sSegs = Math.max(4, Math.round((o.sSegs ?? 24) * Math.max(0.55, detail)));
   const nTop = Math.max(4, Math.round(12 * detail));
   const nCap = Math.max(4, Math.round(8 * detail));
   const seed = o.seed ?? 0;
   const wave = o.wave ?? 0.045;
   const sag = o.sag ?? THATCH_SAG;
-  const swell = o.swell ?? T * 0.26;
+  const swell = o.swell ?? T * 0.16;
   const bell = o.bell ?? 0;
   const bellD = o.bellD ?? 1.15;
   const base = o.color || { r: 1, g: 1, b: 1 };

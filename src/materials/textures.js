@@ -245,7 +245,7 @@ float hgt(vec2 uv) {
   float h = joint * (0.50 + 0.42 * dome + proud);
   h += (fbm(uv * 44.0, vec2(44.0)) - 0.5) * 0.070 * joint * (1.0 - uA.y * 0.55);
   h += (fbm2(uv * 110.0, vec2(110.0)) - 0.5) * 0.09 * (1.0 - joint) * uB.z;
-  h -= (1.0 - joint) * 0.30;                    // joints cut deep, not creased
+  h -= (1.0 - joint) * 0.22;                    // recessed mortar, not a black trench
   return h;
 }
 vec3 alb(vec2 uv, float h) {
@@ -264,23 +264,24 @@ vec3 alb(vec2 uv, float h) {
      DOWNWARD — the dark ends of each stone type and the darker grain terms —
      and the multipliers keep a low ceiling. Do not scale the palette up without
      pulling the multiplier maxima down by the same factor. */
-  vec3 grey  = mix(vec3(0.594, 0.582, 0.567), vec3(0.746, 0.728, 0.688), rt);
-  vec3 brown = mix(vec3(0.616, 0.488, 0.372), vec3(0.759, 0.600, 0.428), rt);
-  vec3 ochre = mix(vec3(0.690, 0.549, 0.318), vec3(0.770, 0.630, 0.378), rt);
-  vec3 slate = vec3(0.475, 0.470, 0.484) * (0.85 + 0.40 * rt);
+  vec3 grey  = mix(vec3(0.552, 0.548, 0.535), vec3(0.676, 0.662, 0.632), rt);
+  vec3 brown = mix(vec3(0.548, 0.458, 0.374), vec3(0.674, 0.558, 0.438), rt);
+  vec3 ochre = mix(vec3(0.610, 0.514, 0.356), vec3(0.698, 0.596, 0.424), rt);
+  vec3 slate = vec3(0.455, 0.454, 0.468) * (0.90 + 0.24 * rt);
   vec3 c = grey;
   c = mix(c, brown, step(0.34, r2));
   c = mix(c, ochre, step(0.63, r2));
   c = mix(c, slate, step(0.90, r2));
-  c *= 0.90 + 0.34 * r;                                                        // per-sett value
-  c *= 0.88 + 0.20 * fbm(uv * 24.0, vec2(24.0));
-  c *= 0.93 + 0.08 * fbm2(uv * 90.0, vec2(90.0));
+  c *= 0.94 + 0.18 * r;                                                        // per-sett value
+  c *= 0.94 + 0.12 * fbm(uv * 24.0, vec2(24.0));
+  c *= 0.97 + 0.05 * fbm2(uv * 90.0, vec2(90.0));
   float polish = smoothstep(0.09, 0.44, v.z) * uB.y;
-  c = mix(c, mix(c, vec3(0.762, 0.739, 0.699), 0.40), polish);                  // foot-polished crown
-  // The joints stay dark: they are the whole reason the relief reads at all.
-  vec3 mortar = vec3(0.205, 0.194, 0.172) * (0.70 + 0.78 * fbm(uv * 80.0, vec2(80.0)));
+  c = mix(c, mix(c, vec3(0.684, 0.666, 0.636), 0.30), polish);                  // foot-polished crown
+  // Mortar is darker than the stones, but not an ink outline. The height,
+  // normal and AO maps already describe the recess under changing light.
+  vec3 mortar = vec3(0.294, 0.284, 0.264) * (0.84 + 0.30 * fbm(uv * 80.0, vec2(80.0)));
   c = mix(mortar, c, joint);
-  c *= mix(1.0 - 0.34 * uA.z, 1.0, smoothstep(0.0, 0.18, v.z));                 // damp joints
+  c *= mix(1.0 - 0.22 * uA.z, 1.0, smoothstep(0.0, 0.18, v.z));                 // damp joints
   // No extra "worn = paler" multiplier any more: with the palette at a realistic
   // level, the worn set's thinner joints (uA.w) and stronger polished crown
   // (uB.y) already put it ~0.03 linear above the plaza set, which is the whole
@@ -300,7 +301,7 @@ vec3 orm3(vec2 uv, float h, float ao) {
   // on the crowns and puts the peak back inside the tone curve.
   rough = mix(rough, 0.42, polish);
   rough *= 0.90 + 0.22 * fbm2(uv * 26.0, vec2(26.0));
-  return vec3(mix(1.0, ao, 0.92), rough, 0.0);
+  return vec3(mix(1.0, ao, 0.74), rough, 0.0);
 }
 `;
 
@@ -373,9 +374,9 @@ vec3 alb(vec2 uv, float h) {
   float r2 = hash12(vec2(fid, 91.0));
   float b1 = hash12(vec2(bid, 17.0));
 
-  vec3 gold = vec3(0.788, 0.643, 0.388);   // #c9a463 fresh straw
-  vec3 deep = vec3(0.616, 0.478, 0.255);   // #9d7a41 shaded straw
-  vec3 pale = vec3(0.862, 0.755, 0.512);   // sun-bleached
+  vec3 gold = vec3(0.708, 0.578, 0.372);   // fresh straw
+  vec3 deep = vec3(0.536, 0.422, 0.256);   // aged straw
+  vec3 pale = vec3(0.812, 0.714, 0.514);   // sun-bleached
   vec3 grey = vec3(0.412, 0.374, 0.306);   // weathered grey-brown
 
   vec3 c = mix(deep, gold, 0.22 + 0.78 * r1);                       // per-straw tone
@@ -390,9 +391,9 @@ vec3 alb(vec2 uv, float h) {
   c = mix(c, vec3(0.286, 0.302, 0.222), smoothstep(0.84, 1.0, wet) * uA.z * 0.55); // moss
 
   // contact darkening in the gaps — the relief itself is in the normal map
-  c *= mix(0.60, 1.0, pow(sin(PI * clamp(ft, 0.002, 0.998)), 0.50));
-  c *= mix(0.82, 1.0, pow(sin(PI * clamp(bt, 0.002, 0.998)), 0.80));
-  c *= mix(0.48, 1.0, smoothstep(0.0, 0.12, ct));                   // shade under the lap
+  c *= mix(0.76, 1.0, pow(sin(PI * clamp(ft, 0.002, 0.998)), 0.50));
+  c *= mix(0.90, 1.0, pow(sin(PI * clamp(bt, 0.002, 0.998)), 0.80));
+  c *= mix(0.68, 1.0, smoothstep(0.0, 0.12, ct));                   // shade under the lap
   // the ragged butt ends of the course above catch the sun
   float ends = smoothstep(0.86, 1.0, ct) * uB.y;
   c = mix(c, pale * (0.60 + 0.58 * hash12(vec2(fid, floor(cv) + 0.5))), ends);
@@ -468,16 +469,11 @@ vec3 orm3(vec2 uv, float h, float ao) {
    uC = (base.rgb, latewood darkness)
    uD = (paintReady, trafficWear, pegHoles, smoked)
  *
- * EXTERIOR ONLY, AND FROZEN. This family bakes `timber`, `woodPlank`,
- * `woodBeam` and `woodPainted`, all four of them calibrated and signed off, so
- * not one character inside the template string below may change — a comment
- * edit is a different shader source and a different program. The interior sets
- * that used to borrow it (floorBoard, ceilingBeam) now have their own family,
- * FAMILY.sawnOak, precisely so that they could be rebuilt without putting the
- * exterior at risk. uD.y (trafficWear), uD.z (pegHoles) and uD.w (smoked) are
- * therefore dead weight now: every remaining set passes 0 for all three, the
- * helpers compile out, and they are left in place only because deleting them
- * would rewrite the string. */
+ * EXTERIOR ONLY. This family bakes `timber`, `woodPlank`, `woodBeam` and
+ * `woodPainted`; interior sets use FAMILY.sawnOak so exterior calibration never
+ * changes room readability. uD.y (trafficWear), uD.z (pegHoles) and uD.w
+ * (smoked) are therefore dead weight here: every remaining set passes 0 for all
+ * three, their helpers compile out, and they remain for parameter compatibility. */
 FAMILY.wood = /* glsl */`
 vec2 wdG(vec2 uv) { return mix(uv, uv.yx, step(0.5, uA.y)); }
 
@@ -494,8 +490,11 @@ float wdBoard(vec2 g, out float bid, out float gap) {
 float wdGrain(vec2 g, float bid, out float band, out float fleck) {
   float phase = hash12(vec2(bid, 5.0)) * 6.0;
   float warp = fbm(vec2(g.x * 2.0, g.y * 7.0), vec2(2.0, 7.0));
-  float s = g.y * uA.x + phase + warp * 2.8
-          + (fbm2(vec2(g.x * 5.0, g.y * 3.0), vec2(5.0, 3.0)) - 0.5) * 1.4;
+  // Growth rings drift gently along a hewn member. Large domain warp made
+  // every beam show repeated eye-shaped loops, and the high-contrast figure
+  // read as printed plywood rather than old oak.
+  float s = g.y * uA.x + phase + warp * 0.78
+          + (fbm2(vec2(g.x * 5.0, g.y * 3.0), vec2(5.0, 3.0)) - 0.5) * 0.34;
   float r = fract(s);
   band = smoothstep(0.02, 0.26, r) * (1.0 - smoothstep(0.58, 0.90, r));
   fleck = smoothstep(0.60, 0.88, fbm2(vec2(g.x * 80.0, g.y * 9.0), vec2(80.0, 9.0)));
@@ -563,12 +562,15 @@ vec3 alb(vec2 uv, float h) {
   float band, fleck;
   wdGrain(g, bid, band, fleck);
   vec3 base = uC.rgb * uB.x;
-  vec3 late = base * (1.0 - uC.a);
-  vec3 c = mix(late, base * 1.14, band);
-  c = mix(c, base * 1.42 + 0.035, fleck * 0.55);                                // medullary rays
-  c *= 0.88 + 0.26 * fbm(vec2(g.x * 3.0, g.y * 10.0), vec2(3.0, 10.0));
-  c *= 0.94 + 0.12 * fbm2(vec2(g.x * 30.0, g.y * 90.0), vec2(30.0, 90.0));
-  c *= mix(0.82, 1.12, hash12(vec2(bid, 23.0)) * step(0.5, uA.z) + (1.0 - step(0.5, uA.z)) * 0.5);
+  // Blender/PBR look-dev rule: colour describes the species and ageing;
+  // roughness/normal carry most of the surface. Keeping early/late wood within
+  // a narrow value range prevents albedo from baking its own fake lighting.
+  vec3 late = base * (1.0 - uC.a * 0.35);
+  vec3 c = mix(late, base * 1.06, band);
+  c = mix(c, base * 1.18 + 0.012, fleck * 0.22);                                // medullary rays
+  c *= 0.94 + 0.12 * fbm(vec2(g.x * 3.0, g.y * 10.0), vec2(3.0, 10.0));
+  c *= 0.97 + 0.06 * fbm2(vec2(g.x * 30.0, g.y * 90.0), vec2(30.0, 90.0));
+  c *= mix(0.90, 1.08, hash12(vec2(bid, 23.0)) * step(0.5, uA.z) + (1.0 - step(0.5, uA.z)) * 0.5);
   float weather = smoothstep(0.52, 0.92, fbm6(g * 3.0, vec2(3.0)));
   c = mix(c, mix(c, vec3(0.400, 0.372, 0.330), 0.55), weather * uB.w);          // silvered greying
   c = mix(c, base * 0.24, wdChecks(g));
@@ -1647,7 +1649,7 @@ vec4 atlasRGBA(vec2 uv) {
  */
 const SETS = [
   /* ---- hero ---- */
-  { key: 'cobble', family: 'cobble', tier: 'hero', worldScale: 2.0, relief: 0.036,
+  { key: 'cobble', family: 'cobble', tier: 'hero', worldScale: 2.0, relief: 0.026,
     uA: [12, 0.0, 0.55, 0.055], uB: [0, 0.55, 1.0, 0] },
   // straws: 96 per uv tile. The normal pass for a hero set is base/2 texels, so
   // that is ~5 texels per straw — above the Sobel's Nyquist. At the old 220 the

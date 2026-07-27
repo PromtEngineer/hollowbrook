@@ -64,9 +64,10 @@ try dusk with the lanterns.
 environment that is itself procedural: a custom atmospheric-scattering sky shader with
 raymarched cumulus is rendered into a float cubemap and prefiltered with `PMREMGenerator`
 to produce a real HDRI. A single texel-snapped directional light provides the sun and the
-shadows. The frame runs through an `EffectComposer` — ambient occlusion, HDR bloom above a
-threshold, subtle grain and vignette, SMAA, and exactly one ACES filmic tone map in the
-final `OutputPass`.
+shadows. The frame runs through an `EffectComposer` — room-aware ambient occlusion, a
+resolution-scaled HDR bloom above a threshold, subtle grain and vignette, SMAA, and exactly
+one ACES filmic tone map in the final `OutputPass`. Outdoors the material AO and sunlight
+provide the depth cues, so the heavier screen-space AO pass is reserved for interiors.
 
 **Physics.** Rapier runs on a fixed 1/60 timestep with interpolated transform sync. The
 player is a swept capsule driven by Rapier's kinematic character controller — it cannot
@@ -89,12 +90,14 @@ upper floor in the seven buildings that have one. Each room is furnished for its
 taproom with a bar and benches, a bakery with a domed brick oven, a stable with stalls and
 straw, bedrooms with rope beds and washstands. Hearths hold a real fire that lights the room
 and flickers, and there are tankards, loaves, crocks and candlesticks you can pick up and
-throw. Interiors are built once and then culled to the room you are in: standing in the inn's
-taproom measures 634 draw calls against 502–512 outdoors, rather than eleven buildings' worth.
+throw. Interiors are built once and then culled to the room you are in: a high-quality
+validation run measured roughly 355 submitted draw calls in a room and 272 outdoors,
+rather than eleven buildings' worth.
 
 **Performance.** Everything repeated is instanced or merged. The performance manager
 watches real frame timings and adapts resolution first, then ambient occlusion, bloom and
-shadow distance, with hysteresis so it never oscillates.
+shadow distance, with hysteresis so it never oscillates. Bloom runs on a quality-scaled
+buffer, the settings view repaints at 15 Hz, and hidden tabs skip scene rendering entirely.
 
 ---
 
