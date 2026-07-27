@@ -238,14 +238,29 @@ async function boot() {
     .filter((m) => m && typeof m.update === 'function');
 
   let running = true;
+  let lastPausedPaint = -Infinity;
 
-  function frame() {
+  function frame(now = performance.now()) {
     if (!running) return;
     requestAnimationFrame(frame);
 
     const dt = Math.min(clock.getDelta(), 0.1);
     frameCtx.dt = dt;
     frameCtx.elapsed += dt;
+
+    // Browsers usually throttle a hidden tab, but "usually" still permits
+    // occasional full shadow/post frames. There is nothing useful to paint
+    // while the document cannot be seen.
+    if (document.hidden) return;
+
+    // The settings overlay is opaque enough that a 60 Hz world render wastes
+    // most of its GPU time. Keep it alive at 15 Hz so sky/time sliders remain
+    // responsive without burning a full game frame behind the menu.
+    if (frameCtx.paused && now - lastPausedPaint < 1000 / 15) {
+      frameCtx.playerPosition.copy(player?.position || camera.position);
+      return;
+    }
+    if (frameCtx.paused) lastPausedPaint = now;
 
     perf?.begin?.();
 
@@ -262,6 +277,15 @@ async function boot() {
       sky?.update?.(0, frameCtx);
       lighting?.update?.(0, frameCtx);
     }
+
+    // GTAO re-submits nearly the entire visible village. Material AO plus the
+    // sun/IBL already carry outdoor depth, so reserve that pass for rooms where
+    // short-radius contact shadowing materially improves furniture and beams.
+    post?.setAOContext?.(!!interiors?.roomAt?.(
+      frameCtx.playerPosition.x,
+      frameCtx.playerPosition.y,
+      frameCtx.playerPosition.z,
+    ));
 
     renderer.info.reset();
     post?.render?.(dt, frameCtx);
@@ -314,6 +338,32 @@ async function boot() {
         quality: quality.name,
       };
     },
+  };
+
+  // Concise state surface for browser checks and accessibility tooling.
+  // Coordinates are metres in a Y-up world; yaw 0 faces north (-Z).
+  window.render_game_to_text = () => {
+    const p = player?.position || camera.position;
+    const room = interiors?.roomAt?.(p.x, p.y, p.z);
+    return JSON.stringify({
+      mode: frameCtx.paused ? 'paused' : 'exploring',
+      coordinates: 'metres, Y up, yaw 0 faces -Z',
+      player: {
+        x: +p.x.toFixed(2),
+        y: +p.y.toFixed(2),
+        z: +p.z.toFixed(2),
+      },
+      room: room ? { plot: room.plotId, storey: room.storey, use: room.use } : null,
+      lantern: !!player?.stats?.lantern,
+      held: player?.stats?.held || null,
+      performance: {
+        fps: +(perf?.stats?.fps || 0).toFixed(1),
+        draws: renderer.info.render.calls,
+        triangles: renderer.info.render.triangles,
+        quality: quality.name,
+      },
+      failures: failures.map((f) => f.label),
+    });
   };
 
   if (failures.length) {

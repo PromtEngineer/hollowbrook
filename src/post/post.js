@@ -7,9 +7,9 @@
  * Chain (in order):
  *
  *   RenderPass          scene -> HDR half-float target, NO tone map
- *   GTAOPass            optional; short-radius crevice occlusion, rendered at a
- *                       fraction of the framebuffer with the far half of the
- *                       village culled out of its gbuffer
+ *   GTAOPass            optional; short-radius interior contact occlusion,
+ *                       rendered at a fraction of the framebuffer with the far
+ *                       half of the village culled out of its gbuffer
  *   UnrealBloomPass     highlight bloom, threshold ABOVE the sky, soft knee
  *   SMAAPass | FXAAPass antialias (SMAA must run before OutputPass — it works
  *                       in linear-srgb; three's own docs say so)
@@ -73,8 +73,18 @@ const BLOOM_THRESHOLD = { low: 2.4, medium: 2.5, high: 2.6, ultra: 2.7 };
 /** Soft knee width, added to the threshold: full bloom only at t + knee. */
 const BLOOM_KNEE = { low: 2.2, medium: 2.3, high: 2.4, ultra: 2.4 };
 const BLOOM_RADIUS = 0.35;
+/**
+ * Bloom is deliberately soft, so resolving its five-level blur pyramid at the
+ * full beauty resolution only spends fill rate on detail the blur removes.
+ */
+const BLOOM_SCALE = { low: 0.35, medium: 0.45, high: 0.5, ultra: 0.65 };
 
-/** GTAO. Short radius — this is crevice occlusion, not a fake GI darkening. */
+/**
+ * GTAO. Short radius — this is crevice occlusion, not a fake GI darkening.
+ * It is enabled only indoors: outdoors the baked material AO, sun and IBL
+ * already describe the large-scale response, while GTAO would submit almost
+ * the whole visible village a second time for a sub-pixel contact effect.
+ */
 const GTAO_AO = {
   radius: 0.35,          // metres. Cobble gaps, window reveals, under eaves.
   distanceExponent: 1.6, // falls off fast, so distant geometry contributes ~0
@@ -428,7 +438,7 @@ function createPassProfiler(renderer) {
  * @param {Object}   o.quality   active preset from config.js (has `.name`)
  * @param {Object}   o.engine    core/engine.js — used for onResize
  * @returns {{composer:EffectComposer, render:Function, setSize:Function,
- *            setBloom:Function, setAO:Function, setQuality:Function,
+ *            setBloom:Function, setAO:Function, setAOContext:Function, setQuality:Function,
  *            setGrade:Function, passes:Object, dispose:Function, stats:Object}}
  */
 export function createPostProcessing({ renderer, scene, camera, quality, engine }) {
@@ -582,11 +592,23 @@ export function createPostProcessing({ renderer, scene, camera, quality, engine 
 
   /* ------------------------------------------------------------ 3. bloom */
   const bloomStrength = Number.isFinite(q.bloom) ? q.bloom : 0.5;
+  const bloomScale = BLOOM_SCALE[name] ?? 0.5;
   const bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(ew(), eh()),
+    new THREE.Vector2(
+      Math.max(1, Math.round(ew() * bloomScale)),
+      Math.max(1, Math.round(eh() * bloomScale)),
+    ),
     bloomStrength,
     BLOOM_RADIUS,
     BLOOM_THRESHOLD[name] ?? 2.6,
+  );
+  // EffectComposer forwards the full framebuffer size to every pass. Keep the
+  // scale in the pass itself so resize/adaptive-resolution changes cannot
+  // silently turn bloom back into a full-resolution pyramid.
+  const baseBloomSetSize = bloomPass.setSize.bind(bloomPass);
+  bloomPass.setSize = (w, h) => baseBloomSetSize(
+    Math.max(1, Math.round(w * bloomScale)),
+    Math.max(1, Math.round(h * bloomScale)),
   );
   bloomPass.enabled = bloomStrength > 0.001;
   // `smoothWidth` is the high pass's knee. UnrealBloomPass only ever re-writes
@@ -640,6 +662,8 @@ export function createPostProcessing({ renderer, scene, camera, quality, engine 
   /* ---------------------------------------------------------- assembly */
   composer.addPass(renderPass);
   let aoEnabled = false;
+  let aoRequested = !!q.gtao;
+  let aoContext = 'unknown';
   if (q.gtao && ensureGTAO()) { composer.addPass(gtaoPass); aoEnabled = true; }
   composer.addPass(bloomPass);
   if (aaPass) composer.addPass(aaPass);
@@ -653,7 +677,10 @@ export function createPostProcessing({ renderer, scene, camera, quality, engine 
   const stats = {
     passes: composer.passes.length,
     gtao: aoEnabled,
+    gtaoRequested: aoRequested,
+    gtaoContext: aoContext,
     bloom: bloomPass.strength,
+    bloomScale,
     bloomThreshold: bloomPass.threshold,
     aa: aaPass ? aaMode : 'none',
     cpuMs: 0,
@@ -681,6 +708,8 @@ export function createPostProcessing({ renderer, scene, camera, quality, engine 
   function syncStats() {
     stats.passes = composer.passes.length;
     stats.gtao = aoEnabled;
+    stats.gtaoRequested = aoRequested;
+    stats.gtaoContext = aoContext;
     stats.bloom = bloomPass.enabled ? bloomPass.strength : 0;
     stats.bloomThreshold = bloomPass.threshold;
     stats.bloomKnee = bloomKnee;
@@ -748,8 +777,31 @@ export function createPostProcessing({ renderer, scene, camera, quality, engine 
     syncStats();
   }
 
+  function reconcileAO() {
+    if (aoRequested && aoContext !== 'outdoor') insertAO();
+    else removeAO();
+  }
+
+  /**
+   * User/preset preference. A checked AO control means "use contact AO where
+   * it helps", not "re-render an open sunlit village every frame".
+   */
   function setAO(on) {
-    if (on) insertAO(); else removeAO();
+    aoRequested = !!on;
+    reconcileAO();
+    syncStats();
+  }
+
+  /**
+   * Room-boundary hint from main.js. The value changes only when the player
+   * crosses a doorway, so pass insertion/removal never becomes frame churn.
+   */
+  function setAOContext(indoor) {
+    const next = indoor ? 'indoor' : 'outdoor';
+    if (next === aoContext) return;
+    aoContext = next;
+    reconcileAO();
+    syncStats();
   }
 
   /**
@@ -813,15 +865,14 @@ export function createPostProcessing({ renderer, scene, camera, quality, engine 
   }
 
   /**
-   * main.js wires the settings panel by firing every control's handler once,
-   * and the AO checkbox in index.html starts unchecked regardless of preset —
-   * so a `high` load would silently lose its AO before the first frame.
-   * `quality.gtao` is the source of truth, so re-assert it once, here.
+   * Defensive first-frame repair for a pass whose constructor can fail while
+   * shader resources are still settling. The current user/preset request is
+   * the source of truth, subject to the outdoor context rule.
    */
   let firstFrame = true;
   function healInitialState() {
     firstFrame = false;
-    if (q.gtao && !aoEnabled) {
+    if (aoRequested && aoContext !== 'outdoor' && !aoEnabled) {
       insertAO();
       if (aoEnabled) console.info('[post] re-asserted GTAO from the quality preset');
     }
@@ -877,6 +928,7 @@ export function createPostProcessing({ renderer, scene, camera, quality, engine 
     setBloom,
     setBloomThreshold,
     setAO,
+    setAOContext,
     setGrade,
     setQuality,
     dispose,
