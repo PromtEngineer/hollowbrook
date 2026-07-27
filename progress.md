@@ -1,4 +1,4 @@
-Original prompt: refine and improve this, maintain or improve quality, reduce unneeded renders, improve framewrate and textures, use blender skills to massively improve and enhance this game
+Original prompt: refine and improve this, maintain or improve quality, reduce unneeded renders, improve framerate and textures, use blender skills to massively improve and enhance this game
 
 ## 2026-07-27
 
