@@ -204,7 +204,7 @@ prompt: 'What is 12 + 7?\nAnswer:' -> ' 78 + 78 = 78.'   (a base model may or ma
 ✅ checks passed
 ```
 
-Two things to notice. The story continuation is fluent Storyland, with the right template order and consistent characters within a sentence, from a model with 300k parameters and one minute of training: next-token prediction on repetitive data is not hard. And the arithmetic answer is wrong in the characteristic base-model way: the *form* `a + b = c.` is right, the *content* is copied from nowhere. A 150-step nano model has not seen enough arithmetic to learn it; the `--full` small model does better on the form and still gets sums wrong, and Chapter 19 is where TinyLM learns to add with a verifiable reward.
+Two things to notice. The story continuation is fluent Storyland, with the right template order and consistent characters within a sentence, from a model with 300k parameters and one minute of training: next-token prediction on repetitive data is not hard. And the arithmetic answer is wrong in the characteristic base-model way: the *form* `a + b = c.` is right, the *content* is copied from nowhere. A 150-step nano model has not seen enough arithmetic to learn it. Run `--full` and check whether the 700-step small model does any better on this prompt (exercise 3 asks you to record it); Chapter 19 is where TinyLM learns to add reliably, with a verifiable reward.
 
 The 3 tokens/s is not a property of the model. Run the lab on a quiet machine and expect hundreds of tokens per second for nano; Chapter 7 measures this properly with and without a KV cache.
 

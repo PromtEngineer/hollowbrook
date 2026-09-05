@@ -23,3 +23,4 @@
 - **manifold-constrained hyper-connections (mHC)** — DeepSeek-V4's hyper-connections with the mixing matrices constrained for stability at depth (Ch. 12)
 - **autoregressive** — generating one token at a time, left to right, each conditioned on the previous ones (Ch. 12)
 - **diffusion language model** — a model that generates by iteratively un-masking or denoising a whole sequence in parallel rather than left to right (Ch. 12)
+- **Kimi Delta Attention** — Kimi Linear's linear-attention layer with a delta-rule state update, used 3:1 with MLA layers (Ch. 12)

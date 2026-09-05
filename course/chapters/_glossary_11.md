@@ -22,3 +22,6 @@
 - **model FLOPs utilisation (MFU)** — the fraction of the hardware's peak FLOP/s spent on the model's own 6·N·D operations; 40–50% is good at scale (Ch. 11)
 - **communication versus compute** — the ratio that decides MFU: per step, compute scales with batch × parameters while gradient traffic scales only with parameters (Ch. 11)
 - **checkpoint** — a saved copy of model weights, optimizer state and step counter from which training can resume after a failure (Ch. 11)
+- **interleaved pipeline** — a pipeline schedule in which each device holds several non-contiguous chunks of layers, shrinking the bubble at the cost of more communication (Ch. 11)
+- **DualPipe** — DeepSeek-V3's pipeline schedule that overlaps the forward and backward passes of different micro-batches to hide expert-parallel communication (Ch. 11)
+- **fault tolerance** — the checkpointing, asynchronous saving and elastic-restart machinery that lets a run survive hardware failing every few hours at cluster scale (Ch. 11)
