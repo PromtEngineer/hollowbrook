@@ -20,7 +20,7 @@ code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
 footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
 .legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
 /* page */
-select{width:auto}.grid>*{min-width:0}.note{font-size:13px;color:var(--muted)}
+select{width:auto;max-width:100%}.grid>*{min-width:0}.row{max-width:100%}.note{font-size:13px;color:var(--muted)}
 svg.plot{width:100%;height:auto;display:block}
 .node{cursor:pointer}.node rect{fill:#f8fafc;stroke:#cbd5e1;stroke-width:1.5;transition:fill .15s}.node:hover rect,.node:focus rect{stroke:var(--blue);fill:#eff6ff}.node:focus{outline:none}.node.on rect{fill:var(--blue);stroke:var(--blue)}.node.on text{fill:#fff}
 .node text{pointer-events:none}
@@ -110,10 +110,14 @@ function drawAnat() {
     mk(g, 'rect', { x: n.x, y: n.y, width: n.w, height: n.h, rx: 10 });
     mk(g, 'text', { x: n.x + n.w / 2, y: n.y + 26, 'text-anchor': 'middle', 'font-size': 14, 'font-weight': 700, fill: '#0f172a' }, n.label);
     mk(g, 'text', { x: n.x + n.w / 2, y: n.y + 44, 'text-anchor': 'middle', 'font-size': 10.5, fill: '#64748b', 'font-family': 'ui-monospace, Menlo, monospace' }, n.sub);
-    const sel = () => { curNode = id; drawAnat(); };
+    const sel = () => selectNode(id);
     g.addEventListener('click', sel); g.addEventListener('mouseenter', sel); g.addEventListener('focus', sel);
     g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sel(); } });
   }
+  showDetail();
+}
+function selectNode(id) { curNode = id; $('anat').querySelectorAll('.node').forEach(g => g.classList.toggle('on', g.dataset.id === id)); showDetail(); }
+function showDetail() {
   const n = NODES[curNode];
   $('detail').innerHTML = `<h3>${n.label} <span class="note" style="font-weight:400">· <code>${n.sub}</code></span></h3><div class="kv"><b>role</b><span>${n.role}</span><b>failure it prevents</b><span>${n.fail}</span><b>where</b><span><code>${esc(n.where)}</code></span></div><pre style="margin:8px 0 0">${esc(n.code)}</pre>`;
 }
