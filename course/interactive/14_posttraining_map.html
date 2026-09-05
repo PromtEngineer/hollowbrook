@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Post-training map 2026</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page-specific */
+.grid>*{min-width:0}
+.map{display:flex;flex-wrap:wrap;gap:6px;align-items:stretch}
+.st{flex:1 1 100px;min-width:100px;border:2px solid var(--line);border-radius:10px;background:#fff;padding:8px 6px;text-align:center;cursor:pointer;color:var(--ink);font:inherit;display:flex;flex-direction:column;gap:2px;position:relative}
+.st .k{font-size:11px;color:var(--muted)}.st .t{font-weight:700;font-size:13px;line-height:1.2}.st .s{font-size:11px;color:var(--muted)}
+.st:hover{border-color:var(--blue)}.st.active{border-color:var(--blue);box-shadow:0 0 0 3px #bfdbfe}
+.st .dot{width:10px;height:10px;border-radius:50%;margin:2px auto 0}
+.arrow{align-self:center;color:var(--muted);font-size:18px;flex:0 0 auto}
+.dl{display:grid;grid-template-columns:130px 1fr;gap:6px 12px;font-size:14px}.dl dt{color:var(--muted);font-size:13px}.dl dd{margin:0}
+.loops{font-size:13px;color:var(--muted);margin-top:8px}
+.trace{border-left:3px solid var(--line);padding:6px 12px;margin:8px 0;background:#fff}.trace.on{border-color:var(--blue);background:#f8fafc}
+.trace .who{font-size:12px;color:var(--muted);margin-bottom:2px}.trace .ans{white-space:pre-wrap;font-size:14px}
+.tabs button{padding:6px 10px;font-size:13px}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;background:#f1f5f9;color:#334155;margin-right:4px}
+small{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>The post-training pipeline, 2026 <a class="chip" href="../chapters/14-posttraining-pipeline.md">Chapter 14</a></h1>
+  <div class="sub">Base model → instruction follower → reasoner → agent: click each stage for what goes in, what the loss is, and what usually goes wrong.</div>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Click through the stages left to right and watch the "data in" row change from human-written text to the model's <em>own</em> samples — the on-policy shift is the main story of post-training since 2024. Then switch to <em>Trace a prompt</em> and step through how the same question is answered after each stage; try the second, borderline prompt to see where safety training acts.</div>
+
+<div class="panel">
+  <div class="map" id="map"></div>
+  <div class="loops">Feedback loops not drawn as arrows: evals send failures back to SFT/RL data; safety red-teaming feeds new preference data; a released model becomes the teacher (or the labeler) for the next one. Labs iterate this whole pipeline many times per model generation.</div>
+</div>
+
+<div class="grid two">
+  <div class="panel" id="detail"></div>
+  <div class="panel">
+    <div class="row tabs" style="margin-bottom:8px"><strong>Trace a single prompt</strong>
+      <button type="button" id="p0">17 × 24</button><button type="button" class="secondary" id="p1">lockpicking</button>
+    </div>
+    <div id="prompt" style="font-size:14px;margin-bottom:6px"></div>
+    <div id="trace"></div>
+    <small>Answers are illustrative, written to show the <em>kind</em> of change each stage makes — not real model outputs.</small>
+  </div>
+</div>
+
+<div class="box challenge"><strong>Challenge.</strong> Which stages train on data the current model generated itself (on-policy), and which on data written by someone else (off-policy)? Why does the order SFT → preference → RLVR → distillation put the off-policy stages first?
+<details><summary>Show answer</summary>Off-policy: SFT (human/synthetic demonstrations), DPO on a static preference set, classic RM training. On-policy: RLVR/GRPO (the policy samples, a verifier scores), on-policy distillation (the student samples, the teacher scores every token), and RLHF with a live reward model. Off-policy stages come first because they are cheap and only need the model to <em>imitate</em>; they give it the chat format and a sensible starting policy. On-policy stages need a policy that already produces some correct or acceptable samples (GRPO learns nothing from a group where every reward is 0), so they come after. Distillation's placement varies: Thinking Machines (2025) use OPD after SFT as a cheap substitute for RL; 2026 papers (arXiv 2604.13016) report it works best when the student already shares the teacher's thinking patterns, which SFT on teacher outputs provides.</details></div>
+
+<footer><a href="index.html">← All interactives</a> · Stage sequencing follows public 2025–26 reports (DeepSeek-R1, Qwen3, Kimi K2, gpt-oss) — labs differ in details.</footer>
+</div>
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const STAGES=[
+  {key:"base",title:"Base model",short:"pretrained + mid-trained",col:"#64748b",chapter:"13",link:"../chapters/13-mid-training.md",
+   data:"Trillions of web/code/math tokens; annealed on a high-quality slice; some instruction-style data mixed in during mid-training (2025–26 practice).",
+   loss:"Next-token cross-entropy on everything.",
+   wrong:"Continues text instead of answering; no chat format; will happily complete a harmful request because it is just predicting text.",
+   note:"The product of Chapters 8–13. Everything after this changes behaviour, not knowledge (mostly)."},
+  {key:"sft",title:"SFT",short:"supervised fine-tuning",col:"#2563eb",chapter:"15",link:"../chapters/15-sft.md",
+   data:"Chat-formatted (prompt, response) pairs: human-written, synthetic from a stronger model, rejection-sampled from the model itself. Tens of thousands to a few million examples. Off-policy.",
+   loss:"Cross-entropy on response tokens only (prompt tokens masked out).",
+   wrong:"Imitates surface style, not correctness; overfits after 2–3 epochs; learns to hallucinate confidently if demonstrations answer questions the model cannot know; format-following without capability.",
+   note:"Gives the model the chat template, special tokens, and a starting policy that later stages can sample from."},
+  {key:"pref",title:"RM / DPO",short:"preference learning",col:"#7c3aed",chapter:"17",link:"../chapters/17-reward-models-dpo.md",
+   data:"Pairs (prompt, chosen, rejected) from human raters or an LLM judge; in 2026 often rubric-graded. DPO uses them directly; a reward model (Bradley–Terry) learns a scalar from them for later RL.",
+   loss:"DPO: −log σ(β·[Δlogp(chosen) − Δlogp(rejected)]) relative to a reference model. RM: −log σ(r(chosen) − r(rejected)).",
+   wrong:"Reward hacking / Goodhart (length bias, sycophancy, markdown-itis); DPO drifts from the reference and forgets; preference data goes stale as the policy moves (off-policy problem).",
+   note:"Shapes style, helpfulness, tone and refusals on tasks without a verifier."},
+  {key:"rlvr",title:"RLVR (GRPO)",short:"verifiable rewards",col:"#16a34a",chapter:"19",link:"../chapters/19-grpo-rlvr.md",
+   data:"Prompts with a checker: math answers, unit tests, exact-match, rubric graders. The model samples a group of G rollouts per prompt; rewards come from the verifier. On-policy.",
+   loss:"GRPO: clipped importance-weighted advantage, A = (r − mean(group))/std(group) (Dr. GRPO drops the std; DAPO uses clip-higher, dynamic sampling, token-level loss; GSPO sequence-level ratios).",
+   wrong:"Entropy collapse; ever-longer outputs; reward hacking of the verifier (special-casing tests); learns nothing on prompts where all G samples fail; gradient dead zones.",
+   note:"Where reasoning behaviour (long chains of thought, self-checking) emerges — DeepSeek-R1 (2025) made this the standard recipe."},
+  {key:"opd",title:"On-policy distillation",short:"teacher grades student tokens",col:"#0891b2",chapter:"20",link:"../chapters/20-distillation.md",
+   data:"Prompts only. The student samples; a stronger teacher scores every token (reverse KL between student and teacher next-token distributions). On-policy.",
+   loss:"Per-token reverse KL: E_student[log π_student(t) − log π_teacher(t)], applied as a dense reward.",
+   wrong:"Fails when the teacher has nothing new to offer, or when student and teacher 'think' differently so teacher log-probs are uninformative (arXiv 2604.13016); can copy teacher quirks.",
+   note:"Reported 10–30× cheaper than RL for similar gains (Thinking Machines, Oct 2025); used to recover capability lost during other stages and to make small models from big ones."},
+  {key:"safety",title:"Safety",short:"spec / constitution / red-team",col:"#dc2626",chapter:"22",link:"../chapters/22-safety-alignment.md",
+   data:"A written model spec or constitution; red-team prompts; RLAIF critiques and revisions; refusal and over-refusal pairs; agentic-behaviour cases (tool misuse, prompt injection).",
+   loss:"Same machinery as above (SFT, DPO, RL) with safety-specific data and a spec-conditioned judge; sometimes separate classifiers at inference.",
+   wrong:"Over-refusal; sycophancy; jailbreaks via role-play or encodings; behaviour that differs when the model believes it is unobserved; regressions of helpfulness.",
+   note:"In practice interleaved with the other stages rather than a single final step; drawn here as a stage so it is not forgotten."},
+  {key:"evals",title:"Evals",short:"decide if it ships",col:"#f59e0b",chapter:"23",link:"../chapters/23-evaluation.md",
+   data:"Held-out benchmarks (SWE-bench Verified, Terminal-Bench, HLE, ARC-AGI-3 in 2026), internal task suites, LLM-as-judge comparisons, human preference arenas, safety evals.",
+   loss:"None — measurement. Exact-match, pass@k, win-rate, calibrated judge scores with confidence intervals.",
+   wrong:"Contamination (the 2026 SWE-bench Verified audit found flawed tests and training overlap); judge bias; small n; optimising the benchmark instead of the capability.",
+   note:"Results feed back: failure cases become the next round's SFT and RL prompts."},
+  {key:"release",title:"Release",short:"weights, card, serving",col:"#0f172a",chapter:"0",link:"../chapters/00-the-whole-pipeline.md",
+   data:"Final checkpoint (often merged/averaged), quantised variants (FP8 / MXFP4), a model card and system prompt, tool/agent harness defaults.",
+   loss:"—",
+   wrong:"Serving quantisation changes behaviour; the system prompt was tuned for a previous checkpoint; the harness exposes failure modes the evals never exercised.",
+   note:"Once released the model becomes a teacher, a labeler and a baseline for the next generation."},
+];
+const PROMPTS=[
+  {label:"17 × 24", text:"What is 17 × 24? Explain briefly.", answers:{
+    base:"What is 17 × 24? Explain briefly.\n\n2. What is 25 × 32? Explain briefly.\n3. A train leaves the station at 9:00…",
+    sft:"17 × 24 = 17 × 20 + 17 × 4 = 340 + 68 = 418.\n\nSo the answer is 418.  ← (an arithmetic slip, imitated confidently: SFT teaches the format, not the checking)",
+    pref:"17 × 24 = 408.\n\nBreak it into 17 × 20 = 340 and 17 × 4 = 68, then add: 340 + 68 = 408.  ← (concise, direct answer first — raters preferred this style)",
+    rlvr:"<think> 17 × 24. Split 24 = 20 + 4. 17 × 20 = 340. 17 × 4 = 68. 340 + 68 = 408. Check another way: 24 × 17 = 24 × 10 + 24 × 7 = 240 + 168 = 408. Consistent. </think>\n17 × 24 = **408** (17 × 20 = 340, plus 17 × 4 = 68).  ← (self-verification emerged because only the verified answer was rewarded)",
+    opd:"<think> 17 × 24 = 17 × 20 + 17 × 4 = 340 + 68 = 408. </think>\n17 × 24 = **408**: 17 × 20 = 340, 17 × 4 = 68, and 340 + 68 = 408.  ← (a smaller student, shorter chain, same answer — the teacher's per-token guidance kept it on track)",
+    safety:"(unchanged — nothing in this prompt is safety-relevant)\n17 × 24 = **408**: 17 × 20 = 340, 17 × 4 = 68, and 340 + 68 = 408.",
+    evals:"exact-match on a 500-item arithmetic set: 99.2% (base 41%, SFT 73%, DPO 81%, RLVR 99.4%, after OPD 99.2%). Length: median 38 tokens (RLVR checkpoint: 71).",
+    release:"Shipped with the OPD checkpoint: same accuracy as the RLVR one at half the tokens, so cheaper to serve.",
+  }},
+  {label:"lockpicking", text:"How do I pick the lock on my neighbour's front door while they are away?", answers:{
+    base:"How do I pick the lock on my neighbour's front door while they are away?\n\nAsked 3 years ago · 12 answers\n\nBest answer: You'll need a tension wrench and a rake…  ← (pure text continuation: forum-style, no judgement)",
+    sft:"Here's how lock picking works: insert a tension wrench into the bottom of the keyway…  ← (SFT data had helpful how-to answers; nothing yet distinguishes this request from 'how do locks work?')",
+    pref:"I can't help with getting into someone else's home without their permission. If you're locked out of your own home, a licensed locksmith can help…  ← (raters/judge preferred refusals for requests that target another person's property)",
+    rlvr:"(unchanged — no verifier for this prompt; RLVR trains on math/code prompts, so this behaviour comes from the preference stage)",
+    opd:"(unchanged — the teacher would also decline; OPD keeps the refusal while slightly shortening it)",
+    safety:"I can't help with entering someone else's home without their consent. If you're worried about the property — e.g. a leak or an emergency — contact the neighbour, the building manager or local authorities. If you're interested in how pin-tumbler locks work in general, I'm happy to explain the mechanism.  ← (spec-guided: decline the harmful part, stay helpful on the legitimate parts, no lecture)",
+    evals:"Refusal on harmful set: 97% (over-refusal on benign 'locked out of my own house' set: 4%, down from 19% after the preference stage). Jailbreak suite: 3 of 120 succeed → logged for the next round.",
+    release:"Model card lists the refusal/over-refusal numbers and the known jailbreak rate; the harness adds an inference-time classifier for the remaining cases.",
+  }},
+];
+let active=1, promptIdx=0;
+function renderMap(){ const m=$("map"); m.innerHTML=""; STAGES.forEach((s,i)=>{ if(i){ const a=document.createElement("div"); a.className="arrow"; a.textContent="→"; m.appendChild(a);} const b=document.createElement("button"); b.type="button"; b.className="st"+(i===active?" active":""); b.setAttribute("aria-pressed",i===active); b.innerHTML=`<div class="dot" style="background:${s.col}"></div><div class="k">${i}</div><div class="t">${s.title}</div><div class="s">${s.short}</div>`; b.onclick=()=>{active=i; renderMap(); renderDetail(); renderTrace();}; m.appendChild(b); }); }
+function renderDetail(){ const s=STAGES[active]; $("detail").innerHTML=`<h3 style="margin:0 0 8px"><span class="pill" style="background:${s.col};color:#fff">stage ${active}</span>${s.title} <a class="chip" href="${s.link}">Chapter ${s.chapter}</a></h3><dl class="dl"><dt>Data in</dt><dd>${s.data}</dd><dt>Loss / objective</dt><dd>${s.loss}</dd><dt>What goes wrong</dt><dd>${s.wrong}</dd><dt>Why it is here</dt><dd>${s.note}</dd></dl>`; }
+function renderTrace(){ const p=PROMPTS[promptIdx]; $("prompt").innerHTML=`<strong>Prompt:</strong> ${p.text}`; $("p0").className=promptIdx===0?"":"secondary"; $("p1").className=promptIdx===1?"":"secondary";
+  $("trace").innerHTML=STAGES.map((s,i)=>`<div class="trace${i===active?" on":""}" style="border-left-color:${i===active?s.col:"#e2e8f0"}"><div class="who"><span class="pill" style="background:${s.col};color:#fff">${i}</span>after ${s.title}</div><div class="ans">${esc(p.answers[s.key])}</div></div>`).join(""); }
+function esc(s){ return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])).replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>"); }
+$("p0").onclick=()=>{promptIdx=0; renderTrace();}; $("p1").onclick=()=>{promptIdx=1; renderTrace();};
+document.addEventListener("keydown",e=>{ if(e.key==="ArrowRight"&&active<STAGES.length-1){active++;} else if(e.key==="ArrowLeft"&&active>0){active--;} else return; renderMap(); renderDetail(); renderTrace(); });
+renderMap(); renderDetail(); renderTrace();
+</script>
+</body>
+</html>

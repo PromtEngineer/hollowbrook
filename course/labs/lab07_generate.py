@@ -185,7 +185,7 @@ print(f"stop token {END!r} has id {tok.special_tokens[END]}; base model generati
 out = generate(model, tok, chat, max_new_tokens=30, temperature=0.0, stop=(END,))
 print(repr(out))
 check(tok.special_tokens[END] in chat_ids, "the chat template is a single special token in the vocabulary")
-print("(a base model has never seen <|end|>; SFT in Chapter 15 teaches it to stop)")
+print("(the base model emits <|eos|>, the pretraining document separator, but never <|end|>; SFT in Chapter 15 teaches it to end a turn)")
 
 # ----------------------------------------------------------------------------- 9
 section("9. The cost model: $ per million tokens")

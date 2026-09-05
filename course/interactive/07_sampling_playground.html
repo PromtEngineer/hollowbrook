@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sampling Playground — Chapter 7</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page-specific */
+.grid>*{min-width:0}
+h3{margin:0 0 8px;font-size:15px}.small{font-size:13px;color:var(--muted)}
+select{width:auto}
+.ctl{display:grid;grid-template-columns:110px 1fr 80px;gap:8px 10px;align-items:center;font-size:13px}.ctl input[type=range]{width:100%}.ctl .v{font-family:ui-monospace,Menlo,monospace;text-align:right}
+#bars{width:100%;height:auto;display:block}
+.stat{display:inline-block;background:#f8fafc;border-radius:8px;padding:6px 10px;margin:2px 6px 2px 0}.stat b{font-family:ui-monospace,Menlo,monospace;font-size:18px;display:block}.stat span{font-size:12px;color:var(--muted)}
+.pipe{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:8px 10px;white-space:pre-wrap}
+.lg{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:4px}.lg input{font:inherit;font-size:12px;padding:3px;width:100%;border:1px solid var(--line);border-radius:6px}.lg label{display:block;font-size:11px}
+input[type=number]{font:inherit;padding:6px;border:1px solid var(--line);border-radius:8px;width:80px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Sampling playground <a class="chip" href="../chapters/07-inference.md">Chapter 07</a></h1>
+  <div class="sub">Temperature, top-k, min-p and top-p reshape a next-token distribution — in the exact order <code>llm/generate.py::sample_next</code> applies them.</div>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Start with the <em>peaked</em> preset and lower the temperature: watch the distribution collapse onto the best token and the entropy fall toward 0 bits. Raise it to 3 and the tail comes alive. Then turn on top-p = 0.9 and compare it with top-k = 5 on the <em>flat</em> preset: one cuts by count, the other by probability mass. Press <em>Sample 100 times</em> to see what the sampler actually emits.</div>
+
+<div class="grid two">
+  <div class="panel">
+    <h3>Next-token logits after "The cat sat on the"</h3>
+    <div class="row" style="margin-bottom:8px">
+      <label>preset <select id="preset"><option value="peaked">peaked (confident model)</option><option value="flat">flat (uncertain model)</option><option value="tie">two-way tie</option></select></label>
+      <label>seed <input type="number" id="seed" value="7"></label>
+    </div>
+    <div class="ctl">
+      <label for="temp">temperature</label><input type="range" id="temp" min="0" max="3" step="0.05" value="1"><span class="v" id="tempv"></span>
+      <label for="topk">top-k</label><input type="range" id="topk" min="0" max="20" step="1" value="0"><span class="v" id="topkv"></span>
+      <label for="minp">min-p</label><input type="range" id="minp" min="0" max="1" step="0.01" value="0"><span class="v" id="minpv"></span>
+      <label for="topp">top-p</label><input type="range" id="topp" min="0.05" max="1" step="0.01" value="1"><span class="v" id="toppv"></span>
+    </div>
+    <div class="small" style="margin-top:6px">0 = off for top-k and min-p; top-p 1.00 = off; temperature 0 = greedy (argmax). Order of operations, as in the code: temperature → top-k → min-p → top-p → softmax → sample.</div>
+    <details style="margin-top:8px"><summary class="small">Edit the 20 logits by hand</summary><div class="lg" id="edit"></div></details>
+  </div>
+  <div class="panel">
+    <h3>Resulting distribution</h3>
+    <div class="legend small" style="margin-bottom:4px"><span style="background:#cbd5e1"></span>softmax of raw logits &nbsp;<span style="background:var(--blue)"></span>after all knobs &nbsp;<span style="background:var(--orange)"></span>observed frequency in samples</div>
+    <svg id="bars" viewBox="0 0 480 300" aria-label="probability bars"></svg>
+    <div style="margin-top:6px">
+      <div class="stat"><b id="entropy"></b><span>entropy of final distribution (bits)</span></div>
+      <div class="stat"><b id="entropy0"></b><span>entropy of raw distribution (bits)</span></div>
+      <div class="stat"><b id="alive"></b><span>tokens with p &gt; 0</span></div>
+    </div>
+    <div class="row" style="margin-top:8px"><button id="sample">Sample 100 times</button><button class="secondary" id="clear">Clear samples</button><span class="small" id="sampinfo"></span></div>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>What each knob did</h3>
+  <div class="pipe" id="pipe"></div>
+</div>
+
+<div class="box challenge"><strong>Challenge.</strong> Find <em>three different</em> single-knob settings under which the second-best token can never be sampled, no matter the seed. For each, say what happens to the third-best token. Then find a setting where temperature alone (any value &gt; 0) cannot achieve this.
+<details><summary>Show answer</summary>
+<p>(1) <strong>top-k = 1</strong>: only the argmax survives. (2) <strong>top-p ≤ p₁</strong> where p₁ is the best token's probability: the code removes every token whose cumulative mass <em>before</em> it already reaches top-p, and for the second token that mass is exactly p₁. (3) <strong>min-p &gt; p₂/p₁</strong>: the second token is below the min-p fraction of the maximum. (4) temperature = 0 is greedy. In all four cases the third-best token dies with the second. A temperature above 0 never removes a token — it only rescales the gap — so on the <em>two-way tie</em> preset, where p₁ = p₂, no temperature can separate them, and neither can min-p (their ratio is exactly 1). top-k = 1 and top-p ≤ p₁ do break the tie, but only by sort order: which of the two equal tokens survives is an accident of how the sort ordered them, not a preference of the model.</p>
+</details></div>
+
+<footer><a href="index.html">← Back to all interactives</a></footer>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const TOKENS = ['mat','floor','couch','bed','chair','table','rug','sofa','grass','roof','windowsill','fence','porch','lap','step','wall','carpet','ground','pillow','desk'];
+const PRESETS = {
+  peaked: [6.0,4.2,3.8,3.5,3.1,2.4,2.2,2.0,1.6,1.2,1.0,0.8,0.6,0.4,0.2,0.0,-0.3,-0.6,-0.9,-1.2],
+  flat:   [2.0,1.9,1.9,1.8,1.8,1.7,1.7,1.6,1.6,1.5,1.5,1.4,1.4,1.3,1.3,1.2,1.2,1.1,1.1,1.0],
+  tie:    [5.0,5.0,2.5,2.2,2.0,1.6,1.3,1.0,0.8,0.5,0.3,0.0,-0.2,-0.5,-0.8,-1.0,-1.3,-1.6,-1.9,-2.2],
+};
+let logits = PRESETS.peaked.slice(), samples = new Array(20).fill(0), nsamp = 0;
+function mulberry32(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function softmax(a){ const m = Math.max(...a.filter(isFinite)); const e = a.map(v=>isFinite(v)?Math.exp(v-m):0); const s = e.reduce((p,q)=>p+q,0); return e.map(v=>v/s); }
+function entropyBits(p){ return -p.reduce((s,v)=>v>0? s+v*Math.log2(v) : s, 0); }
+
+// Mirror of llm/generate.py::sample_next, returning the final probabilities and a log of each stage.
+function pipeline(){
+  const T = +$('temp').value, k = +$('topk').value, mp = +$('minp').value, tp = +$('topp').value;
+  const log = []; const V = logits.length;
+  if (T <= 0){ const best = logits.indexOf(Math.max(...logits)); const p = logits.map((_,i)=>i===best?1:0);
+    log.push(`temperature = 0 → greedy: argmax picks "${TOKENS[best]}" with probability 1. All other knobs are skipped.`); return {p, log, greedy:true}; }
+  let l = logits.map(v=>v/T);
+  log.push(`temperature ${T.toFixed(2)}: logits ÷ ${T.toFixed(2)}  (gap between best and 2nd: ${(logits[0]-logits[1]).toFixed(2)} → ${(l[0]-l[1]).toFixed(2)})`);
+  if (k > 0){ const sorted = l.slice().sort((a,b)=>b-a); const kth = sorted[Math.min(k,V)-1]; let n=0;
+    l = l.map(v=>{ if (v < kth){ n++; return -Infinity; } return v; }); log.push(`top-k = ${k}: keep the ${k} largest logits (threshold ${kth.toFixed(3)}), ${n} tokens → −∞`); }
+  else log.push('top-k off');
+  if (mp > 0){ const p = softmax(l); const lim = mp*Math.max(...p); let n=0;
+    l = l.map((v,i)=>{ if (p[i] < lim){ if (isFinite(v)) n++; return -Infinity; } return v; }); log.push(`min-p = ${mp.toFixed(2)}: drop tokens with p < ${mp.toFixed(2)} × p_max = ${lim.toFixed(4)}, ${n} more tokens → −∞`); }
+  else log.push('min-p off');
+  if (tp > 0 && tp < 1){
+    const order = l.map((v,i)=>i).sort((a,b)=>l[b]-l[a]); const ps = softmax(order.map(i=>l[i])); let cum = 0, n = 0;
+    for (let r=0;r<order.length;r++){ const before = cum; cum += ps[r]; if (before >= tp && isFinite(l[order[r]])){ l[order[r]] = -Infinity; n++; } }
+    log.push(`top-p = ${tp.toFixed(2)}: sort by probability, drop every token whose cumulative mass *before* it is already ≥ ${tp.toFixed(2)} (the first token is always kept), ${n} more tokens → −∞`); }
+  else log.push('top-p off');
+  const p = softmax(l); log.push(`softmax over the ${p.filter(v=>v>0).length} surviving tokens, then multinomial sampling`);
+  return {p, log, greedy:false};
+}
+function render(){
+  $('tempv').textContent = (+$('temp').value).toFixed(2); $('topkv').textContent = +$('topk').value || 'off'; $('minpv').textContent = +$('minp').value ? (+$('minp').value).toFixed(2) : 'off'; $('toppv').textContent = +$('topp').value < 1 ? (+$('topp').value).toFixed(2) : 'off';
+  const p0 = softmax(logits), {p, log} = pipeline();
+  $('entropy').textContent = entropyBits(p).toFixed(3); $('entropy0').textContent = entropyBits(p0).toFixed(3); $('alive').textContent = `${p.filter(v=>v>0).length} / ${p.length}`;
+  $('pipe').textContent = log.map((s,i)=>`${i+1}. ${s}`).join('\n') + `\n\nfinal: p(best "${TOKENS[argmax(p)]}") = ${Math.max(...p).toFixed(3)}, p(2nd-best) = ${second(p).toFixed(3)}${second(p)===0?'  ← the runner-up can never appear':''}`;
+  // bars
+  const W=480,H=300,L=8,R=8,T=8,B=60, n=TOKENS.length, bw=(W-L-R)/n, maxp = Math.max(...p, ...p0, ...(nsamp? samples.map(v=>v/nsamp):[0]), 0.05);
+  const y = v => T + (1-v/maxp)*(H-T-B), y0 = H-B;
+  let s = `<line x1="${L}" y1="${y0}" x2="${W-R}" y2="${y0}" stroke="#cbd5e1"/>`;
+  for (const g of [0.25,0.5,0.75,1]) if (g<=maxp) s += `<line x1="${L}" y1="${y(g)}" x2="${W-R}" y2="${y(g)}" stroke="#f1f5f9"/><text x="${W-R}" y="${y(g)-2}" font-size="9" fill="#94a3b8" text-anchor="end">${g}</text>`;
+  TOKENS.forEach((t,i)=>{
+    const x = L+i*bw;
+    s += `<rect x="${x+1}" y="${y(p0[i])}" width="${bw*0.45}" height="${y0-y(p0[i])}" fill="#cbd5e1"/>`;
+    s += `<rect x="${x+1+bw*0.45}" y="${y(p[i])}" width="${bw*0.45}" height="${y0-y(p[i])}" fill="#2563eb"><title>${t}: raw ${p0[i].toFixed(4)} → final ${p[i].toFixed(4)}</title></rect>`;
+    if (nsamp){ const f = samples[i]/nsamp; s += `<rect x="${x+1+bw*0.2}" y="${y(f)}" width="${bw*0.5}" height="${y0-y(f)}" fill="none" stroke="#f59e0b" stroke-width="2"/>`; }
+    if (p[i]===0) s += `<text x="${x+bw/2}" y="${y0-3}" font-size="10" fill="#dc2626" text-anchor="middle">×</text>`;
+    s += `<text transform="translate(${x+bw/2+3} ${y0+6}) rotate(55)" font-size="10" fill="${p[i]>0?'#0f172a':'#94a3b8'}">${t}</text>`;
+  });
+  $('bars').innerHTML = s;
+  $('sampinfo').textContent = nsamp ? `${nsamp} samples drawn (seed ${$('seed').value}); orange outline = observed frequency` : '';
+}
+const argmax = p => p.indexOf(Math.max(...p));
+function second(p){ const s = p.slice().sort((a,b)=>b-a); return s[1] || 0; }
+function sampleMany(){
+  const {p} = pipeline(); const rnd = mulberry32((+$('seed').value || 0) + nsamp);
+  for (let n=0;n<100;n++){ let r = rnd(), i = 0; for (; i<p.length-1; i++){ r -= p[i]; if (r < 0) break; } samples[i]++; }
+  nsamp += 100; render();
+}
+function buildEdit(){ $('edit').innerHTML = TOKENS.map((t,i)=>`<label>${t}<input type="number" step="0.1" data-i="${i}" value="${logits[i]}"></label>`).join('');
+  $('edit').querySelectorAll('input').forEach(inp=>inp.addEventListener('input', ()=>{ const v = parseFloat(inp.value); if (!isNaN(v)){ logits[+inp.dataset.i] = v; resetSamples(); render(); } })); }
+function resetSamples(){ samples = new Array(20).fill(0); nsamp = 0; }
+$('preset').addEventListener('change', ()=>{ logits = PRESETS[$('preset').value].slice(); resetSamples(); buildEdit(); render(); });
+for (const id of ['temp','topk','minp','topp']) $(id).addEventListener('input', ()=>{ resetSamples(); render(); });
+$('sample').addEventListener('click', sampleMany);
+$('clear').addEventListener('click', ()=>{ resetSamples(); render(); });
+buildEdit(); render();
+</script>
+</body>
+</html>

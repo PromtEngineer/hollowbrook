@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520" font-family="system-ui, sans-serif">
-  <rect width="900" height="520" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="545" viewBox="0 0 900 545" font-family="system-ui, sans-serif">
+  <rect width="900" height="545" fill="#ffffff"/>
   <text x="450" y="28" text-anchor="middle" font-size="20" font-weight="600" fill="#0f172a">One next-token distribution, reshaped by the sampling knobs</text>
   <text x="450" y="48" text-anchor="middle" font-size="12" fill="#64748b">Same 8 candidate tokens in every panel; bar height = probability. Dashed bars are removed (set to −∞ before the softmax).</text>
 
@@ -70,7 +70,7 @@
     <rect x="170" y="156" width="22" height="14" fill="none" stroke="#64748b" stroke-dasharray="3 3"/>
     <rect x="198" y="160" width="22" height="10" fill="none" stroke="#64748b" stroke-dasharray="3 3"/>
     <rect x="226" y="164" width="22" height="6" fill="none" stroke="#64748b" stroke-dasharray="3 3"/>
-    <text x="130" y="190" text-anchor="middle" font-size="11" fill="#64748b">.47 .31 .21 — the other 5 get exactly 0</text>
+    <text x="130" y="190" text-anchor="middle" font-size="11" fill="#64748b">.47 .31 .21 — the other five get exactly 0</text>
   </g>
 
   <!-- Panel 5: top-p=0.8 -->
@@ -86,7 +86,8 @@
     <rect x="170" y="156" width="22" height="14" fill="none" stroke="#64748b" stroke-dasharray="3 3"/>
     <rect x="198" y="160" width="22" height="10" fill="none" stroke="#64748b" stroke-dasharray="3 3"/>
     <rect x="226" y="164" width="22" height="6" fill="none" stroke="#64748b" stroke-dasharray="3 3"/>
-    <text x="130" y="190" text-anchor="middle" font-size="11" fill="#64748b">.33+.22+.15+.11 = .81 ≥ .8 → keep 4 (k adapts to the shape)</text>
+    <text x="130" y="190" text-anchor="middle" font-size="11" fill="#64748b">.33+.22+.15+.11 = .81 ≥ .8 → keep 4</text>
+    <text x="130" y="205" text-anchor="middle" font-size="11" fill="#64748b">(the count adapts to the shape)</text>
   </g>
 
   <!-- Panel 6: min-p=0.2 -->
@@ -103,7 +104,8 @@
     <rect x="198" y="160" width="22" height="10" fill="none" stroke="#64748b" stroke-dasharray="3 3"/>
     <rect x="226" y="164" width="22" height="6" fill="none" stroke="#64748b" stroke-dasharray="3 3"/>
     <line x1="20" y1="152" x2="250" y2="152" stroke="#dc2626" stroke-dasharray="4 3"/>
-    <text x="240" y="148" text-anchor="end" font-size="10" fill="#dc2626">threshold 0.2 × .33 = .066</text>
-    <text x="130" y="190" text-anchor="middle" font-size="11" fill="#64748b">threshold scales with confidence: strict when sure, loose when unsure</text>
+    <text x="248" y="70" text-anchor="end" font-size="10" fill="#dc2626">dashed line: 0.2 × .33 = .066</text>
+    <text x="130" y="190" text-anchor="middle" font-size="11" fill="#64748b">cut-off tracks confidence:</text>
+    <text x="130" y="205" text-anchor="middle" font-size="11" fill="#64748b">strict when sure, loose when unsure</text>
   </g>
 </svg>

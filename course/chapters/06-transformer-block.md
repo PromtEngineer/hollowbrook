@@ -1,6 +1,7 @@
-# Chapter 6: The Transformer block and the residual stream
+# Chapter 06: The Transformer block and the residual stream
 
 **Part I · ~2.5 hours · Prerequisites: Chapters 3, 4, 5**
+
 > 🎯 Goal: Draw a Transformer block from memory and count its parameters.
 > 🧪 Lab: `labs/lab06_build_tinylm.py` · 🎛️ Interactive: `interactive/06_block_dataflow.html`
 
@@ -94,14 +95,15 @@ Read the flow top to bottom: integers become vectors by a table lookup (Chapter 
 pass through `L` identical blocks, a final norm, and a linear map back to vocabulary size to give
 one score per possible next token (the **logits**). Chapter 7 turns those logits into text.
 
-🎛️ **Interactive: `interactive/06_block_dataflow.html`.** Open it now and press *Play*: a token's
-vector is animated through one block, and the live parameter counter updates as you drag the
-`d_model`, `n_heads`, `n_kv_heads` and `d_ff` sliders. Try three things. Set the sliders to the
-"small" preset (192 / 6 / 2 / 512) and confirm the counter shows 393,600 per block, the number
-the table below derives by hand. Then drag `n_kv_heads` from 6 down to 1 and watch only the `k`
-and `v` boxes shrink — that is GQA/MQA. Finally double `d_model` and note that the block roughly
-quadruples while doubling `n_layers` merely doubles the total; the *Challenge* asks you to find
-the width that matches a given parameter budget.
+🎛️ **Interactive: `interactive/06_block_dataflow.html`.** Open it now. Press *Step* to move one
+token's vector through the block one stage at a time and read the tensor shape at each stage; the
+shapes follow the config sliders on the right, which start at TinyLM's real `nano` and `small`
+presets. Then drag `d_model` and `vocab` and watch the parameter budget bar: the attention and
+MLP slices grow with `d²`, the embedding slice only with `V·d`. Confirm that the `small` preset
+shows 393,600 parameters per block — the number the table below derives by hand — and try the
+page's *Challenge*: find a configuration where the embedding is more than half of all parameters,
+then the smallest change that brings it under a quarter. (That is why scaling laws in Chapter 9
+count *non-embedding* parameters.)
 
 ## The idea in code
 
@@ -197,7 +199,7 @@ class MLP(nn.Module):
 
 SwiGLU has *three* matrices where the ReLU MLP has two. To keep the parameter count the same as
 the classic `4d` MLP, the hidden width shrinks: `3·d·d_ff = 2·d·4d` gives `d_ff = 8d/3`. That is
-where the odd-looking 8/3 comes from — it is a budget-matching choice, not a magic constant. In
+where the odd-looking 8/3 comes from — it is a budget-matching choice, not an arbitrary constant. In
 practice `d_ff` is then rounded to a multiple of 64 or 256 so matrix shapes suit the hardware;
 `TinyLMConfig.__post_init__` does exactly this: `d=192 → 8·192/3 = 512`, already a multiple of 64.
 Notice also that no projection in the block has a bias term; modern models drop them because they
@@ -617,4 +619,6 @@ a different scale from the first ones and training is less stable.
 - 🆕 Karpathy, *nanochat* (2025), https://github.com/karpathy/nanochat — the same block, trained
   end to end for $100.
 
-← [Chapter 5](05-attention.md) · [Course home](../README.md) · [Chapter 7](07-inference.md) →
+---
+
+← [Chapter 05](05-attention.md) · [Course home](../README.md) · [Chapter 07](07-inference.md) →

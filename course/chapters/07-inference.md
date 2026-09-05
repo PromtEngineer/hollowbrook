@@ -1,6 +1,7 @@
-# Chapter 7: Inference — turning probabilities into text
+# Chapter 07: Inference — turning probabilities into text
 
 **Part I · ~2.5 hours · Prerequisites: Chapters 1, 5, 6**
+
 > 🎯 Goal: Explain every sampling knob and why generation is memory-bound.
 > 🧪 Lab: `labs/lab07_generate.py` · 🎛️ Interactive: `interactive/07_sampling_playground.html`
 
@@ -188,8 +189,8 @@ The lab runs eight settings on the same prompt and seed; the table is in the wor
 ### The KV cache
 
 Attention at position `t` needs the keys and values of positions `0..t`. Those depend only on the
-tokens at those positions (and the layers below), so once computed they never change. The **KV
-cache** stores them per layer and appends one column per decode step. In `llm/model.py` it is a
+tokens at those positions (and the layers below), so once computed they never change. The **KV cache**
+stores them per layer and appends one column per decode step. In `llm/model.py` it is a
 list of `LayerCache` objects with a two-line `append`:
 
 ```python
@@ -270,8 +271,8 @@ once and use them for *more tokens* (batching, speculation), or make the weights
 
 Serving many users at once raises `B` and therefore intensity, nearly for free until the ridge
 point. The complication is that requests arrive and finish at different times. **Static batching**
-waits for a batch to fill and runs it to the longest request's end, wasting slots. **Continuous
-batching** (Orca, 2022) schedules at the granularity of a single decode step: whenever one
+waits for a batch to fill and runs it to the longest request's end, wasting slots. **Continuous batching**
+(Orca, 2022) schedules at the granularity of a single decode step: whenever one
 sequence emits its stop token, a waiting request takes its slot in the very next step. With
 **paged attention** (vLLM, 2023) the KV cache is allocated in fixed-size blocks like virtual
 memory, so sequences of different lengths pack without fragmentation. Together they are why
@@ -281,8 +282,8 @@ model.
 ### Speculative decoding
 
 Batching helps a *server*; a *single* user still waits 42 ms per token. **Speculative decoding**
-(Leviathan et al., 2023; Chen et al., 2023) uses a small, fast **draft** model to guess `k`
-tokens, then runs the big **target** model *once* on all `k` guesses in parallel — a prefill-shaped
+(Leviathan et al., 2023; Chen et al., 2023) uses a small, fast **draft model** to guess `k`
+tokens, then runs the big **target model** *once* on all `k` guesses in parallel — a prefill-shaped
 step at intensity `k` — and keeps the longest prefix the target agrees with:
 
 ```mermaid
@@ -359,7 +360,7 @@ $ per million tokens = (GPU $ per hour / 3600) / (tokens per second) × 10⁶
 
 Read this as: "how many seconds of GPU rent one token costs, times a million." Plug in a $3/hour
 H100 and the roofline numbers for a 70 B model: at batch 1 (24 tok/s) that is ~$35 per million
-output tokens; at batch 64 with continuous batching (~1,500 tok/s aggregate) ~$0.55; approaching
+output tokens; at batch 64 with continuous batching (~1,500 tok/s aggregate) ~$0.56; approaching
 the ridge (~7,000 tok/s) ~$0.12. That spread — two orders of magnitude from the same weights on
 the same chip — is the entire economics of inference. It explains why providers price input
 tokens (compute-bound prefill, high intensity) several times cheaper than output tokens; why
@@ -374,7 +375,139 @@ python3 labs/lab07_generate.py            # --quick: nano base model
 python3 labs/lab07_generate.py --full     # small base model; longer benchmark; speculative decoding
 ```
 
-<<LAB07_OUTPUT>>
+### What to look at (quick run, nano base model)
+
+The quick run takes about 7 seconds. Section 1 prints the model's belief about the token after
+`"At the park, Mia met"`:
+
+```
+--- 1. logits -> softmax -> a distribution over the next token ---
+logits shape (1, 6, 871); last-position logits range [-3.31, 5.74]
+       token    logit    prob
+      ' Mia'     5.74   0.070
+     ' Jack'     5.67   0.065
+     ' Ella'     5.65   0.064
+     ' Finn'     5.65   0.064
+      ' Leo'     5.65   0.064
+      ' Ben'     5.61   0.062
+      ' Ava'     5.59   0.060
+     ' Ruby'     5.57   0.059
+      ' Tom'     5.53   0.057
+      ' Ivy'     5.52   0.057
+entropy of this distribution: 4.56 bits  (uniform over V=871 would be 9.77)
+```
+
+The model has learned that a name comes next but has no way to know *which* name, so ten names
+share nearly equal logits (5.5–5.7) and the entropy is 4.6 bits — a genuinely uncertain
+distribution, and exactly the situation where the sampling knobs matter.
+
+Section 2 is the knob table. Same prompt, same seed, 24 new tokens each:
+
+```
+--- 2. The sampling knobs on the SAME prompt and seed ---
+greedy (T=0)         | ' Mia. Mia was proud because Mia lost a pear.'
+T=0.5                | ' Ella. Ruby was calm because Nora lost a cup. Max liked the orange drum more than the pink shell. Then Ava'
+T=1.0                | ' Ella. Ruby was calm because Nora lost a cup. Max liked the orange drum more than the pink shell. Max went'
+T=1.5                | ':.\ny  frog said One windy The the cave Max�159 orange drumMax had a pink shell. marke +'
+T=1.0 top-k=5        | ' Ella. Finn was calm because Mia lost a cup.'
+T=1.0 top-p=0.9      | ' Ella. Ruby was calm because Nora lost a cup. Max liked the orange drum more than the pink shell. Max went'
+T=1.0 min-p=0.1      | ' Ella. Ruby was calm because Nora lost a cup. Max liked the orange drum more than the pink shell. Max went'
+T=1.0 rep-pen=1.5    | ' Ella. Ruby was calm because Nora lost a cup.\nQuestion:159 = Max had a pink shell?\nAnswer:'
+✅ greedy decoding is deterministic (seed does not matter)
+✅ repetition penalty never raises the logit of a token already seen
+```
+
+Read down the table. Greedy picks the top name ("Mia") and then loops on it — "Mia met Mia. Mia
+was proud because Mia lost" — the classic greedy failure. `T=0.5` and `T=1.0` produce the same
+first sentence because the random draw with seed 0 lands on the same token when the distribution
+is this flat; they diverge only at the 20th token. `T=1.5` falls apart into byte fragments and
+raw digits: the tail of the vocabulary, which the model has correctly assigned tiny probability,
+is now being sampled. `top-p=0.9` and `min-p=0.1` match `T=1.0` here because on this flat
+distribution neither truncates much. `top-k=5` diverges — "Finn", not "Ruby" — because it cut the
+distribution to five names. The repetition penalty, at 1.5, pushes the model away from the words
+it has used and it wanders into the arithmetic format of the maths documents.
+
+Section 3 sweeps temperature and averages the entropy over all six prompt positions:
+
+```
+T=0.1   mean entropy   1.68 bits   top-1 prob at last position 0.251
+T=0.5   mean entropy   1.98 bits   top-1 prob at last position 0.089
+T=1.0   mean entropy   2.67 bits   top-1 prob at last position 0.070
+T=1.5   mean entropy   5.71 bits   top-1 prob at last position 0.049
+T=2.0   mean entropy   8.06 bits   top-1 prob at last position 0.029
+T=5.0   mean entropy   9.66 bits   top-1 prob at last position 0.005
+✅ entropy increases monotonically with temperature
+```
+
+Notice that even at `T=0.1` the top name only reaches 25%: temperature can only amplify
+differences that exist, and the names are nearly tied. Between `T=1` and `T=2` the entropy jumps
+from 2.7 to 8.1 bits — that is the whole tail of the vocabulary being switched on, and it is why
+`T=1.5` above produced garbage. `figures/generated/lab07_temperature_entropy.png` plots the curve
+against the uniform limit of 9.77 bits.
+
+Section 4 verifies the cache and times it:
+
+```
+--- 4. KV cache: same numbers, fewer FLOPs ---
+✅ greedy ids identical with and without cache (32 tokens)
+cache.pos after prefill+decode = 38 (= sequence length 38)
+max |logits_full - logits_incremental| = 4.29e-06
+✅ cached incremental logits == full-sequence logits (allclose)
+greedy 32 tokens: cache  191.8 tok/s   no cache  159.4 tok/s   speed-up 1.20x
+benchmark_decode(32 tokens): {'cache': 209.7, 'no_cache': 159.2}
+```
+
+The numbers agree to `4e-6` — floating-point rounding from summing in a different order — and
+the ids are identical. The speed-up of 1.2× is modest because a 300 K-parameter model
+generating 32 tokens is dominated by Python overhead per step, not by the recomputation the cache
+avoids; the full run below, with the larger model and 96 tokens, shows the gap widening. On a GPU
+serving a real model it is the difference between usable and unusable.
+
+Sections 5 and 6 are the arithmetic from the chapter, printed:
+
+```
+TinyLM cache after 38 tokens: formula 29,184 B, measured 29,184 B (768 B per token; params take 1,516,800 B)
+✅ 2 * L * kv_heads * head_dim * bytes * T matches the tensors
+model                              B/token    8k ctx  128k ctx   weights
+Llama-3-8B-like (GQA, 8 kv)          128 KB     1.1 GB    17.2 GB      16 GB
+same but MHA (32 kv heads)           512 KB     4.3 GB    68.7 GB      16 GB
+Llama-3-70B-like (GQA, 8 kv)         320 KB     2.7 GB    42.9 GB     140 GB
+
+H100 ridge point = 1e+15 / 3.35e+12 = 299 FLOP per byte
+70B model, batch    1: intensity     1 FLOP/B  -> memory-bound; step >=  41.8 ms ->       24 tok/s aggregate
+70B model, batch    8: intensity     8 FLOP/B  -> memory-bound; step >=  41.8 ms ->      191 tok/s aggregate
+70B model, batch   64: intensity    64 FLOP/B  -> memory-bound; step >=  41.8 ms ->    1,531 tok/s aggregate
+70B model, batch  512: intensity   512 FLOP/B  -> compute-bound; step >=  71.7 ms ->    7,143 tok/s aggregate
+```
+
+The nano model's cache is 768 bytes per token (3 layers × 1 KV head × 32 channels × 4 bytes × 2).
+In the batch table, look at the step time: it does not move from 41.8 ms until batch 512, because
+until the ridge point the step is paying for the same 140 GB of weight reads regardless of how
+many users share them. Throughput therefore rises almost linearly with batch size, which is the
+economic fact behind section 9:
+
+```
+70B, batch 1 (memory-bound)            $3.0/h at    24 tok/s -> $  34.72 per M tokens
+70B, batch 64                          $3.0/h at 1,500 tok/s -> $   0.56 per M tokens
+70B, batch 512 (near compute-bound)    $3.0/h at 7,000 tok/s -> $   0.12 per M tokens
+```
+
+Section 7 (speculative decoding) needs both checkpoints and runs in the full mode. Section 8
+shows the chat template as tokens and the base model ignoring `<|end|>`:
+
+```
+'<|bos|><|user|>What is 2 + 3?<|end|><|assistant|>'
+tokens: ['<|bos|>', '<|user|>', 'What', ' is', ' ', '2', ' +', ' ', '3', '?', '<|end|>', '<|assistant|>'] ...
+stop token '<|end|>' has id 868; base model generation with stop='<|end|>':
+' + 78 = 78<|eos|>What is 78 + 78?\nAnswer: 78 + 78 = 78.<|eos|>What is '
+```
+
+The base model treats the `<|user|>`/`<|assistant|>` tokens as noise, latches onto "What is …"
+as the start of a Storyland maths document, emits `<|eos|>` at the end of each "document" (which
+it did see in pretraining) and never `<|end|>` (which it did not).
+
+<<LAB07_FULL>>
+
 
 ## Try it yourself ✍️
 
@@ -473,4 +606,6 @@ more GPU-seconds per token unless the server batches many users together.
 - 🆕 DeepSeek-AI, *DeepSeek-V4* (2026), https://arxiv.org/abs/2606.19348 — compressed sparse
   attention to make million-token KV caches tractable.
 
-← [Chapter 6](06-transformer-block.md) · [Course home](../README.md) · [Chapter 8](08-pretraining-data.md) →
+---
+
+← [Chapter 06](06-transformer-block.md) · [Course home](../README.md) · [Chapter 08](08-pretraining-data.md) →

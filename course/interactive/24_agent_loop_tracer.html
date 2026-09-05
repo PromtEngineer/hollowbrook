@@ -21,7 +21,7 @@ footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:sy
 .legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
 /* page */
 select{width:auto}.ctl label{display:inline-flex;flex-direction:column;gap:2px}.ctl label b{color:var(--ink);font-weight:600;font-size:13px}
-button:disabled{opacity:.45;cursor:default}
+button:disabled{opacity:.45;cursor:default}.grid>*{min-width:0}.ev span{min-width:0;overflow-wrap:anywhere}.msg{min-width:0}
 .note{font-size:13px;color:var(--muted)}
 .events{max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:8px;font-size:13px}
 .ev{display:grid;grid-template-columns:44px 110px 1fr;gap:8px;padding:5px 8px;border-bottom:1px solid var(--line);cursor:pointer;color:var(--muted)}
@@ -52,7 +52,7 @@ button:disabled{opacity:.45;cursor:default}
     <label><b>permission policy</b><select id="policy"><option value="ask">ask (permission_fn decides)</option><option value="allow_read_only">allow_read_only</option><option value="allow_all">allow_all</option></select></label>
     <label><b>write_file under "ask"</b><select id="writePerm"><option value="allow">allow</option><option value="deny">deny</option></select></label>
     <label><b>pre_tool hook: protect tests/</b><select id="hookTests"><option value="0">off</option><option value="1">on</option></select></label>
-    <label><b>context budget</b><select id="budget"><option>1500</option><option>3000</option><option selected>8000</option></select></label>
+    <label><b>context budget</b><select id="budget"><option>800</option><option>1000</option><option>2000</option><option selected>8000</option></select></label>
   </div>
   <div class="row" style="margin-top:10px">
     <button id="prev" onclick="go(-1)" class="secondary">◀ Prev</button>
@@ -85,7 +85,7 @@ button:disabled{opacity:.45;cursor:default}
     <strong>Context budget</strong> <span class="note" id="tokText"></span>
     <div class="bar" id="bar" style="margin:8px 0"></div>
     <div class="note legend"><span style="background:#94a3b8"></span>system + tool schemas (fixed) &nbsp;<span style="background:#cbd5e1"></span>user &nbsp;<span style="background:var(--blue)"></span>assistant &nbsp;<span style="background:var(--green)"></span>tool results &nbsp;<span style="background:#fee2e2;border:1px solid var(--red)"></span>over budget</div>
-    <p class="note">Tokens are estimated as chars ÷ 4 (<code>estimate_tokens</code> in <code>llm/agent/context.py</code>). The harness checks <code>needs_compaction</code> after each turn at 80 % of the budget and, if needed, calls <code>compact(messages, keep_last=6)</code>: older tool results become one-line stubs. Lower the budget to 1500 to see it fire.</p>
+    <p class="note">Tokens are estimated as chars ÷ 4 (<code>estimate_tokens</code> in <code>llm/agent/context.py</code>). The harness checks <code>needs_compaction</code> after each turn at 80 % of the budget and, if needed, calls <code>compact(messages, keep_last=6)</code>: older tool results become one-line stubs. Lower the budget to 1000 or 800 to see it fire (and see what the model loses).</p>
     <strong>Sandbox files</strong> <span class="note">(virtual; written by write_file)</span>
     <pre id="fs" style="max-height:220px"></pre>
   </div>
@@ -233,7 +233,7 @@ function drawLoop(phase) {
   mk('path', { d: 'M148 100 L182 100', stroke: '#64748b', 'stroke-width': 2, 'marker-end': 'url(#ah)' });
   mk('path', { d: 'M298 100 L332 100', stroke: '#64748b', 'stroke-width': 2, 'marker-end': 'url(#ah)' });
   mk('path', { d: 'M390 150 Q390 185 240 185 Q90 185 90 152', stroke: '#64748b', 'stroke-width': 2, fill: 'none', 'marker-end': 'url(#ah)' });
-  mk('text', { x: 240, y: 179, 'text-anchor': 'middle', 'font-size': 11, fill: '#64748b' }, 'next turn (until max_turns or the context budget needs compaction)');
+  mk('text', { x: 240, y: 198, 'text-anchor': 'middle', 'font-size': 11, fill: '#64748b' }, 'next turn (until max_turns or the context budget needs compaction)');
   mk('path', { d: 'M90 50 L90 22', stroke: phase === 'done' ? '#16a34a' : '#94a3b8', 'stroke-width': 2, 'marker-end': 'url(#ah)', 'stroke-dasharray': '4 3' });
   mk('text', { x: 100, y: 22, 'font-size': 11, fill: phase === 'done' ? '#16a34a' : '#64748b', 'font-weight': phase === 'done' ? 700 : 400 }, 'no tool calls → STOP (final answer)');
   for (const k in nodes) { const [x, y, lab, sub] = nodes[k]; const on = phase === k; mk('rect', { x: x - 58, y: y - 50, width: 116, height: 100, rx: 12, fill: on ? '#2563eb' : '#f8fafc', stroke: on ? '#2563eb' : '#e2e8f0', 'stroke-width': 2 }); mk('text', { x, y: y - 6, 'text-anchor': 'middle', 'font-size': 16, 'font-weight': 700, fill: on ? '#fff' : '#0f172a' }, lab); mk('text', { x, y: y + 16, 'text-anchor': 'middle', 'font-size': 11, fill: on ? '#dbeafe' : '#64748b' }, sub); }

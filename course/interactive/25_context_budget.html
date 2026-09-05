@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Context Budget</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page */
+select{width:auto}.ctl label{display:inline-flex;flex-direction:column;gap:2px}.ctl label b{color:var(--ink);font-weight:600;font-size:13px}
+.grid>*{min-width:0}.note{font-size:13px;color:var(--muted)}
+.bar{position:relative;height:34px;border:1px solid var(--line);border-radius:8px;overflow:hidden;display:flex;background:#f8fafc}.bar>div{height:100%;border-right:1px solid #fff;min-width:1px}
+.bar.over{outline:2px solid var(--red)}
+.cache{position:absolute;left:0;top:0;height:100%;background:repeating-linear-gradient(135deg,rgba(15,23,42,.35) 0 4px,transparent 4px 9px);pointer-events:none}
+.thr{position:absolute;top:0;height:100%;border-left:2px dashed var(--red)}
+.c-system{background:#94a3b8}.c-schemas{background:#64748b}.c-user{background:#cbd5e1}.c-assistant{background:var(--blue)}.c-tool{background:var(--green)}.c-summary{background:var(--purple)}.c-stub{background:#86efac}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.stat{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:8px 10px}.stat .k{font-size:12px;color:var(--muted)}.stat .v{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.badge{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}.badge.ok{background:#dcfce7;color:#166534}.badge.no{background:#fee2e2;color:#991b1b}.badge.dim{background:#f1f5f9;color:var(--muted)}
+.msgs{display:flex;flex-wrap:wrap;gap:4px;max-height:150px;overflow:auto}.m{font-size:11px;border-radius:6px;padding:2px 6px;color:#fff;font-variant-numeric:tabular-nums}.m.c-user,.m.c-stub{color:var(--ink)}
+svg.plot{width:100%;height:auto;display:block}
+.small{height:22px}.small>div{height:100%}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Context Budget <a class="chip" href="../chapters/25-context-engineering.md">Chapter 25</a></h1>
+  <p class="sub">Watch a context window fill up with system prompt, tool schemas, messages and tool results; compact it, see what a prompt cache would reuse, and how far you are along the (illustrative) context-rot curve.</p>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Add a few 3 000-token tool results and watch the bar cross the red compaction line; press <em>Compact now</em> and compare before/after. Then switch the prompt-cache overlay on, add a message, and notice that only the prefix that was <em>identical in the previous request</em> is hatched — compaction and a timestamp in the system prompt both throw that away.</div>
+
+<div class="panel">
+  <div class="row ctl">
+    <label><b>window</b><select id="win"><option value="8000">8k</option><option value="32000" selected>32k</option><option value="200000">200k</option></select></label>
+    <label><b>tool result size = <span id="v_size"></span> tokens</b><input type="range" id="size" min="200" max="8000" step="100" value="3000"></label>
+    <label><b>max_tool_result_chars (truncation)</b><select id="trunc"><option value="0">none</option><option value="2000">2 000 chars ≈ 500 tok</option><option value="8000">8 000 chars ≈ 2 000 tok</option></select></label>
+    <label><b>auto-compact at 80 %</b><select id="auto"><option value="0">off</option><option value="1">on</option></select></label>
+    <label><b>keep_last</b><select id="keep"><option>4</option><option selected>6</option><option>10</option></select></label>
+    <label><b>summarise older turns</b><select id="summ"><option value="0">no (stub tool results only)</option><option value="1">yes (one summary message)</option></select></label>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <button onclick="addUser()">+ user message</button>
+    <button onclick="addTurn()">+ tool call + result</button>
+    <button onclick="addSubagent()">+ sub-agent summary</button>
+    <button onclick="run30()">Run 30 tool calls</button>
+    <button class="secondary" onclick="compactNow()">Compact now</button>
+    <button class="secondary" onclick="reset()">Reset</button>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="row" style="justify-content:space-between"><strong>The window</strong><span id="status"></span></div>
+  <div class="bar" id="bar" style="margin:8px 0"></div>
+  <div class="note legend"><span class="c-system"></span>system prompt &nbsp;<span class="c-schemas"></span>tool schemas &nbsp;<span class="c-user"></span>user &nbsp;<span class="c-assistant"></span>assistant (incl. tool call) &nbsp;<span class="c-tool"></span>tool result &nbsp;<span class="c-stub"></span>stubbed result &nbsp;<span class="c-summary"></span>summary / sub-agent report &nbsp;<span style="background:repeating-linear-gradient(135deg,rgba(15,23,42,.35) 0 3px,transparent 3px 6px)"></span>cached prefix &nbsp;<span style="border-left:2px dashed var(--red);width:0"></span> compaction threshold</div>
+  <div class="stats" style="margin-top:10px">
+    <div class="stat"><div class="k">used / window</div><div class="v" id="s_used"></div></div>
+    <div class="stat"><div class="k">messages</div><div class="v" id="s_n"></div></div>
+    <div class="stat"><div class="k">fixed cost per call</div><div class="v" id="s_fixed"></div></div>
+    <div class="stat"><div class="k">compactions so far</div><div class="v" id="s_comp">0</div></div>
+    <div class="stat"><div class="k">peak usage</div><div class="v" id="s_peak"></div></div>
+  </div>
+  <div class="msgs" id="msgs" style="margin-top:10px"></div>
+</div>
+
+<div class="grid two">
+  <div class="panel">
+    <strong>Compaction: before → after</strong> <span class="note">(<code>compact()</code> in <code>llm/agent/context.py</code>)</span>
+    <div id="compView" class="note" style="margin-top:6px">No compaction yet. It keeps the first message (the task) and the last keep_last messages verbatim; older tool results become the stub <code>[tool result truncated: N chars]</code> (~12 tokens); with a summariser, all older turns collapse into one <code>[Summary of earlier work]</code> message (~250 tokens here).</div>
+  </div>
+  <div class="panel">
+    <div class="row" style="justify-content:space-between"><strong>Prompt cache</strong>
+      <span class="row" style="gap:8px"><label><input type="checkbox" id="cacheOn" checked> show cached prefix</label><label><input type="checkbox" id="stamp"> timestamp in system prompt</label></span></div>
+    <div id="cacheText" class="note" style="margin-top:6px"></div>
+    <p class="note" style="margin-bottom:0"><b>Stable-prefix rule:</b> a provider can reuse the KV-cache for the longest prefix that is byte-identical to a previous request. Append-only histories cache well; anything that rewrites earlier content (compaction, a date in the system prompt, re-ordered tool schemas) invalidates everything after the first changed byte. Cached input tokens are billed at roughly a tenth of the price, which is why harnesses put the stable material first and compact rarely and deliberately.</p>
+  </div>
+</div>
+
+<div class="panel">
+  <strong>Context rot</strong> <span class="note">— <em>illustrative</em> curve of task accuracy versus how full the window is; the shape is a sketch, not measured data. That performance degrades as relevant material is buried under more tokens is the reported finding (e.g. Chroma "Context Rot", 2025; arXiv 2606.29718 on long-horizon search agents); the numbers depend on model and task.</span>
+  <svg id="rot" class="plot" viewBox="0 0 900 220" role="img" aria-label="illustrative accuracy versus context usage"></svg>
+</div>
+
+<div class="box challenge"><strong>Challenge.</strong> Run 30 tool calls of 3 000 tokens each in a 32k window without ever exceeding the budget (that is 90k tokens of results into a 32k window). Status: <span id="chal" class="badge dim">not attempted</span>
+<details><summary>Show answer</summary><p>Two settings each solve it on their own. (1) <em>auto-compact on</em> with keep_last = 6: every time usage crosses 25.6k the older tool results collapse to 12-token stubs; the window then holds the task, ~30 short assistant turns, the stubs and the last three full results — about 12–13k tokens at the end, peak just above 25.6k. (2) <em>Truncation</em> to 2 000 chars: every result is capped at ~500 tokens, so 30 calls cost ~17k and no compaction is needed — but the model only sees the head and tail of each result. In an 8k window neither is enough alone (three untruncated 3k results already overflow), so you need truncation <em>and</em> compaction, or sub-agents that return one summary instead of many results. The general rule: budget = fixed cost + what you must keep verbatim + what you can afford to lose.</p></details></div>
+
+<footer><a href="index.html">← All interactive explainers</a> · Token counts use the chars ÷ 4 estimate from <code>llm/agent/context.py</code>; compaction follows <code>compact()</code>; the rot curve is illustrative and labelled as such.</footer>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const SYS = 600, SCHEMAS = 900, USER = 120, ASSIST = 60, STUB = 12, SUMMARY = 250, SUB = 300;
+let msgs = [], nextId = 1, lastCallIds = [], comps = 0, peak = 0, exceeded = false, attempted = false, calls = 0, lastComp = null;
+const mk = (kind, tokens, label) => ({ id: nextId++, kind, tokens, label });
+function fixedMsgs() { return [mk('system', SYS, 'system prompt'), mk('schemas', SCHEMAS, 'tool schemas (7 tools)')]; }
+function reset() { nextId = 1; msgs = fixedMsgs().concat([mk('user', USER, 'task')]); lastCallIds = []; comps = 0; peak = 0; exceeded = false; attempted = false; calls = 0; lastComp = null; render(); }
+const used = () => msgs.reduce((s, m) => s + m.tokens, 0);
+function win() { return parseInt($('win').value); }
+function resultTokens() { const size = parseInt($('size').value), cap = parseInt($('trunc').value); return cap ? Math.min(size, Math.floor(cap / 4)) : size; }
+function modelCall() { lastCallIds = msgs.map(m => m.id); if ($('stamp').checked) { msgs[0] = mk('system', SYS, 'system prompt (new timestamp)'); } }
+function afterChange() { const u = used(); peak = Math.max(peak, u); if (u > win()) exceeded = true; if ($('auto').value === '1' && u >= 0.8 * win()) compactNow(true); }
+function addUser() { modelCallIfNeeded(); msgs.push(mk('user', USER, 'user message')); afterChange(); render(); }
+function modelCallIfNeeded() { /* a model call happens before every new assistant message; for user messages we record the request as it was */ }
+function addTurn(silent) { modelCall(); calls++; msgs.push(mk('assistant', ASSIST, 'tool call #' + calls)); const t = resultTokens(); msgs.push(mk('tool', t, `result #${calls} (${t} tok)`)); afterChange(); if (!silent) render(); }
+function addSubagent() { modelCall(); calls++; msgs.push(mk('assistant', ASSIST, 'delegate to sub-agent')); msgs.push(mk('summary', SUB, 'sub-agent report (its 10 tool results stayed in its own window)')); afterChange(); render(); }
+function run30() { attempted = true; exceeded = false; peak = used(); for (let i = 0; i < 30; i++) addTurn(true); render(); }
+function compactNow(auto) {
+  const keep = parseInt($('keep').value), summ = $('summ').value === '1';
+  const body = msgs.slice(2);                            // the harness passes system + schemas separately
+  if (body.length <= keep + 1) { if (!auto) { lastComp = { before: msgs.slice(), after: msgs.slice(), note: 'nothing to compact: fewer than keep_last + 1 messages' }; render(); } return; }
+  const before = msgs.slice();
+  const head = body.slice(0, 1), middle = body.slice(1, -keep), tail = body.slice(-keep);
+  let stubbed = middle.map(m => m.kind === 'tool' ? mk('stub', STUB, 'stub') : m);
+  if (summ && stubbed.length) stubbed = [mk('summary', SUMMARY, 'summary of ' + middle.length + ' older messages')];
+  msgs = msgs.slice(0, 2).concat(head, stubbed, tail); comps++;
+  lastComp = { before, after: msgs.slice(), note: `${auto ? 'auto-compaction (usage ≥ 80 %)' : 'manual compaction'}: ${before.length} → ${msgs.length} messages, ${before.reduce((s, m) => s + m.tokens, 0)} → ${used()} tokens; kept the task and the last ${keep} messages verbatim` };
+  if (!auto) render();
+}
+function cachedPrefixTokens() {
+  let n = 0; for (let i = 0; i < msgs.length && i < lastCallIds.length; i++) { if (msgs[i].id !== lastCallIds[i]) break; n += msgs[i].tokens; } return n;
+}
+function bar(host, list, W, showCache, cachedTok) {
+  const total = list.reduce((s, m) => s + m.tokens, 0), scale = Math.max(W, total);
+  host.innerHTML = list.map(m => `<div class="c-${m.kind}" style="width:${(m.tokens / scale * 100).toFixed(3)}%" title="${m.label}: ${m.tokens} tok"></div>`).join('');
+  if (showCache && cachedTok > 0) host.insertAdjacentHTML('beforeend', `<div class="cache" style="width:${(cachedTok / scale * 100).toFixed(3)}%"></div>`);
+  host.insertAdjacentHTML('beforeend', `<div class="thr" style="left:${(0.8 * W / scale * 100).toFixed(3)}%"></div>`);
+  host.classList.toggle('over', total > W);
+}
+function render() {
+  $('v_size').textContent = $('size').value;
+  const W = win(), u = used(), cached = cachedPrefixTokens();
+  bar($('bar'), msgs, W, $('cacheOn').checked, cached);
+  $('s_used').textContent = `${u.toLocaleString()} / ${(W / 1000)}k`; $('s_n').textContent = msgs.length - 2; $('s_fixed').textContent = SYS + SCHEMAS; $('s_comp').textContent = comps; $('s_peak').textContent = Math.max(peak, u).toLocaleString();
+  $('status').innerHTML = u > W ? '<span class="badge no">over budget: the request would be rejected or truncated</span>' : u >= 0.8 * W ? '<span class="badge no">needs_compaction = True</span>' : '<span class="badge ok">under budget</span>';
+  $('msgs').innerHTML = msgs.map(m => `<span class="m c-${m.kind}" title="${m.label}">${m.label.replace(/ \(.*\)$/, '')} · ${m.tokens}</span>`).join('');
+  $('cacheText').innerHTML = lastCallIds.length === 0 ? 'No model call yet, so nothing can be cached. The first tool call sends the whole prefix uncached.' :
+    `Next call: <b>${cached.toLocaleString()}</b> tokens would hit the cache (hatched), <b>${(u - cached).toLocaleString()}</b> would be processed fresh. Cost at 0.1× for cache reads ≈ <b>${Math.round(0.1 * cached + (u - cached)).toLocaleString()}</b> token-equivalents instead of ${u.toLocaleString()}.` + (cached === 0 ? ' <span style="color:var(--red)">The prefix changed at the very first message — nothing is reusable.</span>' : '');
+  if (lastComp) { $('compView').innerHTML = `<div class="note">${lastComp.note}</div><div class="note" style="margin-top:6px">before (${lastComp.before.reduce((s, m) => s + m.tokens, 0)} tok)</div><div class="bar small" id="b1"></div><div class="note" style="margin-top:6px">after (${lastComp.after.reduce((s, m) => s + m.tokens, 0)} tok)</div><div class="bar small" id="b2"></div>`; bar($('b1'), lastComp.before, W, false, 0); bar($('b2'), lastComp.after, W, false, 0); }
+  const ch = $('chal');
+  if (attempted && W === 32000 && parseInt($('size').value) === 3000) { ch.textContent = exceeded ? `exceeded the budget (peak ${peak.toLocaleString()} tokens)` : `solved: 30 × 3 000-token calls, peak ${peak.toLocaleString()} / 32 000`; ch.className = 'badge ' + (exceeded ? 'no' : 'ok'); }
+  else { ch.textContent = 'not attempted (use window 32k, size 3000, then "Run 30 tool calls")'; ch.className = 'badge dim'; }
+  drawRot(Math.min(1, u / W));
+}
+function drawRot(frac) {
+  const svg = $('rot'); svg.innerHTML = ''; const N = 'http://www.w3.org/2000/svg';
+  const w = svg.parentElement.clientWidth || 900, Wd = Math.max(330, Math.min(1000, w)), H = 220; svg.setAttribute('viewBox', `0 0 ${Wd} ${H}`);
+  const m = { l: 44, r: 16, t: 16, b: 32 }, X = v => m.l + v * (Wd - m.l - m.r), Y = v => H - m.b - v * (H - m.t - m.b);
+  const el = (t, a, tx) => { const e = document.createElementNS(N, t); for (const k in a) e.setAttribute(k, a[k]); if (tx !== undefined) e.textContent = tx; svg.appendChild(e); return e; };
+  const acc = u => 0.92 - 0.45 * Math.pow(u, 1.7);
+  for (let i = 0; i <= 4; i++) { const v = i / 4; el('line', { x1: m.l, x2: Wd - m.r, y1: Y(v), y2: Y(v), stroke: '#e2e8f0' }); el('text', { x: m.l - 6, y: Y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: '#64748b' }, v.toFixed(2)); el('text', { x: X(v), y: H - m.b + 14, 'text-anchor': 'middle', 'font-size': 11, fill: '#64748b' }, Math.round(v * 100) + ' %'); }
+  el('text', { x: (m.l + Wd - m.r) / 2, y: H - 4, 'text-anchor': 'middle', 'font-size': 12, fill: '#64748b' }, 'window used');
+  el('text', { x: m.l, y: m.t - 4, 'font-size': 12, fill: '#64748b' }, 'accuracy (illustrative)');
+  let d = ''; for (let i = 0; i <= 100; i++) { const u = i / 100; d += (i ? 'L' : 'M') + X(u).toFixed(1) + ' ' + Y(acc(u)).toFixed(1); }
+  el('path', { d, fill: 'none', stroke: '#7c3aed', 'stroke-width': 2, 'stroke-dasharray': '6 4' });
+  el('line', { x1: X(frac), x2: X(frac), y1: m.t, y2: H - m.b, stroke: '#94a3b8', 'stroke-dasharray': '2 3' });
+  el('circle', { cx: X(frac), cy: Y(acc(frac)), r: 6, fill: '#7c3aed', stroke: '#fff', 'stroke-width': 2 });
+  el('text', { x: X(frac) + (frac > 0.8 ? -8 : 8), y: Y(acc(frac)) - 10, 'text-anchor': frac > 0.8 ? 'end' : 'start', 'font-size': 12, fill: '#0f172a', 'font-weight': 600 }, `now: ${Math.round(frac * 100)} % used → ~${acc(frac).toFixed(2)}`);
+}
+['win', 'trunc', 'auto', 'keep', 'summ'].forEach(k => $(k).addEventListener('change', render));
+$('size').addEventListener('input', render); $('cacheOn').addEventListener('change', render); $('stamp').addEventListener('change', render);
+window.addEventListener('resize', render);
+reset(); addTurn(true); addTurn(true); render();
+</script>
+</body>
+</html>

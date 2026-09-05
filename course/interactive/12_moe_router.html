@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MoE router — balance or collapse</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page-specific */
+.grid>*{min-width:0}
+.ctl{display:grid;grid-template-columns:120px 1fr 60px;gap:6px 10px;align-items:center;margin:4px 0}
+.ctl input[type=range]{width:100%}.ctl .v{font-family:ui-monospace,monospace;font-size:13px;text-align:right}
+.aff{display:grid;grid-template-columns:70px 1fr 44px;gap:4px 8px;align-items:center;font-size:12px}
+.aff input[type=range]{width:100%}
+.stat{border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:#fff}.stat .l{font-size:12px;color:var(--muted)}.stat .n{font-size:18px;font-weight:700;font-family:ui-monospace,monospace}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.eq{background:#f8fafc;border:1px dashed var(--line);border-radius:8px;padding:8px 12px;font-family:ui-monospace,monospace;font-size:12px;margin:8px 0}
+canvas{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:8px;background:#fff}
+.warn{color:var(--red);font-weight:600}.good{color:var(--green);font-weight:600}
+small{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>MoE router <a class="chip" href="../chapters/12-modern-architectures.md">Chapter 12</a></h1>
+  <div class="sub">Tokens are routed by a softmax over expert logits to their top-k experts. Watch load balance — or collapse — under a small simulated training loop.</div>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Press <em>Train</em> with the auxiliary loss <em>off</em>: experts that happen to win early get better at their tokens, attract more of them, and the rest starve — routing collapses onto one or two experts. Reset, switch the aux loss <em>on</em>, and train again: the load bars level out. Drag an expert's affinity slider to see how a single bias term moves traffic.</div>
+
+<div class="box" style="border-left:4px solid var(--purple);font-size:14px"><strong>What is simulated.</strong> The router is real: logits = W·x + b, softmax, top-k, and the Switch-Transformer auxiliary loss E·Σ<sub>e</sub> f<sub>e</sub>·P<sub>e</sub> exactly as in <code>llm/model.py::MoE</code>; router weights are updated by real gradient descent on (expected token loss + α·aux). What is a stand-in: each expert's "skill" on a token type grows with how many of those tokens it has processed — a one-line model of the rich-get-richer dynamic that causes routing collapse in real MoE training.</div>
+
+<div class="grid two">
+  <div class="panel">
+    <strong>Routing</strong>
+    <div class="ctl"><label for="E">Experts E</label><input type="range" id="E" min="4" max="16" step="1" value="8"><span class="v" id="EV">8</span></div>
+    <div class="ctl"><label for="k">Top-k</label><input type="range" id="k" min="1" max="2" step="1" value="2"><span class="v" id="kV">2</span></div>
+    <div class="ctl"><label for="alpha">Aux-loss coef α</label><input type="range" id="alpha" min="0" max="5" step="0.1" value="2"><span class="v" id="alphaV">2</span></div>
+    <div class="ctl"><label for="lr">Router LR</label><input type="range" id="lr" min="0.05" max="1" step="0.05" value="0.4"><span class="v" id="lrV">0.4</span></div>
+    <div class="row" style="margin:8px 0">
+      <label><input type="checkbox" id="aux"> load-balancing aux loss on</label>
+    </div>
+    <div class="row">
+      <button type="button" id="trainBtn">▶ Train</button>
+      <button type="button" class="secondary" id="stepBtn">Step ×5</button>
+      <button type="button" class="secondary" id="resetBtn">Reset</button>
+      <button type="button" class="secondary" id="shuffleBtn">New tokens</button>
+    </div>
+    <div style="margin-top:12px"><strong style="font-size:13px">Expert affinities</strong> <small>(router bias b<sub>e</sub>, editable; training also moves W)</small>
+    <div class="aff" id="affs" style="margin-top:4px"></div></div>
+  </div>
+  <div class="panel">
+    <strong>Parameters: active vs total</strong>
+    <div class="ctl" style="grid-template-columns:120px 1fr 80px"><label for="d">d_model</label><input type="range" id="d" min="256" max="8192" step="256" value="2048"><span class="v" id="dV">2048</span></div>
+    <div class="ctl" style="grid-template-columns:120px 1fr 80px"><label for="dff">d_ff per expert</label><input type="range" id="dff" min="256" max="16384" step="256" value="1408"><span class="v" id="dffV">1408</span></div>
+    <div class="ctl" style="grid-template-columns:120px 1fr 80px"><label for="shared">Shared experts</label><input type="range" id="shared" min="0" max="2" step="1" value="1"><span class="v" id="sharedV">1</span></div>
+    <div class="stats" style="margin-top:8px">
+      <div class="stat"><div class="l">Total MoE params / layer</div><div class="n" id="ptotal"></div></div>
+      <div class="stat"><div class="l">Active per token</div><div class="n" id="pactive"></div></div>
+      <div class="stat"><div class="l">Active fraction</div><div class="n" id="pfrac"></div></div>
+    </div>
+    <div class="eq">per expert = 3·d·d_ff (SwiGLU: gate, up, down)<br>total = (E + shared)·3·d·d_ff + router d·E<br>active = (k + shared)·3·d·d_ff + router</div>
+    <div style="font-size:13px" id="pnote"></div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="grid two">
+    <div><strong>Token → expert flow</strong> <small>(line width ∝ routing weight; colours = token type)</small>
+      <div style="overflow-x:auto"><svg id="flow" width="480" height="420" viewBox="0 0 480 420" role="img" aria-label="Tokens routed to experts"></svg></div></div>
+    <div><strong>Load per expert</strong> <small>(tokens received this batch; dashed = perfect balance)</small>
+      <div style="overflow-x:auto"><svg id="load" width="480" height="200" viewBox="0 0 480 200" role="img" aria-label="Load per expert"></svg></div>
+      <div class="stat" style="margin-top:8px"><div class="l">Status</div><div id="status" style="font-family:ui-monospace,monospace;font-size:13px;white-space:pre-line"></div></div>
+      <strong style="font-size:13px">Aux loss and max-load over training</strong>
+      <canvas id="hist" width="480" height="140"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="box challenge"><strong>Challenge.</strong> Make one expert receive 0 tokens, then fix it without touching that expert's affinity slider. Explain, from the formula for the aux loss gradient, why the fix works.
+<details><summary>Show answer</summary>Two ways to starve an expert: drag its affinity to −4 (its logit loses every top-k contest), or train with the aux loss off and let collapse do it. To fix it without its slider: turn the aux loss on and train. The gradient of E·Σ<sub>e</sub> f<sub>e</sub>P<sub>e</sub> with respect to token i's logit for expert j is (E/n)·p<sub>ij</sub>·(f<sub>j</sub> − Σ<sub>e</sub> f<sub>e</sub>p<sub>ie</sub>): it pushes <em>down</em> logits of experts whose share f<sub>j</sub> is above the token's expected share and, through the softmax normalisation, pushes <em>up</em> the underused ones. Starved experts have f≈0, so every token's logit for them rises until they win some routes. (DeepSeek-V3 does this with a per-expert bias adjusted by a simple rule instead of a loss — "auxiliary-loss-free balancing" — which is exactly your affinity slider driven automatically.)</details></div>
+
+<footer><a href="index.html">← All interactives</a> · Aux loss as in Switch Transformer (Fedus et al. 2021) and <code>course/llm/model.py</code>.</footer>
+</div>
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function gauss(r){let u=0,v=0;while(u===0)u=r();while(v===0)v=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
+const TYPES=[{name:"noun",col:"#2563eb",words:["cat","river","kite","market","lamp","castle","book","frog"]},{name:"verb",col:"#16a34a",words:["ran","gave","looked","played","counted","went","said","met"]},{name:"number",col:"#f59e0b",words:["12","7","19","+","=","3","42","99"]},{name:"code",col:"#7c3aed",words:["def","return","x[i]","for","if","{","}","import"]}];
+const DIM=8, NTOK=32;
+let E=8,K=2,tokens=[],W=[],b=[],skill=[],hist=[],playing=false,step=0,seed=3;
+const centers=(()=>{ const r=mulberry32(11); return TYPES.map(()=>Array.from({length:DIM},()=>gauss(r)*1.2)); })();
+function makeTokens(){ const r=mulberry32(seed); tokens=[]; for(let i=0;i<NTOK;i++){ const t=i%4; const x=centers[t].map(c=>c+0.5*gauss(r)); tokens.push({type:t,word:TYPES[t].words[Math.floor(r()*8)],x}); } }
+function resetRouter(){ const r=mulberry32(seed+100); W=[]; b=[]; skill=[]; for(let e=0;e<E;e++){ W.push(Array.from({length:DIM},()=>gauss(r)*0.3)); b.push(0); skill.push(TYPES.map(()=>0.05*r())); } hist=[]; step=0; renderAffs(); }
+function route(){ // returns per-token probs and top-k, plus counts
+  const probs=[], top=[], counts=new Array(E).fill(0);
+  for(const t of tokens){ const z=[]; for(let e=0;e<E;e++){ let s=b[e]; for(let j=0;j<DIM;j++) s+=W[e][j]*t.x[j]; z.push(s); } const m=Math.max(...z); const ex=z.map(v=>Math.exp(v-m)); const Z=ex.reduce((a,c)=>a+c,0); const p=ex.map(v=>v/Z);
+    const idx=[...p.keys()].sort((a,c)=>p[c]-p[a]).slice(0,K); const sum=idx.reduce((a,i)=>a+p[i],0); const w=idx.map(i=>p[i]/sum); idx.forEach(i=>counts[i]++);
+    probs.push(p); top.push({idx,w}); }
+  const n=tokens.length; const f=counts.map(c=>c/(n*K)); const P=new Array(E).fill(0); for(const p of probs) for(let e=0;e<E;e++) P[e]+=p[e]/n; const aux=E*f.reduce((a,fe,e)=>a+fe*P[e],0);
+  return {probs,top,counts,f,P,aux};
+}
+function trainStep(){
+  const r=route(); const alpha=$("aux").checked?+$("alpha").value:0, lr=+$("lr").value; const n=tokens.length;
+  // expected token loss: loss_ie = 1 - skill[e][type]; gradient wrt logits: p_ie (loss_ie - sum_e' p_ie' loss_ie')
+  const gW=W.map(()=>new Array(DIM).fill(0)), gb=new Array(E).fill(0);
+  tokens.forEach((t,i)=>{ const p=r.probs[i]; const loss=[]; for(let e=0;e<E;e++) loss.push(1-skill[e][t.type]); const exp=p.reduce((a,pe,e)=>a+pe*loss[e],0); const fdot=p.reduce((a,pe,e)=>a+pe*r.f[e],0);
+    for(let e=0;e<E;e++){ const g=p[e]*(loss[e]-exp)/n + alpha*E/n*p[e]*(r.f[e]-fdot); gb[e]+=g; for(let j=0;j<DIM;j++) gW[e][j]+=g*t.x[j]; } });
+  for(let e=0;e<E;e++){ b[e]-=lr*gb[e]*4; for(let j=0;j<DIM;j++) W[e][j]-=lr*gW[e][j]*4; }
+  // experts learn from the tokens they receive (rich get richer); slight forgetting
+  const got=Array.from({length:E},()=>[0,0,0,0]); tokens.forEach((t,i)=>{ for(const e of r.top[i].idx) got[e][t.type]++; });
+  for(let e=0;e<E;e++) for(let c=0;c<4;c++){ skill[e][c]=Math.min(1, skill[e][c]*0.995 + 0.04*got[e][c]/(n/4)); }
+  step++; hist.push({aux:r.aux, max:Math.max(...r.counts)/(n*K/E)}); if(hist.length>400) hist.shift();
+  renderAffs(true);
+}
+// ------------------------------------------------------------ render
+function renderAffs(keep){ const box=$("affs"); if(!keep||box.children.length!==E*3){ box.innerHTML=""; for(let e=0;e<E;e++){ const l=document.createElement("label"); l.textContent="expert "+e; l.htmlFor="aff"+e; const inp=document.createElement("input"); inp.type="range"; inp.id="aff"+e; inp.min=-4; inp.max=4; inp.step=0.1; inp.value=b[e]; inp.oninput=()=>{ b[e]=+inp.value; render(); }; const v=document.createElement("span"); v.className="v"; v.style.cssText="font-family:ui-monospace,monospace"; v.textContent=b[e].toFixed(1); box.append(l,inp,v); } } else { for(let e=0;e<E;e++){ const inp=$("aff"+e); inp.value=Math.max(-4,Math.min(4,b[e])); inp.nextSibling.textContent=b[e].toFixed(1); } } }
+function render(){
+  const r=route(); const n=tokens.length;
+  // flow svg
+  { const W_=480, H=420, lx=90, rx=390, th=H/(n+1), eh=H/(E+1); let h="";
+    tokens.forEach((t,i)=>{ const y=(i+1)*th; r.top[i].idx.forEach((e,j)=>{ const y2=(e+1)*eh; h+=`<path d="M${lx+6},${y} C${(lx+rx)/2},${y} ${(lx+rx)/2},${y2} ${rx-30},${y2}" stroke="${TYPES[t.type].col}" stroke-width="${0.5+3*r.top[i].w[j]}" fill="none" opacity="0.55"/>`; }); });
+    tokens.forEach((t,i)=>{ const y=(i+1)*th; h+=`<circle cx="${lx}" cy="${y}" r="4" fill="${TYPES[t.type].col}"/><text x="${lx-8}" y="${y+3}" text-anchor="end" font-size="9" fill="#334155">${t.word}</text>`; });
+    for(let e=0;e<E;e++){ const y=(e+1)*eh; const c=r.counts[e]; h+=`<rect x="${rx-30}" y="${y-eh*0.35}" width="80" height="${eh*0.7}" rx="5" fill="${c===0?"#fee2e2":"#eef2ff"}" stroke="${c===0?"#dc2626":"#93c5fd"}"/><text x="${rx+10}" y="${y+4}" text-anchor="middle" font-size="11" fill="#0f172a">expert ${e} · ${c}</text>`; }
+    $("flow").innerHTML=h; }
+  // load bars
+  { const W_=480,H=200,left=30,bw=(W_-left-10)/E,max=Math.max(n*K/2, ...r.counts), ideal=n*K/E; let h=`<line x1="${left}" y1="${H-24-ideal/max*150}" x2="${W_-10}" y2="${H-24-ideal/max*150}" stroke="#64748b" stroke-dasharray="4 3"/>`;
+    r.counts.forEach((c,e)=>{ const hh=c/max*150; h+=`<rect x="${left+e*bw+3}" y="${H-24-hh}" width="${bw-6}" height="${hh}" rx="3" fill="${c===0?"#dc2626":c>2*ideal?"#f59e0b":"#2563eb"}"/><text x="${left+e*bw+bw/2}" y="${H-28-hh}" text-anchor="middle" font-size="11" fill="#0f172a">${c}</text><text x="${left+e*bw+bw/2}" y="${H-8}" text-anchor="middle" font-size="10" fill="#64748b">e${e}</text>`; });
+    h+=`<text x="${left}" y="12" font-size="11" fill="#64748b">f_e = count/(n·k); ideal ${ideal.toFixed(1)} each</text>`; $("load").innerHTML=h; }
+  const starved=r.counts.filter(c=>c===0).length, maxShare=Math.max(...r.f);
+  $("status").innerHTML=`step ${step}   tokens ${n} × top-${K} = ${n*K} routes\naux loss = E·Σ f_e·P_e = ${r.aux.toFixed(3)}  (perfect balance → 1.000)\nmax expert share ${(maxShare*100).toFixed(0)}% (ideal ${(100/E).toFixed(0)}%)   `+(starved?`<span class="warn">${starved} expert(s) receive 0 tokens</span>`:maxShare>2.5/E?`<span class="warn">imbalanced</span>`:`<span class="good">balanced</span>`);
+  // history canvas
+  { const cv=$("hist"), ctx=cv.getContext("2d"), W_=cv.width,H=cv.height; ctx.fillStyle="#fff"; ctx.fillRect(0,0,W_,H); ctx.font="10px system-ui"; ctx.fillStyle="#64748b"; ctx.fillText("aux loss (purple, 1 = balanced) · max load / ideal (orange)",6,12);
+    const draw=(key,col,scale)=>{ ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.beginPath(); hist.forEach((p,i)=>{ const x=6+i/400*(W_-12), y=H-8-Math.min(1,p[key]/scale)*(H-24); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke(); };
+    draw("aux","#7c3aed",E); draw("max","#f59e0b",E); }
+  // params
+  const d=+$("d").value, dff=+$("dff").value, sh=+$("shared").value; const per=3*d*dff, total=(E+sh)*per+d*E, active=(K+sh)*per+d*E;
+  const fmt=x=>x>=1e9?(x/1e9).toFixed(2)+"B":(x/1e6).toFixed(1)+"M"; $("ptotal").textContent=fmt(total); $("pactive").textContent=fmt(active); $("pfrac").textContent=(active/total*100).toFixed(1)+"%";
+  $("pnote").innerHTML=`With ${E} experts, top-${K}${sh?` and ${sh} shared expert${sh>1?"s":""}`:""}, each token touches ${(active/total*100).toFixed(0)}% of this layer's MLP weights. Scaled to 2026 models: DeepSeek-V3 uses 256 routed + 1 shared experts, top-8 (671B total, 37B active); Kimi K2 384 routed, top-8 (1T total, 32B active).`;
+  ["E","k","alpha","lr","d","dff","shared"].forEach(id=>$(id+"V").textContent=$(id).value);
+}
+function loop(){ if(!playing) return; for(let i=0;i<2;i++) trainStep(); render(); requestAnimationFrame(loop); }
+$("trainBtn").onclick=()=>{ playing=!playing; $("trainBtn").textContent=playing?"⏸ Pause":"▶ Train"; if(playing) loop(); };
+$("stepBtn").onclick=()=>{ playing=false; $("trainBtn").textContent="▶ Train"; for(let i=0;i<5;i++) trainStep(); render(); };
+$("resetBtn").onclick=()=>{ playing=false; $("trainBtn").textContent="▶ Train"; resetRouter(); render(); };
+$("shuffleBtn").onclick=()=>{ seed++; makeTokens(); render(); };
+$("E").oninput=()=>{ E=+$("E").value; playing=false; $("trainBtn").textContent="▶ Train"; resetRouter(); render(); };
+$("k").oninput=()=>{ K=+$("k").value; render(); };
+for(const id of ["alpha","lr","d","dff","shared"]) $(id).addEventListener("input",render);
+makeTokens(); resetRouter(); render();
+</script>
+</body>
+</html>

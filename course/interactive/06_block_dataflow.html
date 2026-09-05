@@ -141,36 +141,39 @@ function render(){
 function sci(n){ if (n<1e6) return fmt(n); const e = Math.floor(Math.log10(n)); return (n/10**e).toFixed(2)+'e'+e + (n>=1e9? ` (${(n/1e9).toFixed(2)} GFLOP)` : ` (${(n/1e6).toFixed(1)} MFLOP)`); }
 // ---------------- diagram + animation ----------------
 const STAGES = () => { const c = count(), {d,h,kv,T} = cfg, hd=c.hd; return [
-  {id:'in', y:40, label:'x — residual stream in', shape:`(B, ${T}, ${d})`, what:`The residual stream: one ${d}-vector per token. Every sub-layer reads it and adds something back.`, params:0},
+  {id:'in', y:40, label:'x in', shape:`(B, ${T}, ${d})`, what:`The residual stream: one ${d}-vector per token. Every sub-layer reads it and adds something back.`, params:0},
   {id:'n1', y:110, label:'RMSNorm', shape:`(B, ${T}, ${d})`, what:`Each token vector is rescaled to unit RMS then multiplied by a learned gain (${d} numbers). No mean subtraction, no bias.`, params:d},
   {id:'qkv', y:180, label:'q / k / v projections', shape:`q (B, ${h}, ${T}, ${hd})  k,v (B, ${kv}, ${T}, ${hd})`, what:`Three matrix multiplies. q has ${h} heads; k and v have only ${kv} (${kv===h?'multi-head':kv===1?'multi-query':'grouped-query'} attention), each shared by ${h/kv} query head(s).`, params:c.q+c.k+c.v},
-  {id:'sc', y:250, label:'RoPE, scores, causal mask, softmax', shape:`(B, ${h}, ${T}, ${T})`, what:`q and k are rotated by position (RoPE), then scores = q·kᵀ/√${hd}; future positions are masked to −∞ and each row is softmaxed. No parameters here.`, params:0},
-  {id:'av', y:320, label:'weights · v, concat heads, W_o', shape:`(B, ${h}, ${T}, ${hd}) → (B, ${T}, ${h*hd}) → (B, ${T}, ${d})`, what:`Each head's weighted sum of values is concatenated and projected back to width d by o_proj (${fmt(c.o)} params).`, params:c.o},
-  {id:'add1', y:390, label:'⊕ residual add', shape:`(B, ${T}, ${d})`, what:`x ← x + attention(norm(x)). The attention output is written into the stream; the original x is kept, so gradients have a short path.`, params:0},
+  {id:'sc', y:250, label:'RoPE · scores · mask · softmax', shape:`(B, ${h}, ${T}, ${T})`, what:`q and k are rotated by position (RoPE), then scores = q·kᵀ/√${hd}; future positions are masked to −∞ and each row is softmaxed. No parameters here.`, params:0},
+  {id:'av', y:320, label:'weights·v, concat heads, W_o', shape:`(B, ${h}, ${T}, ${hd}) → (B, ${T}, ${h*hd}) → (B, ${T}, ${d})`, what:`Each head's weighted sum of values is concatenated and projected back to width d by o_proj (${fmt(c.o)} params).`, params:c.o},
+  {id:'add1', y:390, label:'⊕ add', shape:`(B, ${T}, ${d})`, what:`x ← x + attention(norm(x)). The attention output is written into the stream; the original x is kept, so gradients have a short path.`, params:0},
   {id:'n2', y:460, label:'RMSNorm', shape:`(B, ${T}, ${d})`, what:`A second norm with its own gain, feeding the MLP.`, params:d},
   {id:'gu', y:530, label:'gate & up projections', shape:`gate (B, ${T}, ${c.dff})  up (B, ${T}, ${c.dff})`, what:`Two matrices d → d_ff (d_ff = ${c.dff}). SwiGLU: silu(gate) ⊙ up, an elementwise product that lets the MLP switch features on and off.`, params:2*d*c.dff},
-  {id:'down', y:600, label:'silu(gate)·up → down projection', shape:`(B, ${T}, ${c.dff}) → (B, ${T}, ${d})`, what:`Back to width d (${fmt(d*c.dff)} params). The MLP is where most of a Transformer's parameters live: ${(100*c.mlp/c.block).toFixed(0)}% of this block.`, params:d*c.dff},
-  {id:'add2', y:665, label:'⊕ residual add → x out', shape:`(B, ${T}, ${d})`, what:`x ← x + mlp(norm(x)). The block's output has the same shape as its input, so ${cfg.L} blocks can be stacked; the stream is ${d} wide throughout.`, params:0},
+  {id:'down', y:600, label:'silu(gate)·up → down proj.', shape:`(B, ${T}, ${c.dff}) → (B, ${T}, ${d})`, what:`Back to width d (${fmt(d*c.dff)} params). The MLP is where most of a Transformer's parameters live: ${(100*c.mlp/c.block).toFixed(0)}% of this block.`, params:d*c.dff},
+  {id:'add2', y:665, label:'⊕ add → x out', shape:`(B, ${T}, ${d})`, what:`x ← x + mlp(norm(x)). The block's output has the same shape as its input, so ${cfg.L} blocks can be stacked; the stream is ${d} wide throughout.`, params:0},
 ]; };
 let stage = 0, playing = false, animT = 0, raf = null;
 function drawDiagram(){
   const S = STAGES(); const svg = $('diagram'); let s = '';
-  s += `<line class="stream" x1="60" y1="20" x2="60" y2="690"/>`;
+  const SX = 150, BX = 170, BW = 220, RX = 405;   // stream x, box x/width, return-wire x
+  s += `<line class="stream" x1="${SX}" y1="20" x2="${SX}" y2="690"/>`;
   s += `<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#94a3b8"/></marker></defs>`;
-  // branches: attention block (stages 1-4) and mlp block (6-8)
-  s += `<path class="wire" d="M60 ${S[0].y+18} H100" marker-end="url(#ar)"/><path class="wire" d="M330 ${S[4].y+18} H360 V${S[5].y} H82" marker-end="url(#ar)"/>`;
-  s += `<path class="wire" d="M60 ${S[5].y+18} H100" marker-end="url(#ar)"/><path class="wire" d="M330 ${S[8].y+18} H360 V${S[9].y} H82" marker-end="url(#ar)"/>`;
+  // branch off the stream into each sub-layer, and return into the ⊕
+  s += `<path class="wire" d="M${SX} ${S[0].y+30} H${BX-2}" marker-end="url(#ar)"/><path class="wire" d="M${BX+BW} ${S[4].y} H${RX} V${S[5].y} H${SX+16}" marker-end="url(#ar)"/>`;
+  s += `<path class="wire" d="M${SX} ${S[5].y+30} H${BX-2}" marker-end="url(#ar)"/><path class="wire" d="M${BX+BW} ${S[8].y} H${RX} V${S[9].y} H${SX+16}" marker-end="url(#ar)"/>`;
   S.forEach((st,i)=>{
     const isAdd = st.id.startsWith('add') || st.id==='in';
-    const x = isAdd ? 60 : 110, w = isAdd ? 0 : 220;
     const cls = 'node' + (i===stage?' on':'') + (i<stage?' done':'');
-    if (isAdd){ s += `<g class="${cls}"><circle cx="60" cy="${st.y}" r="${st.id==='in'?8:14}" fill="${i===stage?'#eef2ff':'#fff'}" stroke="${i===stage?'#2563eb':'#0f172a'}" stroke-width="${i===stage?3:2}"/>${st.id==='in'?'':'<text x="60" y="'+(st.y+5)+'" text-anchor="middle" font-size="16">+</text>'}<text x="82" y="${st.y+4}" font-weight="600">${st.label}</text><text class="shape" x="82" y="${st.y+18}">${st.shape}</text></g>`; }
-    else s += `<g class="${cls}"><rect x="${x}" y="${st.y-20}" width="${w}" height="44" rx="8"/><text x="${x+10}" y="${st.y-2}" font-weight="600">${st.label}</text><text class="shape" x="${x+10}" y="${st.y+14}">${short(st.shape)}</text></g>`;
-    if (i>0 && !isAdd && !S[i-1].id.startsWith('add') && S[i-1].id!=='in') s += `<path class="wire" d="M220 ${S[i-1].y+24} V${st.y-20}" marker-end="url(#ar)"/>`;
+    if (isAdd){
+      s += `<g class="${cls}"><circle cx="${SX}" cy="${st.y}" r="${st.id==='in'?8:14}" fill="${i===stage?'#eef2ff':'#fff'}" stroke="${i===stage?'#2563eb':'#0f172a'}" stroke-width="${i===stage?3:2}"/>${st.id==='in'?'':'<text x="'+SX+'" y="'+(st.y+5)+'" text-anchor="middle" font-size="16">+</text>'}<text x="${SX-22}" y="${st.y+4}" text-anchor="end" font-weight="600">${st.label}</text><text class="shape" x="${SX-22}" y="${st.y+18}" text-anchor="end">${st.shape}</text></g>`;
+    } else {
+      s += `<g class="${cls}"><rect x="${BX}" y="${st.y-20}" width="${BW}" height="44" rx="8"/><text x="${BX+10}" y="${st.y-2}" font-weight="600">${st.label}</text><text class="shape" x="${BX+10}" y="${st.y+14}">${short(st.shape)}</text></g>`;
+      if (!S[i-1].id.startsWith('add') && S[i-1].id!=='in') s += `<path class="wire" d="M${BX+BW/2} ${S[i-1].y+24} V${st.y-20}" marker-end="url(#ar)"/>`;
+    }
   });
-  // token dot
+  // token dot travels between stage centres
   const st = S[stage], nx = S[Math.min(stage+1,S.length-1)];
-  const px = p => (p.id.startsWith('add')||p.id==='in') ? 60 : 220;
+  const px = p => (p.id.startsWith('add')||p.id==='in') ? SX : BX+BW/2;
   const cx = px(st) + (px(nx)-px(st))*animT, cy = st.y + (nx.y-st.y)*animT;
   s += `<circle cx="${cx}" cy="${cy}" r="9" fill="#f59e0b" stroke="#fff" stroke-width="2"/>`;
   svg.innerHTML = s;
@@ -178,7 +181,7 @@ function drawDiagram(){
   $('stageinfo').innerHTML = `<div><strong>Stage ${stage+1}/${S.length}: ${cur.label}</strong></div><div style="margin:4px 0"><code>${cur.shape}</code></div><div class="small">${cur.what}</div><div class="small" style="margin-top:4px">parameters in this stage: <strong>${fmt(cur.params)}</strong></div>`;
   $('stepcount').textContent = `stage ${stage+1} of ${S.length}`;
 }
-function short(sh){ return sh.length > 40 ? sh.replace(/\(B, /g,'(').replace(/\s+→\s+/g,' → ') : sh; }
+function short(sh){ return sh.length > 34 ? sh.replace(/\(B, /g,'(').replace(/\s+→\s+/g,' → ') : sh; }
 function step(){ playing = false; cancelAnimationFrame(raf); animT = 0; stage = (stage+1) % STAGES().length; drawDiagram(); $('play').textContent = '▶ Play'; }
 function playLoop(ts){
   if (!playing) return;

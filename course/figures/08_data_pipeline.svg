@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560" viewBox="0 0 900 560" font-family="system-ui, sans-serif">
+  <rect width="900" height="560" fill="#ffffff"/>
+  <text x="450" y="30" text-anchor="middle" font-size="18" font-weight="600" fill="#0f172a">The curation funnel: 7,743 raw documents in, 5,301 out (lab08_curate.py --full)</text>
+  <text x="450" y="50" text-anchor="middle" font-size="12" fill="#64748b">bar width ∝ documents kept after the stage; the label on the right is what the stage removed and which planted problems it caught</text>
+
+  <!-- funnel bars: width = kept/7743 * 560, centered at x=330 -->
+  <!-- raw 7743 -> 560 -->
+  <rect x="50" y="70" width="560" height="34" rx="6" fill="#64748b" fill-opacity="0.15" stroke="#64748b"/>
+  <text x="330" y="92" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">raw (dirty) corpus: 7,743 docs</text>
+  <text x="630" y="92" font-size="11" fill="#64748b">6,000 clean + 1,743 planted problems</text>
+
+  <!-- language_filter 6318 -> 457 -->
+  <rect x="101" y="120" width="457" height="34" rx="6" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+  <text x="330" y="142" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">language_filter: 6,318 kept</text>
+  <text x="630" y="136" font-size="11" fill="#0f172a">−1,425: all 180 non-English, 268 spam, 131 fragments</text>
+  <text x="630" y="150" font-size="11" fill="#dc2626">… and 732 clean "a + b = c" math lines (false positives)</text>
+
+  <!-- heuristic_filter 6237 -> 451 -->
+  <rect x="104" y="170" width="451" height="34" rx="6" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+  <text x="330" y="192" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">heuristic_filter (Gopher/C4 rules): 6,237 kept</text>
+  <text x="630" y="192" font-size="11" fill="#0f172a">−81: 32 spam (symbol-heavy, boilerplate), 49 fragments</text>
+
+  <!-- pii_scrub 6237 (rewrite) -->
+  <rect x="104" y="220" width="451" height="34" rx="6" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-dasharray="5 3"/>
+  <text x="330" y="242" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">pii_scrub: 6,237 kept (rewrites, no drops)</text>
+  <text x="630" y="242" font-size="11" fill="#0f172a">360 e-mails/phones → &lt;EMAIL&gt; / &lt;PHONE&gt; in 180 docs</text>
+
+  <!-- exact_dedup 5688 -> 411 -->
+  <rect x="124" y="270" width="411" height="34" rx="6" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b"/>
+  <text x="330" y="292" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">exact_dedup (SHA-1 of text): 5,688 kept</text>
+  <text x="630" y="292" font-size="11" fill="#0f172a">−549: 288 tagged copies + 261 originals whose copy came first</text>
+
+  <!-- minhash_dedup 5329 -> 385 -->
+  <rect x="137" y="320" width="385" height="34" rx="6" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b"/>
+  <text x="330" y="342" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">minhash_dedup (J ≥ 0.8): 5,329 kept</text>
+  <text x="630" y="342" font-size="11" fill="#0f172a">−359: 110 near-dups, 74 scrubbed PII copies, rest = their twins</text>
+
+  <!-- quality_classifier 5304 -> 384 -->
+  <rect x="138" y="370" width="384" height="34" rx="6" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/>
+  <text x="330" y="392" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">quality_classifier (score ≥ 0.5): 5,304 kept</text>
+  <text x="630" y="392" font-size="11" fill="#0f172a">−25: nearly nothing left for it — the cheap stages ran first</text>
+
+  <!-- decontaminate 5301 -> 383 -->
+  <rect x="138" y="420" width="383" height="34" rx="6" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/>
+  <text x="330" y="442" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">decontaminate (8-gram overlap): 5,301 kept</text>
+  <text x="630" y="442" font-size="11" fill="#0f172a">−3: exactly the 3 leaked evaluation questions</text>
+
+  <!-- output -->
+  <rect x="138" y="470" width="383" height="34" rx="6" fill="#0f172a" fill-opacity="0.06" stroke="#0f172a"/>
+  <text x="330" y="492" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">mix_sources → tokenize_and_pack: 374,295 tokens</text>
+  <text x="630" y="492" font-size="11" fill="#0f172a">4,843 clean docs survived of 6,000; 96% story tokens, 4% math</text>
+
+  <text x="450" y="530" text-anchor="middle" font-size="12" fill="#64748b">Order matters: cheap filters (language, heuristics) run on everything; expensive ones (MinHash, classifier) run on what is left.</text>
+  <text x="450" y="548" text-anchor="middle" font-size="12" fill="#64748b">Real pipelines keep 1–10% of Common Crawl; here 68% survives because Storyland is clean to begin with.</text>
+</svg>
