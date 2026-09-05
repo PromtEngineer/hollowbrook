@@ -102,8 +102,8 @@ def verify(example: TaskExample, completion: str) -> float:
     if got is None:
         return 0.0
     want = str(example.meta["answer"])
-    if example.task in ("add", "sub", "count"):
-        return float(got == want)
+    if example.task in ("add", "sub", "count", "upper"):   # "upper" must be case-sensitive!
+        return float(got.strip() == want)
     return float(got.strip().lower() == want.lower())
 
 

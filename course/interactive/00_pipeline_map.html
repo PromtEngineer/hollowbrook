@@ -20,6 +20,7 @@ code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
 footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
 .legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
 /* page-specific */
+.grid>*{min-width:0}
 .stage{cursor:pointer}.stage rect{fill:#fff;stroke:#cbd5e1;stroke-width:1.5;transition:fill .15s,stroke .15s}
 .stage:hover rect,.stage:focus rect{stroke:var(--blue)}.stage.on rect{fill:#eef2ff;stroke:var(--blue);stroke-width:2.5}
 .stage.dim rect{fill:#f1f5f9;stroke:#e2e8f0}.stage.dim text{fill:#94a3b8}.stage.lit rect{stroke:var(--green);stroke-width:2.5;fill:#f0fdf4}
@@ -30,6 +31,7 @@ dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:8px 0}
 .badge{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;background:#f1f5f9;color:var(--muted);margin-right:4px}
 .badge.on{background:#dcfce7;color:#166534}
 #detail h2{margin:0 0 6px;font-size:18px}
+@media(max-width:600px){dl{grid-template-columns:1fr;gap:2px 0}dd{margin-bottom:8px}}
 </style>
 </head>
 <body>
@@ -187,7 +189,8 @@ function layout(){
   });
   paint();
 }
-function fit(name, w){ return w < 120 && name.length > 13 ? name.replace('Reward model / DPO','RM / DPO').replace('On-policy distillation','On-policy distil.').replace('Agent harness','Agent harness') : name; }
+const SHORT = {'Reward model / DPO':'RM / DPO','On-policy distillation':'On-policy distil.'};
+function fit(name, w){ return (w < 190 && SHORT[name]) ? SHORT[name] : name; }
 function paint(){
   svg.querySelectorAll('.stage').forEach(g=>{
     const s = STAGES.find(t=>t.id===g.dataset.id);

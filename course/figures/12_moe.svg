@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="400" viewBox="0 0 900 400" font-family="system-ui, sans-serif">
+  <rect width="900" height="400" fill="#ffffff"/>
+  <text x="450" y="26" text-anchor="middle" font-size="17" font-weight="600" fill="#0f172a">Mixture of Experts: a router sends each token to its top-1 expert (plus a shared expert that sees everything)</text>
+
+  <!-- tokens -->
+  <text x="80" y="62" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">tokens (B·T, d)</text>
+  <g font-size="12" fill="#0f172a">
+    <rect x="30" y="80" width="100" height="34" rx="6" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/><text x="80" y="102" text-anchor="middle">"Mia"</text>
+    <rect x="30" y="140" width="100" height="34" rx="6" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/><text x="80" y="162" text-anchor="middle">"+"</text>
+    <rect x="30" y="200" width="100" height="34" rx="6" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/><text x="80" y="222" text-anchor="middle">"kite"</text>
+    <rect x="30" y="260" width="100" height="34" rx="6" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/><text x="80" y="282" text-anchor="middle">"42"</text>
+  </g>
+
+  <!-- router -->
+  <rect x="200" y="70" width="150" height="240" rx="10" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="275" y="95" text-anchor="middle" font-size="13" font-weight="600" fill="#b45309">router</text>
+  <text x="275" y="112" text-anchor="middle" font-size="11" fill="#64748b">softmax(x · W_r)</text>
+  <text x="275" y="127" text-anchor="middle" font-size="11" fill="#64748b">W_r: (d, E)</text>
+  <g font-size="10" fill="#0f172a" font-family="ui-monospace, monospace">
+    <text x="210" y="160">Mia  [.71 .10 .12 .07]</text>
+    <text x="210" y="190">+    [.05 .80 .08 .07]</text>
+    <text x="210" y="220">kite [.66 .04 .20 .10]</text>
+    <text x="210" y="250">42   [.06 .85 .05 .04]</text>
+  </g>
+  <text x="275" y="285" text-anchor="middle" font-size="11" fill="#b45309">top-k=1 → one expert per token</text>
+  <text x="275" y="300" text-anchor="middle" font-size="10" fill="#64748b">chosen weight renormalised to 1</text>
+
+  <!-- arrows tokens -> router -->
+  <g stroke="#64748b" stroke-width="1.5" fill="none" marker-end="url(#arrowG)">
+    <path d="M130 97 H195"/><path d="M130 157 H195"/><path d="M130 217 H195"/><path d="M130 277 H195"/>
+  </g>
+
+  <!-- experts -->
+  <text x="520" y="62" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">experts (each a small SwiGLU MLP)</text>
+  <g font-size="12" fill="#0f172a">
+    <rect x="450" y="80" width="140" height="40" rx="6" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed"/><text x="520" y="98" text-anchor="middle">expert 0</text><text x="520" y="113" text-anchor="middle" font-size="10" fill="#64748b">(gets Mia, kite)</text>
+    <rect x="450" y="140" width="140" height="40" rx="6" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed"/><text x="520" y="158" text-anchor="middle">expert 1</text><text x="520" y="173" text-anchor="middle" font-size="10" fill="#64748b">(gets +, 42)</text>
+    <rect x="450" y="200" width="140" height="40" rx="6" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-dasharray="4 3"/><text x="520" y="218" text-anchor="middle">expert 2</text><text x="520" y="233" text-anchor="middle" font-size="10" fill="#dc2626">(idle this batch)</text>
+    <rect x="450" y="260" width="140" height="40" rx="6" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-dasharray="4 3"/><text x="520" y="278" text-anchor="middle">expert 3</text><text x="520" y="293" text-anchor="middle" font-size="10" fill="#dc2626">(idle this batch)</text>
+    <rect x="450" y="325" width="140" height="40" rx="6" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/><text x="520" y="343" text-anchor="middle">shared expert</text><text x="520" y="358" text-anchor="middle" font-size="10" fill="#64748b">(sees every token)</text>
+  </g>
+
+  <!-- routing arrows with weights -->
+  <g stroke-width="2" fill="none" marker-end="url(#arrowP)">
+    <path d="M350 160 C 400 160, 400 100, 445 100" stroke="#7c3aed"/>
+    <path d="M350 190 C 400 190, 400 160, 445 160" stroke="#7c3aed"/>
+    <path d="M350 220 C 400 220, 400 100, 445 100" stroke="#7c3aed"/>
+    <path d="M350 250 C 400 250, 400 160, 445 160" stroke="#7c3aed"/>
+  </g>
+  <g stroke="#16a34a" stroke-width="1.2" stroke-dasharray="3 3" fill="none" marker-end="url(#arrowGr)">
+    <path d="M130 105 C 300 380, 380 345, 445 345"/>
+  </g>
+  <text x="395" y="92" text-anchor="middle" font-size="10" fill="#7c3aed">weight 1.0 each</text>
+
+  <!-- combine -->
+  <rect x="660" y="140" width="210" height="120" rx="10" fill="#2563eb" fill-opacity="0.08" stroke="#2563eb"/>
+  <text x="765" y="165" text-anchor="middle" font-size="12" font-weight="600" fill="#2563eb">output per token</text>
+  <text x="765" y="190" text-anchor="middle" font-size="11" fill="#0f172a">Σ_k  p_k · expert_k(x)</text>
+  <text x="765" y="210" text-anchor="middle" font-size="11" fill="#0f172a">+ shared(x)</text>
+  <text x="765" y="238" text-anchor="middle" font-size="10" fill="#64748b">back into the residual stream</text>
+  <g stroke="#64748b" stroke-width="1.5" fill="none" marker-end="url(#arrowG)">
+    <path d="M590 100 C 630 100, 630 190, 655 190"/>
+    <path d="M590 160 C 630 160, 630 195, 655 195"/>
+    <path d="M590 345 C 630 345, 630 215, 655 215"/>
+  </g>
+
+  <!-- aux loss note -->
+  <rect x="660" y="290" width="210" height="80" rx="8" fill="#dc2626" fill-opacity="0.08" stroke="#dc2626"/>
+  <text x="765" y="312" text-anchor="middle" font-size="11" font-weight="600" fill="#dc2626">load-balancing aux loss</text>
+  <text x="765" y="330" text-anchor="middle" font-size="10" fill="#0f172a">E · Σ_e  frac_e · mean_p_e</text>
+  <text x="765" y="346" text-anchor="middle" font-size="10" fill="#64748b">small when tokens spread evenly;</text>
+  <text x="765" y="360" text-anchor="middle" font-size="10" fill="#64748b">without it experts 2,3 may stay idle</text>
+
+  <defs>
+    <marker id="arrowG" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#64748b"/></marker>
+    <marker id="arrowP" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7c3aed"/></marker>
+    <marker id="arrowGr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#16a34a"/></marker>
+  </defs>
+</svg>

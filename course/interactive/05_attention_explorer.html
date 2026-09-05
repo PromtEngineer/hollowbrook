@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Attention Explorer — Chapter 5</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page-specific */
+.grid>*{min-width:0}
+h3{margin:0 0 8px;font-size:15px}.small{font-size:13px;color:var(--muted)}
+select{width:auto}
+.heat{width:100%;height:auto;display:block}
+rect.cell{cursor:pointer;stroke:#fff;stroke-width:1}rect.cell.sel{stroke:#dc2626;stroke-width:2}rect.cell.masked{fill:#f1f5f9}
+.explain{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:14px;min-height:96px}
+.explain code{background:#e2e8f0;padding:0 4px;border-radius:4px}
+.wsum{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.wsum .r{display:grid;grid-template-columns:130px 1fr;gap:8px;align-items:center;margin:2px 0}.wsum .r span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tag{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:6px;padding:0 6px;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Attention explorer <a class="chip" href="../chapters/05-attention.md">Chapter 05</a></h1>
+  <div class="sub">Type a sentence and watch every step of scaled dot-product attention computed for real: Q, K, V, scores, mask, softmax, weighted sum.</div>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Hover any cell in the heatmap to read where its number comes from. Turn the causal mask off and watch the upper triangle fill in. Push the temperature down toward 0.2 (sharper) and up to 3 (flatter) and see the rows turn from "one winner" to "everyone equally". Compare the two heads: head 1 is built to match related words, head 2 to look at nearby positions.</div>
+
+<div class="panel">
+  <input type="text" id="sent" value="the cat sat on the mat because it was tired" aria-label="sentence (max 12 tokens)">
+  <div class="row" style="margin-top:10px">
+    <label><input type="checkbox" id="mask" checked> causal mask</label>
+    <label><input type="checkbox" id="rope" checked> RoPE positions</label>
+    <label>temperature <input type="range" id="temp" min="0.2" max="3" step="0.1" value="1"> <span id="tempv">1.0</span></label>
+    <label>heads <select id="heads"><option value="1">head 1</option><option value="2">head 2</option><option value="both" selected>both</option></select></label>
+    <label>query token <select id="qsel"></select></label>
+  </div>
+  <div class="small" id="info" style="margin-top:6px"></div>
+</div>
+
+<div class="grid two">
+  <div class="panel" id="p1"><h3>Head 1 — attention weights <span class="tag">W_k = W_q: a "same-meaning" head</span></h3><svg id="heat1" class="heat"></svg></div>
+  <div class="panel" id="p2"><h3>Head 2 — attention weights <span class="tag">independent W_q, W_k: a "position" head</span></h3><svg id="heat2" class="heat"></svg></div>
+</div>
+
+<div class="grid two">
+  <div class="panel">
+    <h3>Explain this cell</h3>
+    <div class="explain" id="explain">Hover or click a cell.</div>
+  </div>
+  <div class="panel">
+    <h3>Weighted sum for the selected query <span id="wsumhead" class="tag"></span></h3>
+    <div class="small" style="margin-bottom:6px">output<sub>i</sub> = Σ<sub>j</sub> weight<sub>ij</sub> · v<sub>j</sub>. Each row shows a value vector (8 numbers as bars) scaled by its weight; the last row is the sum.</div>
+    <div class="wsum" id="wsum"></div>
+  </div>
+</div>
+
+<details class="panel"><summary class="small">What is simulated here (read this once)</summary>
+<div class="small" style="margin-top:6px">There is no trained model on this page. Each token gets a 16-dimensional embedding from a seeded hash of its spelling, plus a shared "meaning" vector for hand-picked groups of related words (cat/it/kitten, sat/lay, mat/rug, the/a, ...), so related words start out pointing the same way. The projection matrices W_q, W_k, W_v (16×8 per head) are fixed random matrices from a seeded generator; head 1 uses the same matrix for queries and keys so that q·k measures similarity, head 2 uses independent ones and gets its structure from RoPE. Everything downstream — the dot products, the ÷√8 scaling, the mask, the softmax, the weighted sum — is the real computation from <code>llm/model.py::Attention</code>, and RoPE uses the same half-split pairing as <code>apply_rope</code>.</div>
+</details>
+
+<div class="box challenge"><strong>Challenge.</strong> Toggle the causal mask off and on. Explain exactly what changed in row 1 (the first token) and why its weight became exactly 1.000 in one of the two settings. Then do the same for the last row.
+<details><summary>Show answer</summary>
+<p>With the mask on, token 1 may only attend to keys at positions ≤ 1, i.e. only itself; every other score in its row is set to −∞ before the softmax, so its single surviving weight is exp(s)/exp(s) = 1.000 whatever the score. With the mask off, the same row spreads over all tokens according to their scores. The last row is unchanged by the mask: it may already see every key. That asymmetry is why a decoder-only LM can be trained on every position in parallel: each position only ever uses information from its past, so the prediction for position i is a legal "next token" prediction.</p>
+</details></div>
+
+<footer><a href="index.html">← Back to all interactives</a></footer>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const D = 16, HD = 8;
+function mulberry32(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function hash(s){ let h = 2166136261; for (const c of s){ h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+function gauss(rnd){ const u = 1-rnd(), v = rnd(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function randVec(seed, n, scale){ const r = mulberry32(seed); return Array.from({length:n}, ()=>gauss(r)*scale); }
+function randMat(seed, rows, cols, scale){ const r = mulberry32(seed); return Array.from({length:rows}, ()=>Array.from({length:cols}, ()=>gauss(r)*scale)); }
+const GROUPS = [
+  ['cat','kitten','it','pet','dog','puppy','animal','she','he','they','bird','mouse'],
+  ['sat','sits','sitting','lay','slept','sleeps','ran','runs','jumped','stood','walked'],
+  ['mat','rug','floor','chair','bed','sofa','table','roof','grass'],
+  ['the','a','an','this','that'],
+  ['on','in','under','at','over','beside','near'],
+  ['because','so','and','but','while','then'],
+  ['tired','sleepy','hungry','happy','warm','cold','was','is','were','felt'],
+];
+const groupVec = GROUPS.map((_,g)=>randVec(1000+g, D, 1));
+function embed(tok){
+  const w = tok.toLowerCase().replace(/[^a-z0-9']/g,'');
+  const base = randVec(hash(w||tok), D, 0.6);
+  const g = GROUPS.findIndex(G=>G.includes(w));
+  const v = g>=0 ? base.map((x,i)=>x + 0.9*groupVec[g][i]) : base;
+  const n = Math.hypot(...v); return v.map(x=>x/n*2);   // fixed norm so scores are comparable
+}
+const Wq = [randMat(11, D, HD, 0.5), randMat(21, D, HD, 0.5)];
+const Wk = [Wq[0], randMat(22, D, HD, 0.5)];
+const Wv = [randMat(13, D, HD, 0.5), randMat(23, D, HD, 0.5)];
+const matmul = (x, W) => W[0].map((_,j)=>x.reduce((s,xi,i)=>s+xi*W[i][j],0));
+function rope(vec, pos){ // half-split pairing, theta = 10000, as in llm/model.py::apply_rope
+  const half = HD/2, out = vec.slice();
+  for (let i=0;i<half;i++){ const ang = pos / Math.pow(10000, (2*i)/HD), c = Math.cos(ang), s = Math.sin(ang);
+    out[i] = vec[i]*c - vec[i+half]*s; out[i+half] = vec[i]*s + vec[i+half]*c; }
+  return out;
+}
+function softmax(a){ const m = Math.max(...a); const e = a.map(v=>Math.exp(v-m)); const s = e.reduce((p,q)=>p+q,0); return e.map(v=>v/s); }
+
+let toks = [], H = [], sel = {h:0, i:0, j:0}, pinned = false;
+function compute(){
+  toks = $('sent').value.trim().split(/\s+/).filter(Boolean).slice(0,12);
+  const T = toks.length, useMask = $('mask').checked, useRope = $('rope').checked, temp = +$('temp').value;
+  const X = toks.map(embed);
+  H = [0,1].map(h=>{
+    let Q = X.map(x=>matmul(x,Wq[h])), K = X.map(x=>matmul(x,Wk[h])); const V = X.map(x=>matmul(x,Wv[h]));
+    if (useRope){ Q = Q.map((q,p)=>rope(q,p)); K = K.map((k,p)=>rope(k,p)); }
+    const raw = Q.map(q=>K.map(k=>q.reduce((s,v,d)=>s+v*k[d],0)));
+    const scaled = raw.map(r=>r.map(v=>v/Math.sqrt(HD)));
+    const masked = scaled.map((r,i)=>r.map((v,j)=>(useMask && j>i) ? -Infinity : v/temp));
+    const A = masked.map(r=>softmax(r));
+    const out = A.map(a=>Array.from({length:HD},(_,d)=>a.reduce((s,w,j)=>s+w*V[j][d],0)));
+    return {Q,K,V,raw,scaled,masked,A,out};
+  });
+  $('info').textContent = `${T} tokens · d_model = ${D}, head_dim = ${HD}, 2 heads · scores = q·k / √${HD} ÷ T${useMask?' · causal mask on':' · no mask'}${useRope?' · RoPE on':' · no positions (bag of words!)'}`;
+  const qs = $('qsel'); const keep = Math.min(sel.i, T-1);
+  qs.innerHTML = toks.map((t,i)=>`<option value="${i}" ${i===keep?'selected':''}>${i+1}: ${t}</option>`).join('');
+  sel.i = keep; sel.j = Math.min(sel.j, T-1);
+  render();
+}
+function lightSel(){ // hover: move the selection outline without rebuilding the SVG
+  document.querySelectorAll('rect.cell.sel').forEach(r=>r.classList.remove('sel'));
+  const r = document.querySelector(`rect.cell[data-h="${sel.h}"][data-i="${sel.i}"][data-j="${sel.j}"]`); if (r) r.classList.add('sel');
+  explain(); wsum();
+}
+function render(){
+  const mode = $('heads').value;
+  $('p1').hidden = mode==='2'; $('p2').hidden = mode==='1';
+  drawHeat($('heat1'), 0); drawHeat($('heat2'), 1);
+  if (mode==='1') sel.h = 0; if (mode==='2') sel.h = 1;
+  explain(); wsum();
+}
+function color(w){ // white -> blue
+  const t = Math.min(1, w); const r = Math.round(255 - t*(255-37)), g = Math.round(255 - t*(255-99)), b = Math.round(255 - t*(255-235)); return `rgb(${r},${g},${b})`;
+}
+function drawHeat(svg, h){
+  const T = toks.length, L = 92, TP = 62, c = Math.max(26, Math.min(44, Math.floor(420/T))), W = L + T*c + 6, Hh = TP + T*c + 6;
+  svg.setAttribute('viewBox', `0 0 ${W} ${Hh}`);
+  const A = H[h].A; let s = '';
+  s += `<text x="${L + T*c/2}" y="12" font-size="11" fill="#64748b" text-anchor="middle">keys (what is looked at) →</text>`;
+  s += `<text transform="translate(12 ${TP + T*c/2}) rotate(-90)" font-size="11" fill="#64748b" text-anchor="middle">queries (who is looking) ↓</text>`;
+  toks.forEach((t,j)=>{ s += `<text transform="translate(${L + j*c + c/2 + 4} ${TP-6}) rotate(-45)" font-size="11" fill="#0f172a">${esc(t)}</text>`; });
+  toks.forEach((t,i)=>{ s += `<text x="${L-6}" y="${TP + i*c + c/2 + 4}" font-size="11" fill="${i===sel.i?'#dc2626':'#0f172a'}" text-anchor="end" font-weight="${i===sel.i?700:400}">${i+1} ${esc(t)}</text>`; });
+  for (let i=0;i<T;i++) for (let j=0;j<T;j++){
+    const w = A[i][j], m = !isFinite(H[h].masked[i][j]);
+    const isSel = sel.h===h && sel.i===i && sel.j===j;
+    s += `<rect class="cell ${m?'masked':''} ${isSel?'sel':''}" data-h="${h}" data-i="${i}" data-j="${j}" x="${L+j*c}" y="${TP+i*c}" width="${c}" height="${c}" fill="${m?'#f1f5f9':color(w)}" rx="3"><title>${toks[i]} → ${toks[j]}: ${m?'masked':w.toFixed(3)}</title></rect>`;
+    if (!m && c >= 30) s += `<text x="${L+j*c+c/2}" y="${TP+i*c+c/2+4}" font-size="${c>=40?11:9}" fill="${w>0.55?'#fff':'#0f172a'}" text-anchor="middle" pointer-events="none">${w.toFixed(2)}</text>`;
+  }
+  svg.innerHTML = s;
+}
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function explain(){
+  const {h,i,j} = sel, T = toks.length; if (!T) return;
+  const d = H[h], temp = +$('temp').value, m = !isFinite(d.masked[i][j]);
+  const row = d.A[i], best = row.indexOf(Math.max(...row));
+  let s = `<div><strong>Head ${h+1}</strong>, row ${i+1} <code>${esc(toks[i])}</code> (query) → column ${j+1} <code>${esc(toks[j])}</code> (key)</div>`;
+  s += `<div style="margin-top:6px">q·k = <strong>${d.raw[i][j].toFixed(3)}</strong> → ÷√${HD} = ${d.scaled[i][j].toFixed(3)} → ÷ temperature ${temp.toFixed(1)} = ${(d.scaled[i][j]/temp).toFixed(3)}`;
+  if (m) s += ` → <span style="color:var(--red)">masked to −∞</span> (key ${j+1} is after query ${i+1}, so the query must not see it) → weight <strong>0</strong>.</div>`;
+  else s += ` → softmax over the ${row.filter(isFinite).length} visible keys in this row = <strong>${row[j].toFixed(3)}</strong>.</div>`;
+  const vis = row.map((w,k)=>({w,k})).filter(x=>isFinite(d.masked[i][x.k]));
+  s += `<div style="margin-top:6px" class="small">`;
+  if (vis.length === 1) s += `Only one key is visible in this row, so its weight is exactly 1.000 regardless of the score.`;
+  else if (best===j && !m) s += `This is the largest weight in the row: <code>${esc(toks[i])}</code> copies mostly from <code>${esc(toks[j])}</code>'s value vector.`;
+  else s += `The row's biggest weight is on <code>${esc(toks[best])}</code> (${row[best].toFixed(3)}). ` + (h===0 ? `Head 1 scores similarity of meaning, so related words win.` : `Head 2 has no similarity structure; with RoPE the score depends on the distance between positions.`);
+  s += ` Row sums to ${row.reduce((a,b)=>a+b,0).toFixed(3)}.</div>`;
+  $('explain').innerHTML = s;
+}
+function wsum(){
+  const {h,i} = sel, d = H[h], T = toks.length; if (!T) return;
+  $('wsumhead').textContent = `head ${h+1}, query "${toks[i]}"`;
+  const bars = (vec, scale) => { const w = 200, bw = w/HD; let s = `<svg width="100%" height="22" viewBox="0 0 ${w} 22" preserveAspectRatio="none">`;
+    vec.forEach((v,k)=>{ const hgt = Math.min(10, Math.abs(v)*scale*4); s += `<rect x="${k*bw+1}" y="${v>=0?11-hgt:11}" width="${bw-2}" height="${hgt}" fill="${v>=0?'#2563eb':'#f59e0b'}"/>`; }); return s + `<line x1="0" y1="11" x2="${w}" y2="11" stroke="#cbd5e1"/></svg>`; };
+  let s = '';
+  for (let j=0;j<T;j++){ const w = d.A[i][j]; if (w < 1e-4) continue;
+    s += `<div class="r"><span>${w.toFixed(3)}·v<sub>${j+1}</sub> <span class="small">${esc(toks[j])}</span></span>${bars(d.V[j].map(v=>v*w), 1)}</div>`; }
+  s += `<div class="r" style="border-top:1px solid var(--line);padding-top:4px"><strong>output</strong>${bars(d.out[i], 1)}</div>`;
+  s += `<div class="small" style="font-family:system-ui">output<sub>${i+1}</sub> = [${d.out[i].map(v=>v.toFixed(2)).join(', ')}] — this 8-vector goes to the output projection W_o (Chapter 5) and then into the residual stream (Chapter 6).</div>`;
+  $('wsum').innerHTML = s;
+}
+for (const svg of [$('heat1'), $('heat2')]){
+  svg.addEventListener('pointermove', e=>{ const r = e.target.closest('rect.cell'); if(!r || pinned) return; sel = {h:+r.dataset.h, i:+r.dataset.i, j:+r.dataset.j}; $('qsel').value = sel.i; lightSel(); });
+  svg.addEventListener('click', e=>{ const r = e.target.closest('rect.cell'); if(!r) return; const same = pinned && sel.h===+r.dataset.h && sel.i===+r.dataset.i && sel.j===+r.dataset.j; pinned = !same; sel = {h:+r.dataset.h, i:+r.dataset.i, j:+r.dataset.j}; $('qsel').value = sel.i; render(); });
+}
+$('sent').addEventListener('input', compute);
+for (const id of ['mask','rope']) $(id).addEventListener('change', compute);
+$('temp').addEventListener('input', ()=>{ $('tempv').textContent = (+$('temp').value).toFixed(1); compute(); });
+$('heads').addEventListener('change', render);
+$('qsel').addEventListener('change', ()=>{ sel.i = +$('qsel').value; sel.j = Math.min(sel.j, sel.i); pinned = true; render(); });
+sel = {h:0, i:7, j:1}; pinned = false;
+compute();
+</script>
+</body>
+</html>

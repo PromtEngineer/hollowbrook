@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Parallelism visualizer — split a model across devices</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page-specific */
+.grid>*{min-width:0}
+.ctl{display:grid;grid-template-columns:130px 1fr;gap:6px 10px;align-items:center;margin:4px 0}
+.ctl select,.ctl input[type=number]{width:100%;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px}
+.deg{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.deg label{display:block;text-align:center}.deg select{width:100%}
+.err{color:var(--red);font-weight:600;font-size:13px}
+.devices{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(118px,1fr))}
+.dev{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:11px;background:#fff;line-height:1.35}
+.dev .h{font-weight:700;font-size:12px;margin-bottom:2px}.dev .tag{display:inline-block;border-radius:4px;padding:0 4px;color:#fff;margin:1px 2px 1px 0}
+.bar{height:10px;background:#f1f5f9;border-radius:5px;overflow:hidden;display:flex;margin-top:4px}.bar i{display:block;height:100%}
+.dev.over{border-color:var(--red);background:#fff5f5}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}.tbl td,.tbl th{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.tbl td.n{text-align:right;font-family:ui-monospace,monospace;white-space:nowrap}
+.f{font-family:ui-monospace,monospace;font-size:12px;color:#475569}
+.big{font-size:22px;font-weight:700;font-family:ui-monospace,monospace}
+small{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Parallelism visualizer <a class="chip" href="../chapters/11-distributed-training.md">Chapter 11</a></h1>
+  <div class="sub">Choose data, tensor, pipeline and expert parallel degrees; see which device holds what, how much memory each needs, and what it must send every step.</div>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Start with 8 devices as pure data parallel (DP=8) on the 7B model and watch the memory bars overflow — every device holds a full copy of params, grads and optimizer states (16 bytes per parameter). Switch ZeRO to stage 3 and the bars shrink 8×; switch to TP=8 instead and see the communication column change from one gradient all-reduce to many small activation all-reduces per layer.</div>
+
+<div class="grid two">
+  <div class="panel">
+    <strong>Cluster &amp; layout</strong>
+    <div class="ctl"><label for="ndev">Devices N</label><select id="ndev"><option>2</option><option>4</option><option selected>8</option><option>16</option></select></div>
+    <div class="ctl"><label for="cap">Memory per device</label><select id="cap"><option value="24">24 GB (RTX 4090)</option><option value="40">40 GB (A100-40)</option><option value="80" selected>80 GB (H100/A100-80)</option><option value="141">141 GB (H200)</option><option value="192">192 GB (B200, reported)</option></select></div>
+    <div style="margin:8px 0 4px"><label>Parallel degrees (product must equal N)</label></div>
+    <div class="deg">
+      <div><label for="dp">DP</label><select id="dp"></select></div>
+      <div><label for="tp">TP</label><select id="tp"></select></div>
+      <div><label for="pp">PP</label><select id="pp"></select></div>
+      <div><label for="ep">EP</label><select id="ep"></select></div>
+    </div>
+    <div id="degErr" class="err" style="margin-top:4px"></div>
+    <div class="ctl" style="margin-top:8px"><label for="zero">ZeRO / FSDP stage</label><select id="zero"><option value="0">0 — replicate everything across DP</option><option value="1">1 — shard optimizer states</option><option value="2">2 — shard optimizer + grads</option><option value="3">3 — shard params too (FSDP)</option></select></div>
+    <div class="ctl"><label for="mode">Mode</label><select id="mode"><option value="train">Training: bf16 params + grads + fp32 Adam (2+2+12 B/param)</option><option value="infer">Inference: bf16 weights only (2 B/param)</option></select></div>
+  </div>
+  <div class="panel">
+    <strong>Model &amp; batch</strong>
+    <div class="ctl"><label for="model">Model</label><select id="model"></select></div>
+    <div class="ctl"><label for="experts">Experts E</label><select id="experts"><option value="1">1 (dense)</option><option value="4">4 (MoE, top-2)</option><option value="8">8 (MoE, top-2)</option><option value="16">16 (MoE, top-2)</option></select></div>
+    <div class="ctl"><label for="mbtok">Tokens / micro-batch</label><input type="number" id="mbtok" value="8192" min="256" step="256"></div>
+    <div class="ctl"><label for="nmb">Micro-batches / step</label><input type="number" id="nmb" value="8" min="1" step="1"></div>
+    <div id="modelInfo" style="font-size:13px;margin-top:8px"></div>
+  </div>
+</div>
+
+<div class="panel">
+  <strong>Who holds what</strong> <small>— one colour per pipeline stage (rows of layers); each layer is sliced into TP shards; expert boxes are coloured by EP rank. DP replicas hold the same pieces.</small>
+  <div style="overflow-x:auto"><svg id="modelSvg" width="900" height="300" viewBox="0 0 900 300" role="img" aria-label="Model split across devices"></svg></div>
+  <div class="devices" id="devices" style="margin-top:10px"></div>
+  <div class="legend" style="font-size:12px;margin-top:6px"><span style="background:#2563eb"></span>params <span style="background:#7c3aed"></span>grads <span style="background:#f59e0b"></span>optimizer states <span style="background:#16a34a"></span>activations (rough) — bar = device capacity</div>
+</div>
+
+<div class="grid two">
+  <div class="panel">
+    <strong>Memory per device</strong>
+    <div class="big" id="memTotal"></div>
+    <table class="tbl" id="memTbl"></table>
+    <div class="f" style="margin-top:6px">shard = dense/(TP·PP) + expert/(TP·PP·EP); ZeRO divides the stated parts by DP. Activations ≈ 34·tokens·d·(L/PP)/TP bytes per micro-batch (Korthikanti et al. 2022, attention-score term omitted as with FlashAttention; one micro-batch resident with recompute, otherwise many).</div>
+  </div>
+  <div class="panel">
+    <strong>Communication per training step, per device</strong>
+    <div class="big" id="commTotal"></div>
+    <table class="tbl" id="commTbl"></table>
+    <div class="f" style="margin-top:6px" id="bubble"></div>
+  </div>
+</div>
+
+<div class="box challenge"><strong>Challenge.</strong> Fit the 70B model on 8 × 80 GB for <em>training</em>. Try every combination of DP/TP/PP and ZeRO stage. What is the smallest per-device memory you can reach, and does it fit? Then switch to inference mode.
+<details><summary>Show answer</summary>It does not fit for training with fp32 Adam states, no matter how you split: 70 B × 16 bytes = 1120 GB of state, and 8 × 80 GB = 640 GB of memory. The best you can do — TP·PP=8 with any DP, or DP=8 with ZeRO-3 — is 140 GB per device (plus activations). Real 70B fine-tunes on 8 GPUs use tricks that change the bytes-per-parameter: 8-bit optimizer states, LoRA (no optimizer states for the frozen base), or offloading to CPU. For <em>inference</em> the picture flips: 2 B/param = 140 GB total, so TP=8 gives 17.5 GB per device, and even 2 × 80 GB (TP=2) would fit the weights.</details></div>
+
+<footer><a href="index.html">← All interactives</a> · Ring all-reduce moves 2·(P−1)/P × bytes per device; all formulas are the textbook first-order estimates.</footer>
+</div>
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const MODELS=[
+  {name:"1B (d=2048, L=16)", N:1e9, d:2048, L:16},
+  {name:"7B (d=4096, L=32)", N:7e9, d:4096, L:32},
+  {name:"13B (d=5120, L=40)", N:13e9, d:5120, L:40},
+  {name:"70B (d=8192, L=80)", N:70e9, d:8192, L:80},
+  {name:"405B (d=16384, L=126)", N:405e9, d:16384, L:126},
+];
+const STAGE_COL=["#2563eb","#f59e0b","#16a34a","#7c3aed","#dc2626","#0891b2","#be185d","#4d7c0f","#1d4ed8","#b45309","#15803d","#6d28d9","#b91c1c","#0e7490","#9d174d","#3f6212"];
+const EP_COL=["#93c5fd","#fcd34d","#86efac","#c4b5fd","#fca5a5","#67e8f9","#f9a8d4","#bef264","#60a5fa","#fbbf24","#4ade80","#a78bfa","#f87171","#22d3ee","#f472b6","#a3e635"];
+$("model").innerHTML=MODELS.map((m,i)=>`<option value="${i}"${i===1?" selected":""}>${m.name}</option>`).join("");
+function fillDeg(){ const N=+$("ndev").value; const opts=[]; for(let v=1;v<=N;v*=2) opts.push(v); for(const id of ["dp","tp","pp","ep"]){ const cur=+$(id).value||1; $(id).innerHTML=opts.map(v=>`<option value="${v}">${v}</option>`).join(""); $(id).value=opts.includes(cur)?cur:1; } }
+fillDeg(); $("dp").value=8;
+function GB(b){ return b/1e9; }
+function fmtB(b){ if(b>=1e12) return (b/1e12).toFixed(2)+" TB"; if(b>=1e9) return (b/1e9).toFixed(1)+" GB"; if(b>=1e6) return (b/1e6).toFixed(1)+" MB"; return (b/1e3).toFixed(0)+" kB"; }
+function compute(){
+  const N=+$("ndev").value, dp=+$("dp").value, tp=+$("tp").value, pp=+$("pp").value, ep=+$("ep").value, zero=+$("zero").value, mode=$("mode").value, cap=+$("cap").value*1e9;
+  const m=MODELS[+$("model").value], E=+$("experts").value, tok=Math.max(1,+$("mbtok").value||8192), nmb=Math.max(1,+$("nmb").value||1), k=E>1?2:1;
+  const ok=dp*tp*pp*ep===N && (E>=ep);
+  const expertFrac=E>1?0.85:0; // share of parameters living in expert MLPs (dense: none)
+  const Nexp=m.N*expertFrac, Ndense=m.N-Nexp;
+  const shard=Ndense/(tp*pp)+Nexp/(tp*pp*ep);
+  const bytes={params:2, grads:mode==="train"?2:0, optim:mode==="train"?12:0};
+  const div={params:zero>=3?dp:1, grads:zero>=2?dp:1, optim:zero>=1?dp:1};
+  const mem={params:shard*bytes.params/div.params, grads:shard*bytes.grads/div.grads, optim:shard*bytes.optim/div.optim};
+  mem.act= mode==="train"? 34*tok*m.d*(m.L/pp)/tp : 2*tok*m.d*2; // inference: one activation + KV-ish, rough
+  const total=mem.params+mem.grads+mem.optim+mem.act;
+  // communication per device per step
+  const gradBytes=shard*2; const ring=P=>2*(P-1)/P;
+  const comm=[];
+  if(dp>1){ comm.push({name:`DP grad all-reduce (${zero>=2?"reduce-scatter + all-gather of the sharded grads":"ring all-reduce"})`, formula:`2·(DP−1)/DP × ${fmtB(gradBytes)}`, bytes:ring(dp)*gradBytes});
+    if(zero>=3) comm.push({name:"ZeRO-3 param all-gathers (forward + backward)", formula:`2 × 2·(DP−1)/DP × ${fmtB(shard*2)}`, bytes:2*ring(dp)*shard*2}); }
+  const act=tok*m.d*2;
+  if(tp>1) comm.push({name:`TP activation all-reduces: 4 per layer (2 fwd, 2 bwd) × ${m.L/pp|0} layers × ${nmb} micro-batches`, formula:`4·(L/PP)·M × 2·(TP−1)/TP × ${fmtB(act)}`, bytes:4*(m.L/pp)*nmb*ring(tp)*act});
+  if(pp>1) comm.push({name:`PP point-to-point: activations forward + grads backward per micro-batch`, formula:`2·M × ${fmtB(act)}`, bytes:2*nmb*act});
+  if(ep>1) comm.push({name:`EP all-to-all: dispatch + combine, fwd + bwd, top-${k}`, formula:`4·(L/PP)·M·k × (EP−1)/EP × ${fmtB(act)}`, bytes:4*(m.L/pp)*nmb*k*(ep-1)/ep*act});
+  const commTotal=comm.reduce((a,c)=>a+c.bytes,0);
+  const bubble=pp>1?(pp-1)/(pp-1+nmb):0;
+  return {N,dp,tp,pp,ep,zero,mode,cap,m,E,tok,nmb,k,ok,shard,Ndense,Nexp,mem,total,comm,commTotal,bubble,div};
+}
+function render(){
+  const s=compute();
+  $("degErr").textContent = s.dp*s.tp*s.pp*s.ep!==s.N ? `DP×TP×PP×EP = ${s.dp*s.tp*s.pp*s.ep} ≠ ${s.N} devices — fix the degrees.` : (s.E<s.ep? `EP=${s.ep} needs at least ${s.ep} experts (E=${s.E}).` : "");
+  $("modelInfo").innerHTML=`<strong>${s.m.name.split(" ")[0]}</strong> = ${(s.m.N/1e9).toFixed(0)} B params${s.E>1?` of which ≈85% (${(s.Nexp/1e9).toFixed(0)} B) sit in ${s.E} expert MLPs; active per token ≈ ${((s.Ndense+s.Nexp*s.k/s.E)/1e9).toFixed(1)} B`:""}. Per-device shard: ${(s.shard/1e9).toFixed(2)} B params.`;
+  // model SVG
+  { const W=900,H=300, L=s.m.L, rows=Math.min(L,40), rh=Math.floor(240/rows), left=120, width=560; let h=`<text x="4" y="16" font-size="12" fill="#334155">layers 0…${L-1}${L>40?" (every "+Math.ceil(L/40)+(Math.ceil(L/40)===2?"nd":Math.ceil(L/40)===3?"rd":"th")+" layer drawn)":""}</text>`;
+    for(let r=0;r<rows;r++){ const layer=Math.floor(r*L/rows); const stage=Math.floor(layer/(L/s.pp)); const y=30+r*rh; const col=STAGE_COL[stage%16];
+      h+=`<text x="${left-6}" y="${y+rh*0.75}" text-anchor="end" font-size="${Math.min(10,rh)}" fill="#64748b">L${layer}</text>`;
+      const attnW=width*0.35, mlpW=width*0.65;
+      for(let t=0;t<s.tp;t++){ const w=attnW/s.tp; h+=`<rect x="${left+t*w}" y="${y}" width="${w-1}" height="${rh-1}" fill="${col}" opacity="${0.55+0.45*(t%2)}"/>`; }
+      if(s.E>1){ const ew=mlpW/s.E; for(let e=0;e<s.E;e++){ const epr=Math.floor(e/(s.E/s.ep)); for(let t=0;t<s.tp;t++){ const w=ew/s.tp; h+=`<rect x="${left+attnW+4+e*ew+t*w}" y="${y}" width="${Math.max(1,w-1)}" height="${rh-1}" fill="${EP_COL[epr%16]}" stroke="${col}" stroke-width="0.5"/>`; } } }
+      else for(let t=0;t<s.tp;t++){ const w=mlpW/s.tp; h+=`<rect x="${left+attnW+4+t*w}" y="${y}" width="${w-1}" height="${rh-1}" fill="${col}" opacity="${0.35+0.3*(t%2)}"/>`; }
+    }
+    h+=`<text x="${left}" y="${30+rows*rh+14}" font-size="11" fill="#64748b">attention (TP=${s.tp} slices)</text><text x="${left+width*0.35+4}" y="${30+rows*rh+14}" font-size="11" fill="#64748b">${s.E>1?`MLP experts ×${s.E}, EP=${s.ep} ranks`:"MLP"} (TP slices)</text>`;
+    for(let p=0;p<s.pp;p++) h+=`<rect x="${left+width+12}" y="${30+p*(rows*rh/s.pp)}" width="14" height="${rows*rh/s.pp-2}" fill="${STAGE_COL[p%16]}"/><text x="${left+width+30}" y="${30+p*(rows*rh/s.pp)+12}" font-size="10" fill="#334155">PP stage ${p}</text>`;
+    h+=`<text x="${left+width+12}" y="${30+rows*rh+14}" font-size="11" fill="#64748b">× DP=${s.dp} replicas</text>`;
+    $("modelSvg").innerHTML=h; }
+  // devices
+  { let h=""; const perStage=s.m.L/s.pp; for(let i=0;i<s.N;i++){ const e=i%s.ep, t=Math.floor(i/s.ep)%s.tp, p=Math.floor(i/(s.ep*s.tp))%s.pp, d=Math.floor(i/(s.ep*s.tp*s.pp));
+      const over=s.total>s.cap; const seg=(v,c)=>`<i style="width:${Math.min(100,v/s.cap*100)}%;background:${c}"></i>`;
+      h+=`<div class="dev${over?" over":""}"><div class="h">GPU ${i}</div><span class="tag" style="background:${STAGE_COL[p%16]}">PP${p}: L${Math.round(p*perStage)}–${Math.round((p+1)*perStage)-1}</span><span class="tag" style="background:#475569">TP${t}/${s.tp}</span>${s.E>1?`<span class="tag" style="background:${EP_COL[e%16]};color:#0f172a">EP${e}: experts ${e*s.E/s.ep}–${(e+1)*s.E/s.ep-1}</span>`:""}<span class="tag" style="background:#94a3b8">DP${d}</span><div class="bar">${seg(s.mem.params,"#2563eb")}${seg(s.mem.grads,"#7c3aed")}${seg(s.mem.optim,"#f59e0b")}${seg(s.mem.act,"#16a34a")}</div><div>${GB(s.total).toFixed(1)} / ${GB(s.cap)} GB${over?" — <b style='color:#dc2626'>OOM</b>":""}</div></div>`; }
+    $("devices").innerHTML=h; }
+  // memory table
+  $("memTotal").innerHTML=`${GB(s.total).toFixed(1)} GB <small style="font-size:13px;font-weight:400">of ${GB(s.cap)} GB ${s.total>s.cap?'<span style="color:#dc2626">— does not fit</span>':'<span style="color:#16a34a">— fits</span>'}</small>`;
+  const row=(n,f,v)=>`<tr><td>${n}</td><td class="f">${f}</td><td class="n">${GB(v).toFixed(2)} GB</td></tr>`;
+  $("memTbl").innerHTML=row("params (bf16)",`${(s.shard/1e9).toFixed(2)}B × 2 B${s.div.params>1?" / DP":""}`,s.mem.params)+(s.mode==="train"?row("gradients (bf16)",`${(s.shard/1e9).toFixed(2)}B × 2 B${s.div.grads>1?" / DP":""}`,s.mem.grads)+row("Adam states (fp32 master, m, v)",`${(s.shard/1e9).toFixed(2)}B × 12 B${s.div.optim>1?" / DP":""}`,s.mem.optim):"")+row("activations (rough)",s.mode==="train"?`34 × ${s.tok} × ${s.m.d} × ${s.m.L}/${s.pp} / ${s.tp}`:"one token batch, 2 B",s.mem.act);
+  // comm
+  $("commTotal").textContent=fmtB(s.commTotal)+(s.commTotal?"":" (single device: no traffic)");
+  $("commTbl").innerHTML=s.comm.map(c=>`<tr><td>${c.name}</td><td class="f">${c.formula}</td><td class="n">${fmtB(c.bytes)}</td></tr>`).join("")||`<tr><td>No inter-device traffic with DP=TP=PP=EP=1.</td></tr>`;
+  $("bubble").innerHTML= s.pp>1 ? `Pipeline bubble (1F1B, ${s.nmb} micro-batches): (PP−1)/(PP−1+M) = ${(s.bubble*100).toFixed(0)}% of step time idle. More micro-batches shrink it; interleaved/zero-bubble schedules shrink it further.` : `No pipeline bubble (PP=1). A 2026 trillion-parameter run typically combines all four degrees plus context parallel ("4-D/5-D parallelism").`;
+}
+for(const id of ["ndev","cap","dp","tp","pp","ep","zero","mode","model","experts","mbtok","nmb"]) $(id).addEventListener(id==="ndev"?"change":"input",()=>{ if(id==="ndev"){ fillDeg(); $("dp").value=+$("ndev").value; } render(); });
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,154 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="470" viewBox="0 0 900 470" font-family="system-ui, sans-serif" font-size="13">
+<rect x="0" y="0" width="900" height="470" fill="#ffffff"/>
+<defs><marker id="arr" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker></defs>
+<text x="450" y="26" font-size="15" fill="#0f172a" text-anchor="middle" font-weight="bold" >Scaled dot-product attention on four tokens:  softmax( mask( Q·Kᵀ / √d ) ) · V</text>
+<text x="108" y="60" font-size="12" fill="#2563eb" text-anchor="middle" font-weight="bold" >1. scores = Q·Kᵀ / √d</text>
+<text x="77.0" y="84" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >Mia</text>
+<text x="111.0" y="84" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >had</text>
+<text x="145.0" y="84" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >a</text>
+<text x="179.0" y="84" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >kite</text>
+<text x="54" y="111.0" font-size="10" fill="#64748b" text-anchor="end" font-weight="normal" >Mia</text>
+<text x="54" y="145.0" font-size="10" fill="#64748b" text-anchor="end" font-weight="normal" >had</text>
+<text x="54" y="179.0" font-size="10" fill="#64748b" text-anchor="end" font-weight="normal" >a</text>
+<text x="54" y="213.0" font-size="10" fill="#64748b" text-anchor="end" font-weight="normal" >kite</text>
+<rect x="60" y="90" width="34" height="34" fill="#2563eb" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="77.0" y="111.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.9</text>
+<rect x="94" y="90" width="34" height="34" fill="#2563eb" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="111.0" y="111.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.2</text>
+<rect x="128" y="90" width="34" height="34" fill="#2563eb" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="145.0" y="111.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >-0.4</text>
+<rect x="162" y="90" width="34" height="34" fill="#2563eb" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="179.0" y="111.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.5</text>
+<rect x="60" y="124" width="34" height="34" fill="#2563eb" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="77.0" y="145.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >1.1</text>
+<rect x="94" y="124" width="34" height="34" fill="#2563eb" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="111.0" y="145.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.6</text>
+<rect x="128" y="124" width="34" height="34" fill="#2563eb" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="145.0" y="145.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.3</text>
+<rect x="162" y="124" width="34" height="34" fill="#2563eb" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="179.0" y="145.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >-0.2</text>
+<rect x="60" y="158" width="34" height="34" fill="#2563eb" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="77.0" y="179.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.2</text>
+<rect x="94" y="158" width="34" height="34" fill="#2563eb" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="111.0" y="179.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >1.4</text>
+<rect x="128" y="158" width="34" height="34" fill="#2563eb" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="145.0" y="179.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.8</text>
+<rect x="162" y="158" width="34" height="34" fill="#2563eb" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="179.0" y="179.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.1</text>
+<rect x="60" y="192" width="34" height="34" fill="#2563eb" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="77.0" y="213.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >1.6</text>
+<rect x="94" y="192" width="34" height="34" fill="#2563eb" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="111.0" y="213.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.1</text>
+<rect x="128" y="192" width="34" height="34" fill="#2563eb" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="145.0" y="213.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.4</text>
+<rect x="162" y="192" width="34" height="34" fill="#2563eb" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="179.0" y="213.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >1.0</text>
+<text x="110" y="250" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >row i = query i</text>
+<text x="110" y="264" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >col j = key j</text>
+<line x1="205" y1="158" x2="245" y2="158" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="338" y="60" font-size="12" fill="#dc2626" text-anchor="middle" font-weight="bold" >2. causal mask</text>
+<text x="307.0" y="84" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >Mia</text>
+<text x="341.0" y="84" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >had</text>
+<text x="375.0" y="84" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >a</text>
+<text x="409.0" y="84" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >kite</text>
+<text x="284" y="111.0" font-size="10" fill="#64748b" text-anchor="end" font-weight="normal" >Mia</text>
+<text x="284" y="145.0" font-size="10" fill="#64748b" text-anchor="end" font-weight="normal" >had</text>
+<text x="284" y="179.0" font-size="10" fill="#64748b" text-anchor="end" font-weight="normal" >a</text>
+<text x="284" y="213.0" font-size="10" fill="#64748b" text-anchor="end" font-weight="normal" >kite</text>
+<rect x="290" y="90" width="34" height="34" fill="#dc2626" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="307.0" y="111.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.9</text>
+<rect x="324" y="90" width="34" height="34" fill="#dc2626" fill-opacity="0.10" stroke="#64748b" stroke-width="0.6"/>
+<text x="341.0" y="111.0" font-size="10" fill="#dc2626" text-anchor="middle" font-weight="normal" >−∞</text>
+<rect x="358" y="90" width="34" height="34" fill="#dc2626" fill-opacity="0.10" stroke="#64748b" stroke-width="0.6"/>
+<text x="375.0" y="111.0" font-size="10" fill="#dc2626" text-anchor="middle" font-weight="normal" >−∞</text>
+<rect x="392" y="90" width="34" height="34" fill="#dc2626" fill-opacity="0.10" stroke="#64748b" stroke-width="0.6"/>
+<text x="409.0" y="111.0" font-size="10" fill="#dc2626" text-anchor="middle" font-weight="normal" >−∞</text>
+<rect x="290" y="124" width="34" height="34" fill="#dc2626" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="307.0" y="145.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >1.1</text>
+<rect x="324" y="124" width="34" height="34" fill="#dc2626" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="341.0" y="145.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.6</text>
+<rect x="358" y="124" width="34" height="34" fill="#dc2626" fill-opacity="0.10" stroke="#64748b" stroke-width="0.6"/>
+<text x="375.0" y="145.0" font-size="10" fill="#dc2626" text-anchor="middle" font-weight="normal" >−∞</text>
+<rect x="392" y="124" width="34" height="34" fill="#dc2626" fill-opacity="0.10" stroke="#64748b" stroke-width="0.6"/>
+<text x="409.0" y="145.0" font-size="10" fill="#dc2626" text-anchor="middle" font-weight="normal" >−∞</text>
+<rect x="290" y="158" width="34" height="34" fill="#dc2626" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="307.0" y="179.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.2</text>
+<rect x="324" y="158" width="34" height="34" fill="#dc2626" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="341.0" y="179.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >1.4</text>
+<rect x="358" y="158" width="34" height="34" fill="#dc2626" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="375.0" y="179.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.8</text>
+<rect x="392" y="158" width="34" height="34" fill="#dc2626" fill-opacity="0.10" stroke="#64748b" stroke-width="0.6"/>
+<text x="409.0" y="179.0" font-size="10" fill="#dc2626" text-anchor="middle" font-weight="normal" >−∞</text>
+<rect x="290" y="192" width="34" height="34" fill="#dc2626" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="307.0" y="213.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >1.6</text>
+<rect x="324" y="192" width="34" height="34" fill="#dc2626" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="341.0" y="213.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.1</text>
+<rect x="358" y="192" width="34" height="34" fill="#dc2626" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="375.0" y="213.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.4</text>
+<rect x="392" y="192" width="34" height="34" fill="#dc2626" fill-opacity="0.12" stroke="#64748b" stroke-width="0.6"/>
+<text x="409.0" y="213.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >1.0</text>
+<text x="340" y="250" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >j > i → −∞ (the future</text>
+<text x="340" y="264" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >is hidden)</text>
+<line x1="435" y1="158" x2="475" y2="158" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="568" y="60" font-size="12" fill="#16a34a" text-anchor="middle" font-weight="bold" >3. softmax → weights (rows sum to 1)</text>
+<text x="537.0" y="84" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >Mia</text>
+<text x="571.0" y="84" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >had</text>
+<text x="605.0" y="84" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >a</text>
+<text x="639.0" y="84" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >kite</text>
+<text x="514" y="111.0" font-size="10" fill="#64748b" text-anchor="end" font-weight="normal" >Mia</text>
+<text x="514" y="145.0" font-size="10" fill="#64748b" text-anchor="end" font-weight="normal" >had</text>
+<text x="514" y="179.0" font-size="10" fill="#64748b" text-anchor="end" font-weight="normal" >a</text>
+<text x="514" y="213.0" font-size="10" fill="#64748b" text-anchor="end" font-weight="normal" >kite</text>
+<rect x="520" y="90" width="34" height="34" fill="#16a34a" fill-opacity="0.78" stroke="#64748b" stroke-width="0.6"/>
+<text x="537.0" y="111.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >1.00</text>
+<rect x="554" y="90" width="34" height="34" fill="#16a34a" fill-opacity="0.08" stroke="#64748b" stroke-width="0.6"/>
+<text x="571.0" y="111.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.00</text>
+<rect x="588" y="90" width="34" height="34" fill="#16a34a" fill-opacity="0.08" stroke="#64748b" stroke-width="0.6"/>
+<text x="605.0" y="111.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.00</text>
+<rect x="622" y="90" width="34" height="34" fill="#16a34a" fill-opacity="0.08" stroke="#64748b" stroke-width="0.6"/>
+<text x="639.0" y="111.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.00</text>
+<rect x="520" y="124" width="34" height="34" fill="#16a34a" fill-opacity="0.52" stroke="#64748b" stroke-width="0.6"/>
+<text x="537.0" y="145.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.62</text>
+<rect x="554" y="124" width="34" height="34" fill="#16a34a" fill-opacity="0.34" stroke="#64748b" stroke-width="0.6"/>
+<text x="571.0" y="145.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.38</text>
+<rect x="588" y="124" width="34" height="34" fill="#16a34a" fill-opacity="0.08" stroke="#64748b" stroke-width="0.6"/>
+<text x="605.0" y="145.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.00</text>
+<rect x="622" y="124" width="34" height="34" fill="#16a34a" fill-opacity="0.08" stroke="#64748b" stroke-width="0.6"/>
+<text x="639.0" y="145.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.00</text>
+<rect x="520" y="158" width="34" height="34" fill="#16a34a" fill-opacity="0.19" stroke="#64748b" stroke-width="0.6"/>
+<text x="537.0" y="179.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.16</text>
+<rect x="554" y="158" width="34" height="34" fill="#16a34a" fill-opacity="0.46" stroke="#64748b" stroke-width="0.6"/>
+<text x="571.0" y="179.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.54</text>
+<rect x="588" y="158" width="34" height="34" fill="#16a34a" fill-opacity="0.29" stroke="#64748b" stroke-width="0.6"/>
+<text x="605.0" y="179.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.30</text>
+<rect x="622" y="158" width="34" height="34" fill="#16a34a" fill-opacity="0.08" stroke="#64748b" stroke-width="0.6"/>
+<text x="639.0" y="179.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.00</text>
+<rect x="520" y="192" width="34" height="34" fill="#16a34a" fill-opacity="0.42" stroke="#64748b" stroke-width="0.6"/>
+<text x="537.0" y="213.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.48</text>
+<rect x="554" y="192" width="34" height="34" fill="#16a34a" fill-opacity="0.16" stroke="#64748b" stroke-width="0.6"/>
+<text x="571.0" y="213.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.11</text>
+<rect x="588" y="192" width="34" height="34" fill="#16a34a" fill-opacity="0.18" stroke="#64748b" stroke-width="0.6"/>
+<text x="605.0" y="213.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.15</text>
+<rect x="622" y="192" width="34" height="34" fill="#16a34a" fill-opacity="0.27" stroke="#64748b" stroke-width="0.6"/>
+<text x="639.0" y="213.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="normal" >0.26</text>
+<text x="570" y="250" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >e^{−∞} = 0, so masked</text>
+<text x="570" y="264" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >cells get exactly 0</text>
+<line x1="665" y1="158" x2="705" y2="158" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+<text x="795" y="60" font-size="12" fill="#7c3aed" text-anchor="middle" font-weight="bold" >4. × V</text>
+<rect x="720" y="90" width="150" height="28" rx="4" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="795" y="109" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="normal" >v_Mia</text>
+<rect x="720" y="124" width="150" height="28" rx="4" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="795" y="143" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="normal" >v_had</text>
+<rect x="720" y="158" width="150" height="28" rx="4" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="795" y="177" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="normal" >v_a</text>
+<rect x="720" y="192" width="150" height="28" rx="4" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="795" y="211" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="normal" >v_kite</text>
+<text x="795" y="250" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >V: one value vector</text>
+<text x="795" y="264" font-size="10" fill="#64748b" text-anchor="middle" font-weight="normal" >per token (1 × d each)</text>
+<rect x="20" y="300" width="860" height="60" rx="8" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+<text x="450" y="322" font-size="13" fill="#0f172a" text-anchor="middle" font-weight="bold" >output for 'kite' (row 3) = 0.48·v_Mia + 0.11·v_had + 0.15·v_a + 0.26·v_kite</text>
+<text x="450" y="345" font-size="11" fill="#64748b" text-anchor="middle" font-weight="normal" >a weighted average of the value vectors of every token it is allowed to see — the weights are the row of step 3</text>
+<text x="450" y="395" font-size="12" fill="#0f172a" text-anchor="middle" font-weight="normal" >Q = X·W_q   K = X·W_k   V = X·W_v   are learned projections of the same input rows X (T × d).</text>
+<text x="450" y="417" font-size="11" fill="#64748b" text-anchor="middle" font-weight="normal" >Score = 'how well does what token i is looking for (q_i) match what token j offers (k_j)'. Dividing by √d keeps scores O(1) so softmax does not saturate.</text>
+<text x="450" y="450" font-size="11" fill="#64748b" text-anchor="middle" font-weight="normal" >Chapter 5 · numbers are illustrative; the lab prints real ones for T=5, d=8.</text>
+</svg>

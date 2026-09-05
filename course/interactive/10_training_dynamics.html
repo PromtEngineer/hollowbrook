@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Training dynamics — LR, warmup, spikes</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page-specific */
+.grid>*{min-width:0}
+.ctl{display:grid;grid-template-columns:120px 1fr 70px;gap:6px 10px;align-items:center;margin:4px 0}
+.ctl input[type=range]{width:100%}.ctl .v{font-family:ui-monospace,monospace;font-size:13px;text-align:right}
+canvas{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:8px;background:#fff}
+.charts{display:grid;gap:10px;grid-template-columns:1fr}@media(min-width:800px){.charts{grid-template-columns:2fr 1fr}}
+.presets button{padding:6px 10px;font-size:13px}
+.stat{font-family:ui-monospace,monospace;font-size:13px}
+.warn{color:var(--red);font-weight:600}.good{color:var(--green);font-weight:600}
+small{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Training dynamics <a class="chip" href="../chapters/10-pretraining-loop.md">Chapter 10</a></h1>
+  <div class="sub">A real optimiser on a real (tiny) network, live in your browser: watch how the learning-rate schedule, warmup, batch size and clipping shape the loss curve.</div>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Press <em>Loss spike</em>: the learning rate is too high, the loss shoots up and the model gets stuck with saturated units. Then press one of the fixes — warmup, gradient clipping, or a lower peak LR — and compare the curves. Switch the schedule between cosine, WSD and constant to see the LR curve and the final-loss difference.</div>
+
+<div class="box" style="border-left:4px solid var(--purple);font-size:14px"><strong>What is simulated.</strong> This is <em>not</em> an LLM. It is a 2-hidden-layer MLP (2→16→16→1, tanh, 289 parameters) trained with minibatch SGD-momentum or AdamW on a 400-point 2-D "inside the circle?" task, with the exact <code>lr_at()</code> schedules from <code>llm/optim.py</code>. Loss is cross-entropy, gradients are computed by hand-written backprop, nothing is faked. The <em>shapes</em> — warmup preventing early blow-ups, spikes from too-large steps, clipping bounding the damage, cosine vs WSD tails — transfer to LLM training; the numbers do not.</div>
+
+<div class="grid two">
+  <div class="panel">
+    <strong>Hyperparameters</strong>
+    <div class="ctl"><label for="opt">Optimizer</label><select id="opt" style="width:100%"><option value="adamw">AdamW (β=0.9, 0.95)</option><option value="sgd">SGD + momentum 0.9</option></select><span></span></div>
+    <div class="ctl"><label for="sched">Schedule</label><select id="sched" style="width:100%"><option value="cosine">warmup + cosine (to 10%)</option><option value="wsd">WSD (warmup–stable–decay 20%)</option><option value="constant">warmup + constant</option></select><span></span></div>
+    <div class="ctl"><label for="peak">Peak LR</label><input type="range" id="peak" min="-3" max="0.5" step="0.01" value="-1.52"><span class="v" id="peakV"></span></div>
+    <div class="ctl"><label for="warm">Warmup steps</label><input type="range" id="warm" min="0" max="300" step="5" value="50"><span class="v" id="warmV"></span></div>
+    <div class="ctl"><label for="batch">Batch size</label><input type="range" id="batch" min="3" max="8" step="1" value="5"><span class="v" id="batchV"></span></div>
+    <div class="ctl"><label for="wd">Weight decay</label><input type="range" id="wd" min="0" max="0.3" step="0.01" value="0"><span class="v" id="wdV"></span></div>
+    <div class="ctl"><label for="clip">Grad clip (0 = off)</label><input type="range" id="clip" min="0" max="3" step="0.1" value="0"><span class="v" id="clipV"></span></div>
+    <div class="ctl"><label for="seed">Seed</label><input type="range" id="seed" min="1" max="9" step="1" value="1"><span class="v" id="seedV"></span></div>
+    <div class="row" style="margin-top:8px">
+      <button type="button" id="runBtn">▶ Run</button>
+      <button type="button" class="secondary" id="stepBtn">Step ×10</button>
+      <button type="button" class="secondary" id="resetBtn">Reset</button>
+      <label><input type="checkbox" id="keep" checked> keep previous run as ghost</label>
+    </div>
+    <div style="margin-top:10px"><strong style="font-size:13px">Presets</strong>
+    <div class="row presets" style="margin-top:4px">
+      <button type="button" class="secondary" data-p="healthy">Healthy run</button>
+      <button type="button" data-p="spike" style="background:var(--red)">Loss spike (LR too high)</button>
+      <button type="button" class="secondary" data-p="adamnowarm">Adam, no warmup</button>
+      <button type="button" class="secondary" data-p="tinybatch">Tiny batch</button>
+    </div>
+    <div class="row presets" style="margin-top:6px"><span style="font-size:13px;color:var(--muted)">Fixes:</span>
+      <button type="button" data-p="fixwarm" style="background:var(--green)">+ warmup 100</button>
+      <button type="button" data-p="fixclip" style="background:var(--green)">+ clip at 1.0</button>
+      <button type="button" data-p="fixlr" style="background:var(--green)">lower LR 3×</button>
+    </div></div>
+  </div>
+  <div class="panel">
+    <strong>Status</strong>
+    <div class="stat" id="status" style="margin:6px 0 10px;white-space:pre-line"></div>
+    <div><strong style="font-size:13px">Decision boundary</strong> <small>(blue = predicts inside)</small></div>
+    <canvas id="bd" width="300" height="300" style="max-width:300px"></canvas>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="charts">
+    <div><strong>Loss</strong> <small>(minibatch loss, faint; full-data loss, bold; log scale)</small><canvas id="lossC" width="640" height="260"></canvas></div>
+    <div><strong>Learning rate</strong><canvas id="lrC" width="320" height="120"></canvas><strong>Gradient norm</strong> <small>(before clipping)</small><canvas id="gnC" width="320" height="120"></canvas></div>
+  </div>
+  <div class="legend" style="font-size:13px;margin-top:6px"><span style="background:#2563eb"></span>current run &nbsp; <span style="background:#cbd5e1"></span>previous run (ghost) &nbsp; <span style="background:#f59e0b"></span>warmup region</div>
+</div>
+
+<div class="box challenge"><strong>Challenge.</strong> Start from the <em>Loss spike</em> preset (SGD, peak LR 1.5, no warmup, seed 1). Without touching the peak LR, clipping or batch size, find a warmup length that removes the spike and reaches a full-data loss below 0.01 by step 600. Then try seed 2 and 3 with your warmup: does it still hold?
+<details><summary>Show answer</summary>With seed 1, warmup of 50–100 steps trains cleanly (max loss ≈ 0.7, final ≈ 0.001), while 0 or 25 steps spike above 1 and get stuck. Warmup works because at initialisation the gradients are large and the loss surface is sharp; ramping the LR lets the weights reach a flatter region before the big steps arrive. It is not a guarantee: on this task a <em>longer</em> warmup (200) can still spike for some seeds, because the cosine schedule then holds the LR near 1.5 for hundreds of steps and one unlucky minibatch is enough. Clipping at 1.0 is the more robust fix here — exactly why LLM runs use warmup <em>and</em> clipping <em>and</em> a conservative peak.</details></div>
+
+<footer><a href="index.html">← All interactives</a> · Schedules are a line-for-line port of <code>lr_at()</code> in <code>course/llm/optim.py</code>.</footer>
+</div>
+
+<script>
+'use strict';
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function gauss(r){let u=0,v=0;while(u===0)u=r();while(v===0)v=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
+function makeData(n,seed){const r=mulberry32(seed);const X=[],Y=[];for(let i=0;i<n;i++){const a=r()*2*Math.PI;const inner=r()<0.5;const rad=inner?0.6*Math.sqrt(r()):1.1+0.5*r();const x=rad*Math.cos(a)+0.08*gauss(r),y=rad*Math.sin(a)+0.08*gauss(r);X.push([x,y]);Y.push(inner?1:0)}return{X,Y}}
+const H=16;
+function zeros(){return{W1:new Float64Array(H*2),b1:new Float64Array(H),W2:new Float64Array(H*H),b2:new Float64Array(H),W3:new Float64Array(H),b3:new Float64Array(1)}}
+function initModel(seed){const r=mulberry32(seed);const p=zeros();for(let i=0;i<H*2;i++)p.W1[i]=gauss(r)*1.0;for(let i=0;i<H*H;i++)p.W2[i]=gauss(r)/Math.sqrt(H);for(let i=0;i<H;i++)p.W3[i]=gauss(r)/Math.sqrt(H);return p}
+function forward(p,x){const h1=new Float64Array(H),h2=new Float64Array(H);for(let j=0;j<H;j++)h1[j]=Math.tanh(p.W1[2*j]*x[0]+p.W1[2*j+1]*x[1]+p.b1[j]);let z=p.b3[0];for(let k=0;k<H;k++){let a=p.b2[k];for(let j=0;j<H;j++)a+=p.W2[k*H+j]*h1[j];h2[k]=Math.tanh(a);z+=p.W3[k]*h2[k]}return{h1,h2,z}}
+function sigm(z){return z>=0?1/(1+Math.exp(-z)):Math.exp(z)/(1+Math.exp(z))}
+function bce(z,y){// numerically stable log-loss
+  return Math.max(z,0)-z*y+Math.log(1+Math.exp(-Math.abs(z)))}
+function lossAndGrad(p,X,Y,idx){const g=zeros();let L=0;const n=idx.length;const dh1=new Float64Array(H);for(const i of idx){const x=X[i],y=Y[i];const{h1,h2,z}=forward(p,x);L+=bce(z,y);const dz=(sigm(z)-y)/n;g.b3[0]+=dz;dh1.fill(0);for(let k=0;k<H;k++){g.W3[k]+=dz*h2[k];const da=dz*p.W3[k]*(1-h2[k]*h2[k]);g.b2[k]+=da;for(let j=0;j<H;j++){g.W2[k*H+j]+=da*h1[j];dh1[j]+=da*p.W2[k*H+j]}}for(let j=0;j<H;j++){const da=dh1[j]*(1-h1[j]*h1[j]);g.b1[j]+=da;g.W1[2*j]+=da*x[0];g.W1[2*j+1]+=da*x[1]}}return{loss:L/n,g}}
+function fullLoss(p,X,Y){let L=0;for(let i=0;i<X.length;i++)L+=bce(forward(p,X[i]).z,Y[i]);return L/X.length}
+function gradNorm(g){let s=0;for(const k in g)for(const v of g[k])s+=v*v;return Math.sqrt(s)}
+function lrAt(step,total,peak,warm,kind,minRatio=0.1,decayFrac=0.2){if(warm>0&&step<warm)return peak*(step+1)/warm;if(kind==="constant")return peak;if(kind==="cosine"){let pr=(step-warm)/Math.max(1,total-warm);pr=Math.min(Math.max(pr,0),1);return peak*(minRatio+(1-minRatio)*0.5*(1+Math.cos(Math.PI*pr)))}const ds=Math.floor(total*(1-decayFrac));if(step<ds)return peak;return peak*Math.max(0,(total-step)/Math.max(1,total-ds))}
+function makeRun(cfg){// cfg: seed,peak,warm,sched,batch,wd,clip,opt,total
+  const data=makeData(400,cfg.seed);const p=initModel(cfg.seed+1);const r=mulberry32(cfg.seed+2);
+  const m=zeros(),v=zeros();let step=0;const hist=[];
+  function stepOnce(){const idx=[];for(let i=0;i<cfg.batch;i++)idx.push(Math.floor(r()*data.X.length));const{loss,g}=lossAndGrad(p,data.X,data.Y,idx);let gn=gradNorm(g);const raw=gn;if(cfg.clip>0&&gn>cfg.clip){const s=cfg.clip/gn;for(const k in g)for(let i=0;i<g[k].length;i++)g[k][i]*=s;gn=cfg.clip}
+    const lr=lrAt(step,cfg.total,cfg.peak,cfg.warm,cfg.sched);const t=step+1;
+    for(const k in p){const decay=(k[0]==="W")?cfg.wd:0;for(let i=0;i<p[k].length;i++){let u;if(cfg.opt==="adamw"){m[k][i]=0.9*m[k][i]+0.1*g[k][i];v[k][i]=0.95*v[k][i]+0.05*g[k][i]*g[k][i];const mh=m[k][i]/(1-Math.pow(0.9,t)),vh=v[k][i]/(1-Math.pow(0.95,t));u=mh/(Math.sqrt(vh)+1e-8)}else{m[k][i]=0.9*m[k][i]+g[k][i];u=m[k][i]}p[k][i]-=lr*(u+decay*p[k][i])}}
+    const full=(step%5===0)?fullLoss(p,data.X,data.Y):hist.length?hist[hist.length-1].full:loss;
+    hist.push({step,loss,full,lr,gn:raw});step++;return hist[hist.length-1]}
+  return{stepOnce,params:p,data,hist,cfg,get step(){return step}}
+}
+// ------------------------------------------------------------ UI
+const $=id=>document.getElementById(id);
+const TOTAL=600;
+function cfgFromUI(){ return {seed:+$("seed").value, opt:$("opt").value, sched:$("sched").value, peak:+Math.pow(10,+$("peak").value).toPrecision(2), warm:+$("warm").value, batch:Math.pow(2,+$("batch").value), wd:+$("wd").value, clip:+$("clip").value, total:TOTAL}; }
+function showVals(){ const c=cfgFromUI(); $("peakV").textContent=c.peak; $("warmV").textContent=c.warm; $("batchV").textContent=c.batch; $("wdV").textContent=c.wd.toFixed(2); $("clipV").textContent=c.clip?c.clip.toFixed(1):"off"; $("seedV").textContent=c.seed; }
+let run=null, ghost=null, playing=false, raf=null;
+function reset(){ if($("keep").checked && run && run.hist.length>10) ghost=run; run=makeRun(cfgFromUI()); playing=false; $("runBtn").textContent="▶ Run"; draw(); }
+function doSteps(n){ for(let i=0;i<n && run.step<TOTAL;i++) run.stepOnce(); if(run.step>=TOTAL){ playing=false; $("runBtn").textContent="▶ Run"; } draw(); }
+function loop(){ if(!playing) return; doSteps(6); if(playing) raf=requestAnimationFrame(loop); }
+$("runBtn").onclick=()=>{ if(run.step>=TOTAL) reset(); playing=!playing; $("runBtn").textContent=playing?"⏸ Pause":"▶ Run"; if(playing) loop(); };
+$("stepBtn").onclick=()=>{ playing=false; $("runBtn").textContent="▶ Run"; doSteps(10); };
+$("resetBtn").onclick=reset;
+for(const id of ["opt","sched","peak","warm","batch","wd","clip","seed"]) $(id).addEventListener("input",()=>{ showVals(); reset(); });
+const PRESETS={
+  healthy:{opt:"adamw",sched:"cosine",peak:-1.52,warm:50,batch:5,wd:0,clip:0,seed:1},
+  spike:{opt:"sgd",sched:"cosine",peak:0.176,warm:0,batch:5,wd:0,clip:0,seed:1},
+  adamnowarm:{opt:"adamw",sched:"cosine",peak:-0.52,warm:0,batch:5,wd:0,clip:0,seed:2},
+  tinybatch:{opt:"sgd",sched:"cosine",peak:0,warm:0,batch:3,wd:0,clip:0,seed:1},
+  fixwarm:{warm:100}, fixclip:{clip:1.0}, fixlr:{peak:null},
+};
+document.querySelectorAll("[data-p]").forEach(b=>b.onclick=()=>{ const p=PRESETS[b.dataset.p]; for(const k in p){ if(k==="peak"&&p[k]===null){ $("peak").value=(+$("peak").value-0.477).toFixed(2); } else $(k).value=p[k]; } showVals(); reset(); playing=true; $("runBtn").textContent="⏸ Pause"; loop(); });
+
+// ------------------------------------------------------------ drawing
+function fmt(x){ return x>=100?x.toFixed(0):x>=1?x.toFixed(2):x.toExponential(1); }
+function series(h,key){ return h.map(p=>p[key]); }
+function drawLine(ctx,W,H,pad,ys,xmax,ylo,yhi,log,color,width,alpha){
+  ctx.save(); ctx.globalAlpha=alpha; ctx.strokeStyle=color; ctx.lineWidth=width; ctx.beginPath(); let started=false;
+  for(let i=0;i<ys.length;i++){ let v=ys[i]; if(!isFinite(v)){ continue; } if(log) v=Math.log10(Math.max(v,1e-6)); const x=pad.l+i/xmax*(W-pad.l-pad.r), y=H-pad.b-(v-ylo)/(yhi-ylo)*(H-pad.t-pad.b); const yc=Math.min(Math.max(y,pad.t-2),H-pad.b+2); if(!started){ctx.moveTo(x,yc);started=true;} else ctx.lineTo(x,yc); }
+  ctx.stroke(); ctx.restore();
+}
+function axes(ctx,W,H,pad,ylo,yhi,log,ticks,warm,xmax){
+  ctx.clearRect(0,0,W,H); ctx.fillStyle="#fff"; ctx.fillRect(0,0,W,H);
+  if(warm>0){ ctx.fillStyle="rgba(245,158,11,0.10)"; ctx.fillRect(pad.l,pad.t,warm/xmax*(W-pad.l-pad.r),H-pad.t-pad.b); }
+  ctx.strokeStyle="#e2e8f0"; ctx.fillStyle="#64748b"; ctx.font="11px system-ui"; ctx.textAlign="right";
+  for(const t of ticks){ const v=log?Math.log10(t):t; const y=H-pad.b-(v-ylo)/(yhi-ylo)*(H-pad.t-pad.b); if(y<pad.t||y>H-pad.b) continue; ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke(); ctx.fillText(fmt(t),pad.l-4,y+4); }
+  ctx.textAlign="center"; for(const s of [0,200,400,600]){ const x=pad.l+s/xmax*(W-pad.l-pad.r); ctx.fillText(s,x,H-4); }
+}
+function draw(){
+  const h=run.hist, c=run.cfg, pad={l:44,r:8,t:8,b:18};
+  // loss
+  { const cv=$("lossC"), ctx=cv.getContext("2d"), W=cv.width, H=cv.height; const ylo=-3, yhi=2;
+    axes(ctx,W,H,pad,ylo,yhi,true,[0.001,0.01,0.1,1,10,100],c.warm,TOTAL);
+    if(ghost){ drawLine(ctx,W,H,pad,series(ghost.hist,"full"),TOTAL,ylo,yhi,true,"#94a3b8",2,0.7); }
+    drawLine(ctx,W,H,pad,series(h,"loss"),TOTAL,ylo,yhi,true,"#2563eb",1,0.3);
+    drawLine(ctx,W,H,pad,series(h,"full"),TOTAL,ylo,yhi,true,"#2563eb",2.2,1);
+  }
+  { const cv=$("lrC"), ctx=cv.getContext("2d"), W=cv.width, H=cv.height; const full=[]; for(let s=0;s<TOTAL;s++) full.push(lrAt(s,TOTAL,c.peak,c.warm,c.sched)); const yhi=c.peak*1.1;
+    axes(ctx,W,H,{l:44,r:8,t:8,b:18},0,yhi,false,[0,c.peak/2,c.peak],c.warm,TOTAL);
+    drawLine(ctx,W,H,{l:44,r:8,t:8,b:18},full,TOTAL,0,yhi,false,"#cbd5e1",1.5,1);
+    drawLine(ctx,W,H,{l:44,r:8,t:8,b:18},series(h,"lr"),TOTAL,0,yhi,false,"#7c3aed",2,1);
+  }
+  { const cv=$("gnC"), ctx=cv.getContext("2d"), W=cv.width, H=cv.height; const ylo=-2, yhi=2;
+    axes(ctx,W,H,{l:44,r:8,t:8,b:18},ylo,yhi,true,[0.01,0.1,1,10,100],c.warm,TOTAL);
+    if(c.clip>0){ const y=H-18-(Math.log10(c.clip)-ylo)/(yhi-ylo)*(H-26); ctx.strokeStyle="#dc2626"; ctx.setLineDash([4,3]); ctx.beginPath(); ctx.moveTo(44,y); ctx.lineTo(W-8,y); ctx.stroke(); ctx.setLineDash([]); }
+    if(ghost) drawLine(ctx,W,H,{l:44,r:8,t:8,b:18},series(ghost.hist,"gn"),TOTAL,ylo,yhi,true,"#94a3b8",1.5,0.7);
+    drawLine(ctx,W,H,{l:44,r:8,t:8,b:18},series(h,"gn"),TOTAL,ylo,yhi,true,"#16a34a",1.5,1);
+  }
+  drawBoundary();
+  const last=h[h.length-1]; const maxFull=h.length?Math.max(...series(h,"full")):0; const init=h.length?h[0].full:NaN;
+  const spiked=h.length>5 && maxFull>Math.max(1.0,1.4*init);
+  $("status").innerHTML=`step ${run.step}/${TOTAL}   lr ${last?last.lr.toExponential(2):"—"}\nminibatch loss ${last?fmt(last.loss):"—"}   full-data loss ${last?fmt(last.full):"—"}\ngrad norm ${last?fmt(last.gn):"—"}   max full loss so far ${fmt(maxFull)}\n`+
+    (spiked?`<span class="warn">loss spike: full loss rose to ${fmt(maxFull)} (started at ${fmt(init)})</span>`:h.length>50&&last.full<0.05?`<span class="good">converging: no spike</span>`:"")+
+    (ghost?`\n<span style="color:#64748b">ghost run: ${ghost.cfg.opt}, peak ${ghost.cfg.peak}, warmup ${ghost.cfg.warm}, clip ${ghost.cfg.clip||"off"} → loss ${fmt(ghost.hist[ghost.hist.length-1].full)} at step ${ghost.step}</span>`:"");
+}
+function drawBoundary(){
+  const cv=$("bd"), ctx=cv.getContext("2d"), n=60, W=cv.width, cell=W/n; const img=ctx.createImageData(W,W);
+  for(let i=0;i<n;i++) for(let j=0;j<n;j++){ const x=-2+4*(j+0.5)/n, y=2-4*(i+0.5)/n; const p=sigm(forward(run.params,[x,y]).z); const r=Math.round(255-p*(255-37)), g=Math.round(255-p*(255-99)), b=Math.round(255-p*(255-235));
+    for(let dy=0;dy<cell;dy++) for(let dx=0;dx<cell;dx++){ const k=4*((Math.floor(i*cell)+dy)*W+Math.floor(j*cell)+dx); img.data[k]=r; img.data[k+1]=g; img.data[k+2]=b; img.data[k+3]=255; } }
+  ctx.putImageData(img,0,0);
+  for(let i=0;i<run.data.X.length;i++){ const [x,y]=run.data.X[i]; ctx.beginPath(); ctx.arc((x+2)/4*W,(2-y)/4*W,2.2,0,6.283); ctx.fillStyle=run.data.Y[i]?"#1d4ed8":"#f59e0b"; ctx.fill(); }
+}
+showVals(); reset(); playing=true; $("runBtn").textContent="⏸ Pause"; loop();
+</script>
+</body>
+</html>

@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Data pipeline — what gets dropped and why</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page-specific */
+.stages{display:flex;gap:6px;overflow-x:auto;padding:4px 0 10px}
+.stage{flex:0 0 118px;border:1px solid var(--line);border-radius:10px;background:#fff;padding:8px 6px;cursor:pointer;text-align:left;color:var(--ink);display:flex;flex-direction:column;gap:6px;min-height:150px}
+.stage:hover{border-color:var(--blue)}.stage.active{border-color:var(--blue);box-shadow:0 0 0 2px #bfdbfe}
+.stage .n{font-size:11px;color:var(--muted)}.stage .t{font-size:13px;font-weight:600;line-height:1.2}
+.stage .cnt{font-size:20px;font-weight:700}.stage .drop{font-size:11px;color:var(--red)}.stage .drop.ok{color:var(--green)}
+.docs{display:flex;flex-wrap:wrap;gap:3px}
+.d{width:24px;height:20px;border-radius:4px;font-size:10px;display:inline-flex;align-items:center;justify-content:center;background:#dcfce7;color:#14532d;font-family:ui-monospace,monospace}
+.d.gone{background:#fee2e2;color:#7f1d1d;text-decoration:line-through}.d.rw{background:#fef3c7;color:#78350f}
+.doclist{display:grid;gap:6px;min-width:0}.grid>*{min-width:0}
+.doc{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;cursor:pointer}
+.doc:hover{border-color:var(--blue)}.doc.sel{border-color:var(--blue);box-shadow:0 0 0 2px #bfdbfe}
+.doc .id{font-family:ui-monospace,monospace;font-weight:700;margin-right:6px}.doc .tag{font-size:11px;color:var(--muted);float:right}
+.doc .txt{color:#334155;white-space:pre-wrap;overflow-wrap:anywhere;max-height:3.1em;overflow:hidden}
+.reason{border-left:3px solid var(--red);padding:6px 10px;margin:6px 0;background:#fff7f7;border-radius:0 8px 8px 0;font-size:14px}
+.reason.rw{border-color:var(--orange);background:#fffbeb}.reason.ok{border-color:var(--green);background:#f0fdf4}
+.kv{font-family:ui-monospace,monospace;font-size:12px;color:#475569}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;background:#f1f5f9;color:#334155;margin-left:4px}
+small{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Pretraining data pipeline <a class="chip" href="../chapters/08-pretraining-data.md">Chapter 08</a></h1>
+  <div class="sub">Twelve documents go in. Each stage runs a real rule (implemented below in JavaScript, mirroring <code>llm/data.py</code>) and drops or rewrites what fails it.</div>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Click a stage column to see exactly which documents it dropped and which rule fired, with the numbers. Then pick a document, edit its text and press <em>Re-run</em> — can you rescue the too-short doc, or sneak the spam past the heuristics? The funnel at the bottom counts survivors after every stage.</div>
+
+<div class="panel">
+  <div class="stages" id="stages"></div>
+  <div id="detail"></div>
+</div>
+
+<div class="grid two">
+  <div class="panel">
+    <strong>Documents</strong> <small>(click one to edit it)</small>
+    <div class="doclist" id="doclist" style="margin-top:8px"></div>
+  </div>
+  <div class="panel">
+    <strong>Edit &amp; re-run</strong>
+    <div class="row" style="margin:8px 0">
+      <label for="sel">Document</label>
+      <select id="sel" style="width:auto;max-width:100%"></select>
+      <button class="secondary" id="addBtn" type="button">+ Add new doc</button>
+    </div>
+    <textarea id="editor" rows="7" aria-label="Document text"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button id="runBtn" type="button">Re-run pipeline</button>
+      <button class="secondary" id="resetBtn" type="button">Reset all</button>
+    </div>
+    <div id="docfate" style="margin-top:10px;font-size:14px"></div>
+    <details style="margin-top:10px"><summary>Eval questions used for decontamination</summary>
+      <ul id="evalq" style="font-size:13px"></ul>
+      <small>Any document sharing an 8-word n-gram with one of these is dropped (GPT-3/Llama reports use 8–13 words).</small>
+    </details>
+  </div>
+</div>
+
+<div class="panel">
+  <strong>Funnel: documents surviving after each stage</strong>
+  <div style="overflow-x:auto"><svg id="funnel" width="900" height="230" viewBox="0 0 900 230" role="img" aria-label="Funnel chart of document counts per stage"></svg></div>
+</div>
+
+<div class="box challenge"><strong>Challenge.</strong> Craft a spam document that <em>passes</em> the heuristic filter (no banned phrases, symbol ratio ≤ 0.1, no repeated lines or 3-grams, ≥ 5 words, enough English stopwords) but is <em>dropped</em> by the quality classifier (score &lt; 0.5). Then explain why a learned classifier is used in addition to hand rules.
+<details><summary>Show answer</summary>Something like <em>"Get the best price on cheap laptops with free shipping and the lowest deals of the year. Order today and save with our coupon code."</em> has plenty of stopwords, no banned phrase and no repetition, so every heuristic passes — but its vocabulary (price, cheap, shipping, deals, coupon, order) matches the classifier's "junk" training examples, so its score falls below 0.5. Hand rules catch <em>structural</em> junk (repetition, symbols, boilerplate strings); a classifier catches <em>semantic</em> junk that looks well-formed. FineWeb-Edu and DCLM do exactly this at scale: an LLM labels ~500k pages, a small model imitates it, and the small model scores billions of pages.</details></div>
+
+<footer><a href="index.html">← All interactives</a> · Rules mirror <code>course/llm/data.py</code> (normalise → language → heuristics → PII → exact dedup → MinHash → classifier → decontaminate).</footer>
+</div>
+
+<script>
+'use strict';
+// ------------------------------------------------------------ sample corpus
+const STORY_A = "Mia had a red kite. One sunny day Mia took the kite to the park. At the park, Mia met Leo. Leo was sad because Leo lost a ball. Mia and Leo looked for the ball near the park. A dog was sitting on it!";
+const STORY_B = "Ava had a blue boat. One windy day Ava took the boat to the lake. At the lake, Ava met Sam. Sam was shy because Sam lost a drum. The frog gave the drum back. Sam was very happy and said thank you.\nQuestion: What color is Ava's boat?\nAnswer: Ava's boat is blue.";
+const EVAL_QUESTIONS = ["Where did Leo take the blue boat on the sunny day?", "Who did Ava meet at the market on the rainy day?"];
+const SEED_DOCS = [
+  {tag:"clean story", text: STORY_A},
+  {tag:"clean story + Q&A", text: STORY_B},
+  {tag:"clean story", text: "Zoe and Max played with the green cup until the sun went down. Zoe went home and put the cup in a pink box. The end. It was foggy at the farm. Max wore a brown hat and felt calm."},
+  {tag:"exact duplicate of D1", text: STORY_A},
+  {tag:"near duplicate of D2 (one word changed)", text: STORY_B.replace("windy day", "rainy day")},
+  {tag:"spam", text: "Click here to subscribe!!! BUY NOW >>> free free free\nLOGIN | REGISTER | CART (0) | HOME | HOME | HOME\nClick here to subscribe!!! BUY NOW >>> free free free"},
+  {tag:"non-English", text: "Der Hund läuft schnell durch den Park und bellt laut. El gato duerme en la cama toda la tarde. Le chat mange du poisson près de la rivière."},
+  {tag:"clean story with PII", text: "Lily had a yellow lamp. One cold day Lily took the lamp to the cave. At the cave, Lily met Ben. Ben was proud because Ben found a coin. Contact lily@example.com or call 555-0142-7781 for the lamp."},
+  {tag:"too short", text: "The end."},
+  {tag:"eval-contaminated", text: "Ivy read a quiz at the school. Where did Leo take the blue boat on the sunny day? Leo took the boat to the lake, said Ivy. Everyone at the school clapped and felt happy."},
+  {tag:"clean arithmetic", text: "What is 12 + 7?\nAnswer: 12 + 7 = 19."},
+  {tag:"SEO junk (well-formed)", text: "Get the best price on cheap laptops with free shipping and the lowest deals of the year. Order today and save with our coupon code for extra discount deals on every brand."},
+];
+let docs = [];
+function resetDocs(){ docs = SEED_DOCS.map((d,i)=>({id:"D"+(i+1), tag:d.tag, text:d.text})); }
+
+// ------------------------------------------------------------ stage rules (mirror data.py)
+function normalizeText(t){
+  t = t.normalize("NFKC").replace(/\r\n/g,"\n").replace(/[ \t]+/g," ").replace(/\n{3,}/g,"\n\n");
+  return t.trim();
+}
+const STOP = new Set("the a an and or but of to in on at for with was were is are it he she they his her their this that had has have not very then went one two three what where who how did do".split(" "));
+function englishScore(t){
+  const w = (t.toLowerCase().match(/[a-z']+/g)||[]);
+  if(!w.length) return 0;
+  let s=0; for(const x of w) if(STOP.has(x)) s++;
+  return s/w.length;
+}
+function gopherReason(t){
+  const words = t.split(/\s+/).filter(Boolean);
+  if(words.length < 5) return {reason:"too_short", detail:`${words.length} words < 5`};
+  if(words.length > 2000) return {reason:"too_long", detail:`${words.length} words > 2000`};
+  const mean = words.reduce((a,w)=>a+w.length,0)/words.length;
+  if(!(mean>=2 && mean<=12)) return {reason:"odd_word_length", detail:`mean word length ${mean.toFixed(1)} outside [2,12]`};
+  let sym=0; for(const ch of t) if("#$%@>|{}[]".includes(ch)) sym++;
+  if(sym/Math.max(1,words.length) > 0.1) return {reason:"symbol_heavy", detail:`${sym} symbols / ${words.length} words = ${(sym/words.length).toFixed(2)} > 0.1`};
+  const lines = t.split("\n").filter(l=>l.trim());
+  if(lines.length){ const dup = (lines.length-new Set(lines).size)/lines.length; if(dup>0.3) return {reason:"repeated_lines", detail:`${(dup*100).toFixed(0)}% of lines are repeats > 30%`}; }
+  if(words.length>=8){
+    const tri=[]; for(let i=0;i<words.length-2;i++) tri.push(words[i]+" "+words[i+1]+" "+words[i+2]);
+    const rep=(tri.length-new Set(tri).size)/tri.length; if(rep>0.3) return {reason:"repetitive", detail:`${(rep*100).toFixed(0)}% of word 3-grams repeat > 30%`};
+  }
+  const low=t.toLowerCase();
+  for(const b of ["click here","subscribe","cookie policy","buy now"]) if(low.includes(b)) return {reason:"boilerplate", detail:`contains "${b}"`};
+  return null;
+}
+const EMAIL_RE=/[\w.+-]+@[\w-]+\.[\w.]+/g, PHONE_RE=/\b\d{3}-\d{4}-\d{4}\b|\b\d{3}-\d{3}-\d{4}\b|\(\d{3}\) ?\d{3}-\d{4}/g;
+function scrubPII(t){ let n=0; t=t.replace(EMAIL_RE,()=>{n++;return "<EMAIL>";}); t=t.replace(PHONE_RE,()=>{n++;return "<PHONE>";}); return {text:t,hits:n}; }
+function fnv1a(s){ let h=0x811c9dc5; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,0x01000193)>>>0; } return h.toString(16).padStart(8,"0"); }
+function shingles(t,n=3){ const w=t.toLowerCase().match(/\w+/g)||[]; const s=new Set(); for(let i=0;i<Math.max(1,w.length-n+1);i++) s.add(w.slice(i,i+n).join(" ")); return s; }
+function jaccard(a,b){ let inter=0; for(const x of a) if(b.has(x)) inter++; const uni=a.size+b.size-inter; return inter/Math.max(1,uni); }
+// MinHash estimate (64 hash functions) — what production LSH actually compares
+const PRIME=2147483647, NH=64, HA=[], HB=[];
+{ let s=12345; const rnd=()=>{ s=(Math.imul(s,1103515245)+12345)>>>0; return s; }; for(let i=0;i<NH;i++){ HA.push(1+rnd()%(PRIME-1)); HB.push(rnd()%PRIME);} }
+function minhash(set){ const sig=new Array(NH).fill(PRIME); for(const sh of set){ const h=parseInt(fnv1a(sh),16)%PRIME; for(let i=0;i<NH;i++){ const v=Number((BigInt(h)*BigInt(HA[i])+BigInt(HB[i]))%BigInt(PRIME)); if(v<sig[i]) sig[i]=v; } } return sig; }
+function sigSim(a,b){ let m=0; for(let i=0;i<NH;i++) if(a[i]===b[i]) m++; return m/NH; }
+function ngrams(t,n){ const w=t.toLowerCase().match(/\w+/g)||[]; const s=new Set(); for(let i=0;i<=w.length-n;i++) s.add(w.slice(i,i+n).join(" ")); return s; }
+
+// ------------------------------------------------------------ tiny quality classifier (logistic regression on hashed bag of words)
+const NF=4096; const W=new Float64Array(NF); let Bb=0;
+function featurize(t){ const x=new Float64Array(NF); const toks=t.toLowerCase().match(/\w+|[^\w\s]/g)||[]; for(const w of toks) x[parseInt(fnv1a(w),16)%NF]+=1; let n=0; for(let i=0;i<NF;i++) n+=x[i]*x[i]; n=Math.max(1,Math.sqrt(n)); for(let i=0;i<NF;i++) x[i]/=n; return x; }
+function clfScore(t){ const x=featurize(t); let z=Bb; for(let i=0;i<NF;i++) z+=x[i]*W[i]; return 1/(1+Math.exp(-z)); }
+function trainClassifier(){
+  const NAMES=["Mia","Leo","Ava","Sam","Zoe","Max","Lily","Ben","Ivy","Tom","Ruby","Jack"], OBJ=["kite","ball","book","hat","cake","boat","drum","lamp","coin","cup","bell","map"],
+        COL=["red","blue","green","yellow","pink","purple","orange","brown"], PL=["park","beach","garden","forest","river","hill","farm","market","school","lake"],
+        AN=["dog","cat","bird","frog","duck","fox","owl","rabbit"], FE=["happy","sad","proud","sleepy","brave","calm","excited","shy"], WE=["sunny","rainy","windy","cold","warm","foggy"];
+  const T=["{A} had a {c} {o}. One {w} day {A} took the {o} to the {p}.","At the {p}, {A} met {B}. {B} was {f} because {B} lost a {o2}.","{A} and {B} looked for the {o2} near the {p}. A {an} was sitting on it!","The {an} gave the {o2} back. {B} was very {f} and said thank you.","Then {A} and {B} played with the {c} {o} until the sun went down.","{A} went home and put the {o} in a {c} box. The end.","It was {w} at the {p}. {A} wore a {c} hat and felt {f}.","{A} counted the {o}s: one, two, three. There were three {o}s.","Question: What color is {A}'s {o}?\nAnswer: {A}'s {o} is {c}.","Question: Who did {A} meet at the {p}?\nAnswer: {A} met {B} at the {p}."];
+  let s=7; const rnd=()=>{ s=(Math.imul(s,1103515245)+12345)>>>0; return (s>>>8)/16777216; }; const pick=a=>a[Math.floor(rnd()*a.length)];
+  const pos=[], neg=[];
+  for(let i=0;i<40;i++){ const v={A:pick(NAMES),B:pick(NAMES),o:pick(OBJ),o2:pick(OBJ),c:pick(COL),p:pick(PL),an:pick(AN),f:pick(FE),w:pick(WE)}; const n=2+Math.floor(rnd()*3); const sents=[]; for(let j=0;j<n;j++) sents.push(pick(T).replace(/\{(\w+)\}/g,(m,k)=>v[k])); pos.push(sents.join(" ")); }
+  for(let i=0;i<12;i++){ const a=Math.floor(rnd()*99), b=Math.floor(rnd()*99); pos.push(rnd()<0.5?`What is ${a} + ${b}?\nAnswer: ${a} + ${b} = ${a+b}.`:`${a} + ${b} = ${a+b}`); }
+  const junk=["Click here to subscribe!!! BUY NOW >>> free free free","LOGIN | REGISTER | CART (0) | HOME | HOME | HOME","Cookie policy: we use cookies. Accept. Accept. Accept.","$$$ WIN BIG $$$ !!!! ##### @@@@@ %%%%",
+    "Best price guaranteed on all laptops, phones and tablets. Free shipping on orders over $50. Shop now and save.","Cheap deals, discount coupon codes and daily offers. Order today for the lowest price of the year.","Limited time offer: save big on brand name electronics with our exclusive coupon. Free returns, free shipping.",
+    "Home About Contact Privacy Terms Sitemap Login Register Cart Checkout Newsletter","Posted by admin on 12/03/2019 in Uncategorized. Tags: none. Comments: 0. Share this post on social media.","Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore",
+    "Top 10 best cheap hosting plans compared: price, discount, deals, bonus, offer, sale, promo code, coupon.","Watch online free streaming download full HD movie 2019 episode 1 2 3 4 5 no registration","This website uses cookies to improve your experience. By continuing you agree to our privacy policy and terms of service.",
+    "Casino bonus free spins deposit welcome offer promo code claim now best odds betting sportsbook","Buy cheap generic pills online with free shipping and discreet delivery, best price, order now, no prescription","Sale sale sale: discount up to 70% on shoes, bags and accessories. Brand outlet store online. Free shipping worldwide.",
+    "Error 404: page not found. The requested URL was not found on this server. Return to the home page.","Follow us on Facebook, Twitter and Instagram. Subscribe to our newsletter for the latest deals and offers.","Copyright 2020 All rights reserved. Terms of use. Privacy policy. Do not sell my personal information.","Product description: brand new item in original box. Ships within 24 hours. Money back guarantee. Best price online."];
+  for(const j of junk) neg.push(j);
+  const X=[...pos,...neg].map(featurize), y=[...pos.map(()=>1),...neg.map(()=>0)]; const n=y.length;
+  for(let ep=0;ep<200;ep++){ const g=new Float64Array(NF); let gb=0; for(let i=0;i<n;i++){ const x=X[i]; let z=Bb; for(let k=0;k<NF;k++) z+=x[k]*W[k]; const p=1/(1+Math.exp(-z)); const d=p-y[i]; gb+=d; for(let k=0;k<NF;k++) g[k]+=d*x[k]; } for(let k=0;k<NF;k++) W[k]-=2.0*g[k]/n; Bb-=2.0*gb/n; }
+  return {npos:pos.length, nneg:neg.length};
+}
+const TRAIN = trainClassifier();
+
+// ------------------------------------------------------------ run pipeline
+const STAGE_META=[
+  {key:"normalise", title:"Normalise", rule:"NFKC unicode normalisation, collapse runs of spaces/tabs and blank lines, trim. Never drops."},
+  {key:"language", title:"Language ID", rule:"Fraction of words that are English stopwords must be ≥ 0.08 (real pipelines use fastText; this stopword heuristic is the miniature)."},
+  {key:"heuristics", title:"Heuristic filters", rule:"Gopher/C4 style rules: 5 ≤ words ≤ 2000; mean word length in [2,12]; symbols/words ≤ 0.1; repeated lines ≤ 30%; repeated word 3-grams ≤ 30%; no boilerplate phrases (click here, subscribe, cookie policy, buy now)."},
+  {key:"pii", title:"PII scrub", rule:"Rewrite (not drop): emails → <EMAIL>, phone numbers → <PHONE>, by regex."},
+  {key:"exact", title:"Exact dedup", rule:"Hash of lower-cased, trimmed text; a document whose hash was seen before is dropped."},
+  {key:"minhash", title:"MinHash dedup", rule:"Word 3-gram shingles; drop if Jaccard similarity to an earlier kept document ≥ 0.8. A 64-function MinHash signature estimates Jaccard; LSH banding finds candidates without comparing every pair."},
+  {key:"classifier", title:"Quality classifier", rule:`Logistic regression on hashed bag-of-words (4096 features), trained here in your browser on ${TRAIN.npos} clean Storyland docs vs ${TRAIN.nneg} junk snippets. Drop if P(good) < 0.5. Miniature of FineWeb-Edu / DCLM classifiers.`},
+  {key:"decontam", title:"Decontaminate", rule:"Drop any document that shares an 8-word n-gram with an evaluation question."},
+];
+let result=null;
+function runPipeline(){
+  const stages=[]; let live=docs.map(d=>({...d, orig:d.text}));
+  const push=(key, keptDocs, dropped, rewritten)=>stages.push({key, kept:keptDocs.map(d=>d.id), dropped, rewritten:rewritten||[]});
+  // 1 normalise
+  live=live.map(d=>({...d, text:normalizeText(d.text)}));
+  push("normalise", live, [], live.filter(d=>d.text!==d.orig).map(d=>({id:d.id, note:"whitespace/unicode normalised"})));
+  // 2 language
+  let kept=[], dropped=[];
+  for(const d of live){ const s=englishScore(d.text); if(s>=0.08) kept.push(d); else dropped.push({id:d.id, reason:"not_english", detail:`stopword ratio ${s.toFixed(3)} < 0.08`}); }
+  live=kept; push("language",live,dropped);
+  // 3 heuristics
+  kept=[]; dropped=[];
+  for(const d of live){ const r=gopherReason(d.text); if(!r) kept.push(d); else dropped.push({id:d.id, reason:r.reason, detail:r.detail}); }
+  live=kept; push("heuristics",live,dropped);
+  // 4 pii
+  const rw=[]; live=live.map(d=>{ const {text,hits}=scrubPII(d.text); if(hits) rw.push({id:d.id, note:`${hits} PII span(s) replaced → "${text.slice(-60)}"`}); return {...d,text}; });
+  push("pii",live,[],rw);
+  // 5 exact dedup
+  kept=[]; dropped=[]; const seen=new Map();
+  for(const d of live){ const h=fnv1a(d.text.trim().toLowerCase()); if(seen.has(h)) dropped.push({id:d.id, reason:"exact_duplicate", detail:`hash ${h} already seen for ${seen.get(h)}`}); else { seen.set(h,d.id); kept.push(d);} }
+  live=kept; push("exact",live,dropped);
+  // 6 minhash
+  kept=[]; dropped=[]; const shs=[], sigs=[];
+  for(const d of live){ const s=shingles(d.text), sg=minhash(s); let hit=null; for(let j=0;j<kept.length;j++){ const jac=jaccard(s,shs[j]); if(jac>=0.8){ hit={other:kept[j].id, jac, est:sigSim(sg,sigs[j])}; break; } }
+    if(hit) dropped.push({id:d.id, reason:"near_duplicate", detail:`Jaccard(3-gram shingles) with ${hit.other} = ${hit.jac.toFixed(3)} ≥ 0.8 (MinHash estimate ${hit.est.toFixed(3)})`}); else { kept.push(d); shs.push(s); sigs.push(sg);} }
+  live=kept; push("minhash",live,dropped);
+  // 7 classifier
+  kept=[]; dropped=[]; const scores={};
+  for(const d of live){ const p=clfScore(d.text); scores[d.id]=p; if(p>=0.5) kept.push(d); else dropped.push({id:d.id, reason:"low_quality", detail:`P(good) = ${p.toFixed(3)} < 0.5`}); }
+  live=kept; push("classifier",live,dropped); stages[stages.length-1].scores=scores;
+  // 8 decontaminate
+  const banned=new Set(); for(const q of EVAL_QUESTIONS) for(const g of ngrams(q,8)) banned.add(g);
+  kept=[]; dropped=[];
+  for(const d of live){ let hit=null; for(const g of ngrams(d.text,8)) if(banned.has(g)){hit=g;break;} if(hit) dropped.push({id:d.id, reason:"eval_overlap", detail:`shares 8-gram "${hit}" with an eval question`}); else kept.push(d); }
+  live=kept; push("decontam",live,dropped);
+  result={stages, final:live};
+  return result;
+}
+
+// ------------------------------------------------------------ rendering
+let activeStage=2, selDoc=0;
+const $=id=>document.getElementById(id);
+function esc(s){ return s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function fateOf(id){ for(let i=0;i<result.stages.length;i++){ const st=result.stages[i]; const d=st.dropped.find(x=>x.id===id); if(d) return {stage:i, ...d}; } return null; }
+function renderStages(){
+  const box=$("stages"); box.innerHTML="";
+  let prev=docs.map(d=>d.id);
+  result.stages.forEach((st,i)=>{
+    const b=document.createElement("button"); b.type="button"; b.className="stage"+(i===activeStage?" active":""); b.setAttribute("aria-pressed", i===activeStage);
+    const ndrop=st.dropped.length, nrw=st.rewritten.length;
+    let chips=""; for(const id of prev){ const gone=st.dropped.find(x=>x.id===id); const rw=st.rewritten.find(x=>x.id===id); chips+=`<span class="d${gone?" gone":rw?" rw":""}" title="${id}${gone?": "+gone.reason:rw?": rewritten":""}">${id}</span>`; }
+    b.innerHTML=`<div class="n">stage ${i+1}</div><div class="t">${STAGE_META[i].title}</div><div class="cnt">${st.kept.length}<small style="font-size:11px;font-weight:400"> kept</small></div><div class="drop ${ndrop?"":"ok"}">${ndrop?"−"+ndrop+" dropped":nrw?nrw+" rewritten":"nothing dropped"}</div><div class="docs">${chips}</div>`;
+    b.onclick=()=>{activeStage=i; renderStages(); renderDetail();};
+    box.appendChild(b); prev=st.kept;
+  });
+}
+function renderDetail(){
+  const st=result.stages[activeStage], meta=STAGE_META[activeStage];
+  let h=`<h3 style="margin:8px 0 4px">${activeStage+1}. ${meta.title} <span class="pill">${st.kept.length} kept</span> <span class="pill">${st.dropped.length} dropped</span>${st.rewritten.length?`<span class="pill">${st.rewritten.length} rewritten</span>`:""}</h3><div style="font-size:14px;color:#334155">${meta.rule}</div>`;
+  if(st.dropped.length) for(const d of st.dropped) h+=`<div class="reason"><strong>${d.id}</strong> dropped — rule <code>${d.reason}</code>: ${esc(d.detail)}<div class="kv">${esc(docs.find(x=>x.id===d.id).text.slice(0,120))}${docs.find(x=>x.id===d.id).text.length>120?"…":""}</div></div>`;
+  if(st.rewritten.length) for(const r of st.rewritten) h+=`<div class="reason rw"><strong>${r.id}</strong> rewritten — ${esc(r.note)}</div>`;
+  if(meta.key==="classifier"){ h+=`<div class="reason ok" style="font-size:13px">Scores of documents reaching this stage: `+Object.entries(st.scores).map(([id,p])=>`${id} <code>${p.toFixed(2)}</code>`).join(" · ")+`</div>`; }
+  if(meta.key==="minhash"){ h+=`<div class="reason ok" style="font-size:13px">Why 3-gram shingles: one changed word in a 50-word story alters only 3 shingles, so the near-duplicate still scores ≈ 0.85; genuinely different stories share almost none.</div>`; }
+  if(!st.dropped.length && !st.rewritten.length) h+=`<div class="reason ok">Nothing removed at this stage for the current corpus.</div>`;
+  $("detail").innerHTML=h;
+}
+function renderDocs(){
+  const l=$("doclist"); l.innerHTML=""; const s=$("sel"); s.innerHTML="";
+  docs.forEach((d,i)=>{
+    const f=fateOf(d.id);
+    const div=document.createElement("div"); div.className="doc"+(i===selDoc?" sel":""); div.tabIndex=0; div.setAttribute("role","button");
+    div.innerHTML=`<span class="id">${d.id}</span>${f?`<span class="pill" style="background:#fee2e2;color:#7f1d1d">dropped @ ${STAGE_META[f.stage].title}</span>`:`<span class="pill" style="background:#dcfce7;color:#14532d">survives</span>`}<span class="tag">${esc(d.tag)}</span><div class="txt">${esc(d.text)}</div>`;
+    const go=()=>{selDoc=i; $("sel").value=i; $("editor").value=docs[i].text; renderDocs();};
+    div.onclick=go; div.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault();go();} };
+    l.appendChild(div);
+    const o=document.createElement("option"); o.value=i; o.textContent=d.id+" — "+d.tag; s.appendChild(o);
+  });
+  s.value=selDoc;
+  const d=docs[selDoc], f=fateOf(d.id);
+  $("docfate").innerHTML = f ? `<strong>${d.id}</strong> is dropped at stage ${f.stage+1} (<em>${STAGE_META[f.stage].title}</em>) by rule <code>${f.reason}</code>: ${esc(f.detail)}` : `<strong>${d.id}</strong> survives every stage. Classifier score ${(clfScore(normalizeText(scrubPII(d.text).text))).toFixed(2)}, stopword ratio ${englishScore(d.text).toFixed(2)}.`;
+}
+function renderFunnel(){
+  const svg=$("funnel"); const counts=[docs.length, ...result.stages.map(s=>s.kept.length)]; const labels=["raw", ...STAGE_META.map(m=>m.title)];
+  const max=Math.max(...counts,1), W=900, left=40, bw=(W-left-20)/counts.length, H=230, top=20, bh=140; let h="";
+  h+=`<line x1="${left}" y1="${top+bh}" x2="${W-10}" y2="${top+bh}" stroke="#cbd5e1"/>`;
+  counts.forEach((c,i)=>{ const x=left+i*bw+8, hh=c/max*bh, y=top+bh-hh; const col=i===0?"#94a3b8":(counts[i-1]>c?"#f59e0b":"#2563eb");
+    h+=`<rect x="${x}" y="${y}" width="${bw-16}" height="${hh}" rx="4" fill="${col}"/>`;
+    h+=`<text x="${x+(bw-16)/2}" y="${y-5}" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">${c}</text>`;
+    const words=labels[i].split(" "); words.forEach((wd,k)=>{ h+=`<text x="${x+(bw-16)/2}" y="${top+bh+16+k*13}" text-anchor="middle" font-size="11" fill="#475569">${wd}</text>`; }); });
+  h+=`<text x="${left}" y="${H-6}" font-size="12" fill="#64748b">Orange bars mark a stage that removed something. Real pipelines keep ~1–10% of raw Common Crawl.</text>`;
+  svg.innerHTML=h;
+}
+function renderAll(){ runPipeline(); renderStages(); renderDetail(); renderDocs(); renderFunnel(); }
+
+// ------------------------------------------------------------ wiring
+$("sel").onchange=e=>{ selDoc=+e.target.value; $("editor").value=docs[selDoc].text; renderDocs(); };
+$("runBtn").onclick=()=>{ docs[selDoc].text=$("editor").value; docs[selDoc].tag=docs[selDoc].tag.replace(/ \(edited\)$/,"")+" (edited)"; renderAll(); };
+$("resetBtn").onclick=()=>{ resetDocs(); selDoc=0; $("editor").value=docs[0].text; renderAll(); };
+$("addBtn").onclick=()=>{ docs.push({id:"D"+(docs.length+1), tag:"your doc", text:"Type a new document here, then press Re-run."}); selDoc=docs.length-1; $("editor").value=docs[selDoc].text; renderAll(); $("editor").focus(); };
+$("evalq").innerHTML=EVAL_QUESTIONS.map(q=>`<li>${esc(q)}</li>`).join("");
+resetDocs(); $("editor").value=docs[0].text; renderAll();
+</script>
+</body>
+</html>

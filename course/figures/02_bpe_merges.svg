@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560" viewBox="0 0 900 560" font-family="system-ui, sans-serif">
+<title>Byte-pair encoding, step by step, on the text &#x27;kites kite&#x27;</title>
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker></defs>
+<rect width="900" height="560" fill="#ffffff"/>
+<text x="450" y="28" font-size="15" fill="#0f172a" font-weight="bold" text-anchor="middle">BPE on the text  &quot;kites kite&quot;:  start from bytes, repeatedly merge the most frequent adjacent pair</text>
+<text x="20" y="62" font-size="11" fill="#64748b" font-weight="bold" text-anchor="start">step</text>
+<text x="120" y="62" font-size="11" fill="#64748b" font-weight="bold" text-anchor="start">pre-token 1: &quot;kites&quot;</text>
+<text x="330" y="62" font-size="11" fill="#64748b" font-weight="bold" text-anchor="start">pre-token 2: &quot; kite&quot;  (␣ = space)</text>
+<text x="560" y="62" font-size="11" fill="#64748b" font-weight="bold" text-anchor="start">adjacent-pair counts</text>
+<text x="700" y="62" font-size="11" fill="#64748b" font-weight="bold" text-anchor="start">action</text>
+<text x="20" y="100" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="start">0</text>
+<text x="40" y="100" font-size="10" fill="#64748b" font-weight="normal" text-anchor="start">bytes</text>
+<rect x="120" y="84" width="27" height="30" rx="5" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="133.5" y="104" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">k</text>
+<rect x="151" y="84" width="27" height="30" rx="5" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+<text x="164.5" y="104" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">i</text>
+<rect x="182" y="84" width="27" height="30" rx="5" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+<text x="195.5" y="104" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">t</text>
+<rect x="213" y="84" width="27" height="30" rx="5" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+<text x="226.5" y="104" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">e</text>
+<rect x="244" y="84" width="27" height="30" rx="5" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+<text x="257.5" y="104" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">s</text>
+<rect x="330" y="84" width="27" height="30" rx="5" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+<text x="343.5" y="104" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">␣</text>
+<rect x="361" y="84" width="27" height="30" rx="5" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="374.5" y="104" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">k</text>
+<rect x="392" y="84" width="27" height="30" rx="5" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+<text x="405.5" y="104" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">i</text>
+<rect x="423" y="84" width="27" height="30" rx="5" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+<text x="436.5" y="104" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">t</text>
+<rect x="454" y="84" width="27" height="30" rx="5" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+<text x="467.5" y="104" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">e</text>
+<text x="560" y="94" font-size="11" fill="#dc2626" font-weight="bold" text-anchor="start" font-family="ui-monospace, monospace">(k i) : 2</text>
+<text x="560" y="107" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">(i t) : 2</text>
+<text x="560" y="120" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">(t e) : 2</text>
+<text x="638" y="94" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">(e s) : 1</text>
+<text x="638" y="107" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">(␣ k) : 1</text>
+<text x="700" y="100" font-size="11" fill="#dc2626" font-weight="bold" text-anchor="start">merge (k,i) → id 256 = &#x27;ki&#x27;</text>
+<line x1="20" y1="134" x2="880" y2="134" stroke="#64748b" stroke-width="0.6" stroke-dasharray="3,3"/>
+<text x="20" y="168" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="start">1</text>
+<text x="40" y="168" font-size="10" fill="#64748b" font-weight="normal" text-anchor="start">after 1 merge</text>
+<rect x="120" y="152" width="36" height="30" rx="5" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="138.0" y="172" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">ki</text>
+<rect x="160" y="152" width="27" height="30" rx="5" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+<text x="173.5" y="172" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">t</text>
+<rect x="191" y="152" width="27" height="30" rx="5" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+<text x="204.5" y="172" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">e</text>
+<rect x="222" y="152" width="27" height="30" rx="5" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+<text x="235.5" y="172" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">s</text>
+<rect x="330" y="152" width="27" height="30" rx="5" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+<text x="343.5" y="172" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">␣</text>
+<rect x="361" y="152" width="36" height="30" rx="5" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="379.0" y="172" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">ki</text>
+<rect x="401" y="152" width="27" height="30" rx="5" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+<text x="414.5" y="172" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">t</text>
+<rect x="432" y="152" width="27" height="30" rx="5" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+<text x="445.5" y="172" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">e</text>
+<text x="560" y="162" font-size="11" fill="#dc2626" font-weight="bold" text-anchor="start" font-family="ui-monospace, monospace">(ki t) : 2</text>
+<text x="560" y="175" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">(t e) : 2</text>
+<text x="560" y="188" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">(e s) : 1</text>
+<text x="638" y="162" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">(␣ ki) : 1</text>
+<text x="700" y="168" font-size="11" fill="#dc2626" font-weight="bold" text-anchor="start">merge (ki,t) → 257 = &#x27;kit&#x27;</text>
+<line x1="20" y1="202" x2="880" y2="202" stroke="#64748b" stroke-width="0.6" stroke-dasharray="3,3"/>
+<text x="20" y="236" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="start">2</text>
+<text x="40" y="236" font-size="10" fill="#64748b" font-weight="normal" text-anchor="start">after 2 merges</text>
+<rect x="120" y="220" width="45" height="30" rx="5" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="142.5" y="240" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">kit</text>
+<rect x="169" y="220" width="27" height="30" rx="5" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+<text x="182.5" y="240" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">e</text>
+<rect x="200" y="220" width="27" height="30" rx="5" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+<text x="213.5" y="240" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">s</text>
+<rect x="330" y="220" width="27" height="30" rx="5" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+<text x="343.5" y="240" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">␣</text>
+<rect x="361" y="220" width="45" height="30" rx="5" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="383.5" y="240" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">kit</text>
+<rect x="410" y="220" width="27" height="30" rx="5" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+<text x="423.5" y="240" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">e</text>
+<text x="560" y="230" font-size="11" fill="#dc2626" font-weight="bold" text-anchor="start" font-family="ui-monospace, monospace">(kit e) : 2</text>
+<text x="560" y="243" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">(e s) : 1</text>
+<text x="560" y="256" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">(␣ kit) : 1</text>
+<text x="700" y="236" font-size="11" fill="#dc2626" font-weight="bold" text-anchor="start">merge (kit,e) → 258 = &#x27;kite&#x27;</text>
+<line x1="20" y1="270" x2="880" y2="270" stroke="#64748b" stroke-width="0.6" stroke-dasharray="3,3"/>
+<text x="20" y="304" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="start">3</text>
+<text x="40" y="304" font-size="10" fill="#64748b" font-weight="normal" text-anchor="start">after 3 merges</text>
+<rect x="120" y="288" width="54" height="30" rx="5" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="147.0" y="308" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">kite</text>
+<rect x="178" y="288" width="27" height="30" rx="5" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+<text x="191.5" y="308" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">s</text>
+<rect x="330" y="288" width="27" height="30" rx="5" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+<text x="343.5" y="308" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">␣</text>
+<rect x="361" y="288" width="54" height="30" rx="5" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="388.0" y="308" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">kite</text>
+<text x="560" y="298" font-size="11" fill="#dc2626" font-weight="bold" text-anchor="start" font-family="ui-monospace, monospace">(kite s) : 1</text>
+<text x="560" y="311" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">(␣ kite) : 1</text>
+<text x="700" y="304" font-size="11" fill="#dc2626" font-weight="bold" text-anchor="start">tie: earliest pair wins → &#x27;kites&#x27;</text>
+<line x1="20" y1="338" x2="880" y2="338" stroke="#64748b" stroke-width="0.6" stroke-dasharray="3,3"/>
+<text x="20" y="372" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="start">4</text>
+<text x="40" y="372" font-size="10" fill="#64748b" font-weight="normal" text-anchor="start">after 4 merges</text>
+<rect x="120" y="356" width="63" height="30" rx="5" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="151.5" y="376" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">kites</text>
+<rect x="330" y="356" width="27" height="30" rx="5" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+<text x="343.5" y="376" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">␣</text>
+<rect x="361" y="356" width="54" height="30" rx="5" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="388.0" y="376" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="middle" font-family="ui-monospace, monospace">kite</text>
+<text x="560" y="366" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">(␣ kite) : 1</text>
+<text x="700" y="372" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">stop: vocab full or no pairs left</text>
+<line x1="20" y1="406" x2="880" y2="406" stroke="#64748b" stroke-width="0.6" stroke-dasharray="3,3"/>
+<text x="20" y="426" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="start">Result: &#x27;kites kite&#x27; is now 3 tokens  [259, 32, 258]  =  &#x27;kites&#x27; | &#x27; &#x27; | &#x27;kite&#x27;.   The learned merge list IS the tokenizer:</text>
+<text x="20" y="446" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">merges = {(107,105): 256, (256,116): 257, (257,101): 258, (258,115): 259}</text>
+<text x="20" y="464" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">To encode new text: apply the same merges in the same order. To decode: look each id up in vocab[id] and concatenate the bytes.</text>
+<text x="20" y="486" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">Why the space is glued to &#x27; kite&#x27; and not to &#x27;kites&#x27;: the pre-tokenizer regex split the text into chunks [&#x27;kites&#x27;, &#x27; kite&#x27;] first,</text>
+<text x="20" y="501" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">and merges never cross a chunk boundary. Byte ids: k=107, i=105, t=116, e=101, s=115, space=32. Every string is representable</text>
+<text x="20" y="516" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">from the 256 byte tokens alone, so there is never an &#x27;unknown&#x27; token.</text>
+</svg>

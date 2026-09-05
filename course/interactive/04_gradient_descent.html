@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gradient Descent Landscape — Chapter 4</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page-specific */
+.grid>*{min-width:0}
+h3{margin:0 0 8px;font-size:15px}.small{font-size:13px;color:var(--muted)}
+select{width:auto}
+#stage{position:relative;width:100%;aspect-ratio:1;max-width:520px;margin:0 auto}
+#stage canvas{position:absolute;inset:0;width:100%;height:100%;border-radius:8px;border:1px solid var(--line);cursor:crosshair;touch-action:none}
+.status{font-family:ui-monospace,Menlo,monospace;font-size:13px;white-space:pre-wrap;background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-height:70px}
+.status .bad{color:var(--red);font-weight:700}.status .ok{color:var(--green);font-weight:700}
+.eq{font-family:ui-monospace,Menlo,monospace;font-size:13px}
+.lrval{font-family:ui-monospace,Menlo,monospace;min-width:70px;display:inline-block}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Gradient descent landscape <a class="chip" href="../chapters/04-learning.md">Chapter 04</a></h1>
+  <div class="sub">Roll a ball down a real loss surface with SGD, momentum or Adam and watch what the learning rate does.</div>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Click anywhere on the map to drop a start point, then press <em>Step</em> a few times and <em>Run</em>. Switch optimizer and learning rate and compare the trajectories (each run keeps its colour). The valley (Rosenbrock) is the classic hard case: SGD either crawls or explodes, momentum overshoots, Adam adapts its step per coordinate.</div>
+
+<div class="grid two">
+  <div class="panel">
+    <div class="row" style="margin-bottom:10px">
+      <label>landscape <select id="fn" aria-label="landscape"><option value="bowl">bowl (stretched)</option><option value="rosen">valley (Rosenbrock)</option><option value="saddle">saddle with two valleys</option></select></label>
+      <label>optimizer <select id="opt" aria-label="optimizer"><option value="sgd">SGD</option><option value="mom">SGD + momentum (β=0.9)</option><option value="adam">Adam (β₁=0.9, β₂=0.999)</option></select></label>
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <label>learning rate <input type="range" id="lr" min="0" max="100" value="50" aria-label="learning rate"> <span class="lrval" id="lrval"></span></label>
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <button id="step">Step</button>
+      <button id="run">▶ Run</button>
+      <button class="secondary" id="reset">Reset point</button>
+      <button class="secondary" id="clear">Clear trails</button>
+    </div>
+    <div id="stage"><canvas id="heat" width="520" height="520"></canvas><canvas id="trail" width="520" height="520"></canvas></div>
+    <div class="small" style="margin-top:6px"><span id="fneq" class="eq"></span><br>Colour = log of the loss (dark = low). The ★ marks the true minimum; click to place the ball. Nothing here is faked: every step applies the optimizer's update rule to the analytic gradient of this function.</div>
+  </div>
+  <div class="panel">
+    <h3>Loss vs step</h3>
+    <svg id="chart" width="100%" height="220" viewBox="0 0 480 220" aria-label="loss versus step"></svg>
+    <div class="legend small" id="legend"></div>
+    <h3 style="margin-top:12px">Current run</h3>
+    <div class="status" id="status"></div>
+    <details style="margin-top:8px"><summary class="small">Update rules used</summary>
+<pre>SGD:       θ ← θ − lr·g
+Momentum:  v ← 0.9·v + g;            θ ← θ − lr·v
+Adam:      m ← 0.9·m + 0.1·g
+           v ← 0.999·v + 0.001·g²
+           m̂ = m/(1−0.9ᵗ), v̂ = v/(1−0.999ᵗ)
+           θ ← θ − lr·m̂/(√v̂ + 1e-8)</pre></details>
+  </div>
+</div>
+
+<div class="box challenge"><strong>Challenge.</strong> (1) On the <em>bowl</em> with plain SGD, find a learning rate at which the ball <em>diverges</em> (loss grows every step) and the largest one at which it still converges. (2) On the <em>valley</em>, find any optimizer + learning rate that reaches the minimum (1, 1) within 300 steps. Why is the bowl's threshold so sharp?
+<details><summary>Show answer</summary>
+<p>The bowl is f = x² + 5y², whose steepest direction (y) has curvature 10. Plain gradient descent on a quadratic with curvature c multiplies the error each step by (1 − lr·c), so it diverges once lr·c &gt; 2, i.e. lr &gt; 0.2 here; at lr = 0.2 exactly it oscillates for ever and just below it (≈ 0.19) it converges, bouncing. Try lr ≈ 0.25 to see the explosion and lr ≈ 0.1 for a clean descent. In a real network the "curvature" is unknown and changes during training, which is why the learning rate is the most tuned hyperparameter.</p>
+<p>On Rosenbrock, SGD needs lr around 0.001–0.002 and then thousands of steps to creep along the flat valley floor; anything above ≈ 0.003 blows up in the steep walls. Adam with lr ≈ 0.03–0.1 gets to (1, 1) in a few hundred steps because it normalises the step per coordinate. Momentum at lr ≈ 0.001 helps but overshoots along the valley.</p>
+</details></div>
+
+<footer><a href="index.html">← Back to all interactives</a></footer>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const FNS = {
+  bowl:  { eq:'f(x, y) = x² + 5y²', range:[-3,3,-3,3], min:[0,0], f:(x,y)=>x*x+5*y*y, g:(x,y)=>[2*x,10*y], start:[-2.5,2.2], lr:[1e-3,1] },
+  rosen: { eq:'f(x, y) = (1−x)² + 100(y−x²)²', range:[-2,2,-1,3], min:[1,1], f:(x,y)=>(1-x)**2+100*(y-x*x)**2, g:(x,y)=>[-2*(1-x)-400*x*(y-x*x), 200*(y-x*x)], start:[-1.5,2.5], lr:[1e-4,1e-1] },
+  saddle:{ eq:'f(x, y) = x² − y² + y⁴/4  (saddle at 0, minima at y = ±√2)', range:[-2.5,2.5,-2.5,2.5], min:[0,Math.SQRT2], f:(x,y)=>x*x-y*y+y**4/4, g:(x,y)=>[2*x,-2*y+y**3], start:[-2.2,0.15], lr:[1e-3,1] },
+};
+const COLORS = ['#2563eb','#f59e0b','#7c3aed','#16a34a','#dc2626','#0891b2'];
+let fnKey = 'bowl', F = FNS[fnKey];
+let runs = [], nRuns = 0;   // {opt, lr, color, pts:[[x,y]], losses:[]}
+let cur = null;        // current run + optimizer state
+let pos = F.start.slice(), startPos = F.start.slice(), running = false, raf = null;
+const heat = $('heat'), trail = $('trail'), hctx = heat.getContext('2d'), tctx = trail.getContext('2d');
+const S = 520;
+const toPx = (x,y)=>[(x-F.range[0])/(F.range[1]-F.range[0])*S, (1-(y-F.range[2])/(F.range[3]-F.range[2]))*S];
+const toXY = (px,py)=>[F.range[0]+px/S*(F.range[1]-F.range[0]), F.range[2]+(1-py/S)*(F.range[3]-F.range[2])];
+
+function lrValue(){ const s = +$('lr').value/100, [lo,hi] = F.lr; return lo*Math.pow(hi/lo, s); }
+function fmtLr(v){ return v >= 0.01 ? v.toFixed(3) : v.toExponential(1); }
+
+function drawHeat(){
+  const img = hctx.createImageData(S,S), d = img.data; const fmin = F.f(...F.min);
+  let vals = new Float32Array(S*S), vmax = 0;
+  for (let j=0;j<S;j++) for (let i=0;i<S;i++){ const [x,y] = toXY(i+0.5, j+0.5); const v = Math.log1p(F.f(x,y)-fmin); vals[j*S+i]=v; if (v>vmax) vmax=v; }
+  for (let k=0;k<S*S;k++){ const t = vals[k]/vmax; const [r,g,b] = ramp(t); d[k*4]=r; d[k*4+1]=g; d[k*4+2]=b; d[k*4+3]=255; }
+  hctx.putImageData(img,0,0);
+  // iso-lines of the (log) loss: mark pixels where the level is crossed horizontally or vertically
+  hctx.fillStyle = 'rgba(255,255,255,0.45)';
+  for (let j=1;j<S;j++) for (let i=1;i<S;i++){
+    const v = vals[j*S+i]/vmax, a = vals[j*S+i-1]/vmax, b = vals[(j-1)*S+i]/vmax;
+    const lv = Math.floor(v*10), la = Math.floor(a*10), lb = Math.floor(b*10);
+    if (lv!==la || lv!==lb) hctx.fillRect(i,j,1,1);
+  }
+  const [mx,my] = toPx(...F.min); hctx.fillStyle='#fff'; hctx.font='bold 18px system-ui'; hctx.textAlign='center'; hctx.fillText('★', mx, my+6);
+  if (fnKey==='saddle'){ const [sx,sy]=toPx(0,-Math.SQRT2); hctx.fillText('★', sx, sy+6); }
+  $('fneq').textContent = F.eq;
+}
+function ramp(t){ // dark navy -> blue -> orange -> pale yellow
+  const stops = [[15,23,42],[37,99,235],[245,158,11],[254,243,199]];
+  const u = Math.max(0,Math.min(0.9999,t))*(stops.length-1), i = Math.floor(u), f = u-i;
+  return stops[i].map((c,k)=>Math.round(c+(stops[i+1][k]-c)*f));
+}
+function drawTrails(){
+  tctx.clearRect(0,0,S,S);
+  for (const r of runs){
+    tctx.strokeStyle = r.color; tctx.lineWidth = 2; tctx.beginPath();
+    r.pts.forEach(([x,y],i)=>{ const [px,py] = toPx(x,y); if (!isFinite(px)||!isFinite(py)) return; i? tctx.lineTo(px,py) : tctx.moveTo(px,py); });
+    tctx.stroke();
+    tctx.fillStyle = r.color;
+    for (const [x,y] of r.pts){ const [px,py]=toPx(x,y); if(isFinite(px)&&isFinite(py)){ tctx.beginPath(); tctx.arc(px,py,2.2,0,7); tctx.fill(); } }
+  }
+  const [px,py] = toPx(...pos);
+  if (isFinite(px)&&isFinite(py)){ tctx.beginPath(); tctx.arc(px,py,7,0,7); tctx.fillStyle='#fff'; tctx.fill(); tctx.lineWidth=2.5; tctx.strokeStyle= cur? cur.color : '#0f172a'; tctx.stroke(); }
+}
+function newRun(){
+  if (cur && cur.done) pos = startPos.slice();   // a finished run restarts from the placed start point
+  const color = COLORS[(nRuns++) % COLORS.length];
+  cur = { opt:$('opt').value, lr:lrValue(), color, pts:[pos.slice()], losses:[F.f(...pos)], t:0, v:[0,0], m:[0,0], done:false, diverged:false };
+  runs.push(cur); if (runs.length > 6) runs.shift();
+  paintAll();
+}
+function stepOnce(){
+  if (!cur || cur.done) newRun();
+  const r = cur, [x,y] = pos, g = F.g(x,y), lr = r.lr; r.t++;
+  let dx, dy;
+  if (r.opt==='sgd'){ dx = lr*g[0]; dy = lr*g[1]; }
+  else if (r.opt==='mom'){ r.v = [0.9*r.v[0]+g[0], 0.9*r.v[1]+g[1]]; dx = lr*r.v[0]; dy = lr*r.v[1]; }
+  else { const b1=0.9,b2=0.999,eps=1e-8;
+    r.m = [b1*r.m[0]+(1-b1)*g[0], b1*r.m[1]+(1-b1)*g[1]]; r.v = [b2*r.v[0]+(1-b2)*g[0]*g[0], b2*r.v[1]+(1-b2)*g[1]*g[1]];
+    const mh = r.m.map(v=>v/(1-Math.pow(b1,r.t))), vh = r.v.map(v=>v/(1-Math.pow(b2,r.t)));
+    dx = lr*mh[0]/(Math.sqrt(vh[0])+eps); dy = lr*mh[1]/(Math.sqrt(vh[1])+eps); }
+  pos = [x-dx, y-dy];
+  const loss = F.f(...pos);
+  r.pts.push(pos.slice()); r.losses.push(loss);
+  if (!isFinite(loss) || loss > 1e12 || Math.abs(pos[0])>1e6){ r.done = true; r.diverged = true; running = false; }
+  const gn = Math.hypot(...F.g(...pos));
+  if (gn < 1e-6 && Math.hypot(pos[0]-F.min[0], pos[1]-F.min[1]) < 1e-3){ r.done = true; running = false; }
+  if (r.t >= 2000){ r.done = true; running = false; }
+  paintAll();
+}
+function paintAll(){ drawTrails(); drawChart(); status(); $('run').textContent = running ? '⏸ Pause' : '▶ Run'; }
+function status(){
+  if (!cur){ $('status').innerHTML = `start (${pos[0].toFixed(2)}, ${pos[1].toFixed(2)})  loss ${F.f(...pos).toFixed(4)}\nclick the map to move the start, then Step or Run`; return; }
+  const r = cur, loss = r.losses[r.losses.length-1], g = F.g(...pos);
+  const nm = {sgd:'SGD',mom:'momentum',adam:'Adam'}[r.opt];
+  let msg = `${nm}, lr = ${fmtLr(r.lr)} — step ${r.t}\nθ = (${fmt(pos[0])}, ${fmt(pos[1])})   loss = ${fmt(loss)}\ngradient = (${fmt(g[0])}, ${fmt(g[1])})   |g| = ${fmt(Math.hypot(...g))}`;
+  if (r.diverged) msg += `\n<span class="bad">DIVERGED: the step overshot so far that the loss grew without bound.</span>`;
+  else if (r.done && r.t < 2000) msg += `\n<span class="ok">Converged to the minimum (|g| < 1e-6).</span>`;
+  else if (r.t >= 2000) msg += `\nStopped after 2000 steps.`;
+  else if (r.t > 3 && r.losses[r.t] > r.losses[r.t-1] && r.losses[r.t-1] > r.losses[r.t-2]) msg += `\nloss is increasing — the learning rate may be too high`;
+  $('status').innerHTML = msg;
+}
+function fmt(v){ if (!isFinite(v)) return String(v); const a = Math.abs(v); return (a >= 1e5 || (a < 1e-3 && a > 0)) ? v.toExponential(2) : v.toFixed(4); }
+function drawChart(){
+  const W=480,H=220,L=52,R=10,T=10,B=28;
+  let maxN = 1, lo = Infinity, hi = -Infinity;
+  for (const r of runs){ maxN = Math.max(maxN, r.losses.length-1); for (const v of r.losses){ if (isFinite(v) && v>0){ lo=Math.min(lo,v); hi=Math.max(hi,v); } } }
+  if (!isFinite(lo)){ lo=1e-3; hi=1; } lo = Math.max(lo, 1e-10); if (hi<=lo) hi = lo*10;
+  const llo = Math.log10(lo), lhi = Math.log10(hi);
+  const x = i => L + i/maxN*(W-L-R), y = v => T + (1-(Math.log10(Math.max(v,lo))-llo)/(lhi-llo))*(H-T-B);
+  let s = `<line x1="${L}" y1="${H-B}" x2="${W-R}" y2="${H-B}" stroke="#cbd5e1"/><line x1="${L}" y1="${T}" x2="${L}" y2="${H-B}" stroke="#cbd5e1"/>`;
+  for (let e=Math.ceil(llo); e<=Math.floor(lhi); e++){ if ((lhi-llo)>8 && e%2) continue; s += `<line x1="${L}" y1="${y(10**e)}" x2="${W-R}" y2="${y(10**e)}" stroke="#f1f5f9"/><text x="${L-4}" y="${y(10**e)+4}" font-size="10" fill="#64748b" text-anchor="end">1e${e}</text>`; }
+  s += `<text x="${(L+W-R)/2}" y="${H-6}" font-size="11" fill="#64748b" text-anchor="middle">step (0 … ${maxN})</text><text x="${L+4}" y="${T+10}" font-size="11" fill="#64748b">loss (log scale)</text>`;
+  for (const r of runs){
+    const pts = r.losses.map((v,i)=>isFinite(v)&&v>0 ? `${x(i).toFixed(1)},${y(v).toFixed(1)}` : null).filter(Boolean);
+    s += `<polyline fill="none" stroke="${r.color}" stroke-width="${r===cur?2.5:1.5}" opacity="${r===cur?1:0.6}" points="${pts.join(' ')}"/>`;
+  }
+  $('chart').innerHTML = s;
+  $('legend').innerHTML = runs.map(r=>`<span style="background:${r.color}"></span>${{sgd:'SGD',mom:'momentum',adam:'Adam'}[r.opt]} lr ${fmtLr(r.lr)}${r.diverged?' ✗':(r.done&&r.t<2000?' ✓':'')}&nbsp;&nbsp;`).join('');
+}
+function loop(){ if (!running) return; for (let i=0;i<3;i++) if (running) stepOnce(); raf = requestAnimationFrame(loop); }
+$('step').addEventListener('click', ()=>{ running=false; stepOnce(); });
+$('run').addEventListener('click', ()=>{ running = !running; if (running){ if (!cur || cur.done){ newRun(); } loop(); } paintAll(); });
+$('reset').addEventListener('click', ()=>{ running=false; pos = F.start.slice(); startPos = pos.slice(); cur=null; paintAll(); });
+$('clear').addEventListener('click', ()=>{ running=false; runs=[]; cur=null; paintAll(); });
+$('fn').addEventListener('change', ()=>{ running=false; fnKey=$('fn').value; F=FNS[fnKey]; runs=[]; cur=null; pos=F.start.slice(); startPos=pos.slice(); $('lr').value=50; drawHeat(); syncLr(); paintAll(); });
+$('opt').addEventListener('change', ()=>{ cur=null; paintAll(); });
+function syncLr(){ $('lrval').textContent = fmtLr(lrValue()); if (cur && !cur.done && cur.t===0) cur.lr = lrValue(); else if (cur && cur.lr !== lrValue()) cur = null; }
+$('lr').addEventListener('input', ()=>{ syncLr(); paintAll(); });
+$('stage').addEventListener('pointerdown', e=>{
+  const r = trail.getBoundingClientRect(); const [x,y] = toXY((e.clientX-r.left)/r.width*S, (e.clientY-r.top)/r.height*S);
+  running=false; pos=[x,y]; startPos=[x,y]; cur=null; paintAll();
+});
+drawHeat(); syncLr(); paintAll();
+</script>
+</body>
+</html>

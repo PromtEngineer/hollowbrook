@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Scaling calculator — what a compute budget buys</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page-specific */
+.grid>*{min-width:0}
+.ctl{display:grid;grid-template-columns:110px 1fr 90px;gap:8px 10px;align-items:center;margin:6px 0}
+.ctl input[type=range]{width:100%}.ctl .v{font-family:ui-monospace,monospace;font-size:13px;text-align:right}
+input[type=number]{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px;width:100%}
+.big{font-size:28px;font-weight:700;font-family:ui-monospace,monospace}
+.stat{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff}
+.stat .l{font-size:12px;color:var(--muted)}.stat .n{font-size:20px;font-weight:700;font-family:ui-monospace,monospace}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+table{border-collapse:collapse;width:100%;font-size:14px}th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:right}th:first-child,td:first-child{text-align:left}
+td.mono{font-family:ui-monospace,monospace}
+.presets button{padding:6px 10px;font-size:13px}
+.eq{background:#f8fafc;border:1px dashed var(--line);border-radius:8px;padding:8px 12px;font-family:ui-monospace,monospace;font-size:13px;margin:8px 0}
+small{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Scaling calculator <a class="chip" href="../chapters/09-scaling-laws.md">Chapter 09</a></h1>
+  <div class="sub">Turn a cluster, a wall-clock and a price into FLOPs — then into the model size and token count that budget buys.</div>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Drag the GPU slider from 8 to 4096 and watch the Chinchilla-optimal model grow along the diagonal in the iso-FLOP chart. Then switch the tokens-per-parameter preset from 20 to 500: same compute, a much smaller model trained on far more tokens — that is what 2026 small models do, because inference cost scales with N. Press the <em>$100 on 8×H100</em> preset to see what nanochat-class runs buy.</div>
+
+<div class="grid two">
+  <div class="panel">
+    <strong>Compute budget</strong>
+    <div class="ctl"><label for="gpus">GPUs</label><input type="range" id="gpus" min="0" max="12" step="1" value="3"><span class="v" id="gpusV">8</span></div>
+    <div class="ctl"><label for="gtype">GPU type</label><select id="gtype" style="width:100%">
+      <option value="989" data-price="2.5">H100 SXM — 989 TFLOP/s bf16 dense</option>
+      <option value="2200" data-price="5">B200 — ≈2.2 PFLOP/s bf16 dense (reported; spec sheets vary)</option>
+      <option value="312" data-price="1.2">A100 — 312 TFLOP/s bf16 dense</option>
+      <option value="1979" data-price="2.5">H100 with FP8 — ≈1.98 PFLOP/s dense</option>
+    </select><span class="v" id="peakV"></span></div>
+    <div class="ctl"><label for="mfu">MFU</label><input type="range" id="mfu" min="20" max="60" step="1" value="40"><span class="v" id="mfuV">40%</span></div>
+    <div class="ctl"><label for="hours">Hours</label><input type="number" id="hours" min="0.1" step="0.5" value="4"><span class="v"></span></div>
+    <div class="ctl"><label for="price">$ per GPU-hour</label><input type="number" id="price" min="0" step="0.1" value="2.5"><span class="v"></span></div>
+    <div class="row presets" style="margin-top:8px">
+      <button type="button" class="secondary" data-p="nanochat">$100 on 8×H100</button>
+      <button type="button" class="secondary" data-p="10k">$10k run</button>
+      <button type="button" class="secondary" data-p="10m">$10M run</button>
+      <button type="button" class="secondary" data-p="laptop">1 GPU, 1 day</button>
+    </div>
+    <div class="eq">C = GPUs × peak × MFU × seconds<br><span id="ceq"></span></div>
+    <div class="stats">
+      <div class="stat"><div class="l">Total FLOPs C</div><div class="n" id="cV"></div></div>
+      <div class="stat"><div class="l">Cost</div><div class="n" id="costV"></div></div>
+      <div class="stat"><div class="l">GPU-hours</div><div class="n" id="ghV"></div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <strong>What that compute buys (C = 6·N·D)</strong>
+    <div class="ctl" style="grid-template-columns:150px 1fr"><label for="ratio">Tokens per parameter D/N</label>
+      <div class="row presets"><button type="button" data-r="20">20 (Chinchilla)</button><button type="button" class="secondary" data-r="100">100</button><button type="button" class="secondary" data-r="500">500</button><button type="button" class="secondary" data-r="2000">2000</button><input type="number" id="ratio" value="20" min="1" step="1" style="width:90px" aria-label="custom tokens per parameter"></div></div>
+    <div class="eq">N = √(C / (6·r)),  D = r·N  <small>(r = tokens per parameter)</small><br><span id="neq"></span></div>
+    <div class="stats">
+      <div class="stat"><div class="l">Parameters N</div><div class="n" id="nV"></div></div>
+      <div class="stat"><div class="l">Training tokens D</div><div class="n" id="dV"></div></div>
+      <div class="stat"><div class="l">Tokens/second (train)</div><div class="n" id="tpsV"></div></div>
+    </div>
+    <div style="overflow-x:auto;margin-top:10px"><table><thead><tr><th>Preset r</th><th>N</th><th>D</th><th>Inference / 1M tokens</th></tr></thead><tbody id="ptable"></tbody></table></div>
+    <div style="font-size:13px;margin-top:8px"><strong>Inference cost</strong> (compute floor, 2·N FLOPs per token at the same MFU and price): <span id="infV" class="mono"></span>. <small>Real decode is memory-bandwidth-bound and batches imperfectly, so expect 2–10× this.</small></div>
+  </div>
+</div>
+
+<div class="panel">
+  <strong>Iso-FLOP chart</strong> <small>— every point on one dashed line costs the same compute (N·D = C/6). The Chinchilla line D = 20·N picks the loss-minimising point on each; moving right-down along a line buys a smaller model that is cheaper to serve.</small>
+  <div style="overflow-x:auto"><svg id="iso" width="900" height="420" viewBox="0 0 900 420" role="img" aria-label="Iso-FLOP chart: parameters vs tokens on log axes"></svg></div>
+  <div class="legend" style="font-size:13px"><span style="background:#2563eb"></span>your run &nbsp; <span style="background:#7c3aed"></span>your run at other D/N presets &nbsp; <span style="background:#64748b"></span>reference points &nbsp; <span style="background:#f59e0b"></span>Chinchilla line D=20N</div>
+</div>
+
+<div class="panel">
+  <strong>Reference points</strong>
+  <div style="overflow-x:auto"><table><thead><tr><th>Model</th><th>N</th><th>D</th><th>D/N</th><th>C = 6ND</th><th>Note</th></tr></thead><tbody id="reftable"></tbody></table></div>
+  <small>Numbers are as reported by the respective papers/repos; B200 dense bf16 throughput is quoted differently by different sources (≈2.2–2.5 PFLOP/s), so treat it as approximate. Chinchilla (Hoffmann et al. 2022) found ≈20 tokens/param minimises <em>training</em> loss for a fixed C; Llama-3 (2024) and 2025–26 small models train 100–2000× because inference cost ∝ N.</small>
+</div>
+
+<div class="box challenge"><strong>Challenge.</strong> What does $100 buy at 40% MFU on 8×H100 at $2.50 per GPU-hour? Give the FLOPs, the Chinchilla-optimal N and D, and compare with nanochat's reported d20 run.
+<details><summary>Show answer</summary>$100 / (8 × $2.50) = 5 GPU-hours of wall-clock → 40 GPU-hours. C = 8 × 989e12 × 0.40 × 5 × 3600 ≈ <strong>5.7 × 10<sup>19</sup> FLOPs</strong>. Chinchilla: N = √(C/120) ≈ <strong>0.69 B parameters</strong>, D = 20N ≈ <strong>13.8 B tokens</strong>. nanochat's "$100" d20 model (Oct 2025) is reported as ≈0.56 B parameters on ≈11 B tokens in ≈4 h on 8×H100 — the same ballpark, which is the point: the 6ND rule plus an honest MFU predicts real runs within tens of percent.</details></div>
+
+<footer><a href="index.html">← All interactives</a> · FLOPs rule: forward ≈ 2N per token, backward ≈ 4N, total 6N per token (Kaplan et al. 2020).</footer>
+</div>
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const REFS=[
+  {name:"GPT-2 small (2019, nanoGPT repro)", N:124e6, D:10e9, note:"124M on ~10B tokens (OpenWebText)"},
+  {name:"nanochat d20 (Oct 2025)", N:561e6, D:11.2e9, note:"“$100” run, ≈4 h on 8×H100 (reported)"},
+  {name:"Chinchilla 70B (2022)", N:70e9, D:1.4e12, note:"the paper's own compute-optimal run"},
+  {name:"Llama-3 8B (2024)", N:8e9, D:15e12, note:"~1900 tokens/param — heavily overtrained"},
+  {name:"Llama-3.1 405B (2024)", N:405e9, D:15.6e12, note:"≈3.8e25 FLOPs"},
+];
+function si(x, unit=""){ if(!isFinite(x)) return "—"; const u=[["P",1e15],["T",1e12],["B",1e9],["M",1e6],["k",1e3]]; for(const [s,v] of u) if(x>=v) return (x/v).toPrecision(3).replace(/\.?0+$/,"")+s+unit; return x.toPrecision(3)+unit; }
+function sci(x){ if(!isFinite(x)||x<=0) return "—"; const e=Math.floor(Math.log10(x)); const m=x/Math.pow(10,e); return m.toFixed(2)+"×10<sup>"+e+"</sup>"; }
+function money(x){ return x>=1e6?"$"+(x/1e6).toPrecision(3)+"M":x>=1e3?"$"+(x/1e3).toPrecision(3)+"k":"$"+x.toFixed(x<10?2:0); }
+function state(){
+  const gpus=Math.pow(2,+$("gpus").value), peak=+$("gtype").value*1e12, mfu=+$("mfu").value/100, hours=Math.max(0.01,+$("hours").value||0), price=Math.max(0,+$("price").value||0);
+  const C=gpus*peak*mfu*hours*3600, r=Math.max(1,+$("ratio").value||20);
+  const N=Math.sqrt(C/(6*r)), D=r*N;
+  return {gpus,peak,mfu,hours,price,C,r,N,D};
+}
+function inferCostPer1M(N,s){ const flops=2*N*1e6; const sec=flops/(s.peak*s.mfu); return {cost:sec/3600*s.price, sec}; }
+function update(){
+  const s=state();
+  $("gpusV").textContent=s.gpus; $("peakV").textContent=si(s.peak,"FLOP/s"); $("mfuV").textContent=Math.round(s.mfu*100)+"%";
+  $("ceq").innerHTML=`${s.gpus} × ${sci(s.peak)} × ${s.mfu.toFixed(2)} × ${(s.hours*3600).toLocaleString()} s = <strong>${sci(s.C)}</strong>`;
+  $("cV").innerHTML=sci(s.C); $("costV").textContent=money(s.gpus*s.hours*s.price); $("ghV").textContent=si(s.gpus*s.hours);
+  $("neq").innerHTML=`N = √(${sci(s.C)} / ${6*s.r}) = <strong>${si(s.N)}</strong>,  D = ${s.r} × N = <strong>${si(s.D)}</strong>`;
+  $("nV").textContent=si(s.N); $("dV").textContent=si(s.D); $("tpsV").textContent=si(s.D/(s.hours*3600))+"/s";
+  const inf=inferCostPer1M(s.N,s); $("infV").innerHTML=`2 × ${si(s.N)} × 1M = ${sci(2*s.N*1e6)} FLOPs → ${inf.sec.toFixed(2)} GPU-s → <strong>${inf.cost<0.01?"$"+inf.cost.toExponential(2):"$"+inf.cost.toFixed(3)}</strong> per 1M tokens`;
+  let rows=""; for(const r of [20,100,500,2000]){ const N=Math.sqrt(s.C/(6*r)), D=r*N, ic=inferCostPer1M(N,s).cost; rows+=`<tr${r===s.r?' style="background:#eef2ff"':''}><td>${r}${r===20?" (Chinchilla)":""}</td><td class="mono">${si(N)}</td><td class="mono">${si(D)}</td><td class="mono">$${ic<0.01?ic.toExponential(2):ic.toFixed(3)}</td></tr>`; }
+  $("ptable").innerHTML=rows;
+  $("reftable").innerHTML=REFS.map(r=>`<tr><td>${r.name}</td><td class="mono">${si(r.N)}</td><td class="mono">${si(r.D)}</td><td class="mono">${Math.round(r.D/r.N)}</td><td class="mono">${sci(6*r.N*r.D)}</td><td style="text-align:left;font-size:12px;color:#475569">${r.note}</td></tr>`).join("");
+  document.querySelectorAll("[data-r]").forEach(b=>b.className=(+b.dataset.r===s.r)?"":"secondary");
+  drawIso(s);
+}
+function drawIso(s){
+  const W=900,H=420,L=70,R=20,T=20,B=50; const x0=6,x1=13, y0=8,y1=15; // log10 N, log10 D
+  const X=v=>L+(Math.log10(v)-x0)/(x1-x0)*(W-L-R), Y=v=>H-B-(Math.log10(v)-y0)/(y1-y0)*(H-T-B);
+  let h=`<rect x="${L}" y="${T}" width="${W-L-R}" height="${H-T-B}" fill="#fff" stroke="#e2e8f0"/>`;
+  for(let e=x0;e<=x1;e++){ h+=`<line x1="${X(10**e)}" y1="${T}" x2="${X(10**e)}" y2="${H-B}" stroke="#f1f5f9"/><text x="${X(10**e)}" y="${H-B+16}" text-anchor="middle" font-size="11" fill="#64748b">${si(10**e)}</text>`; }
+  for(let e=y0;e<=y1;e++){ h+=`<line x1="${L}" y1="${Y(10**e)}" x2="${W-R}" y2="${Y(10**e)}" stroke="#f1f5f9"/><text x="${L-6}" y="${Y(10**e)+4}" text-anchor="end" font-size="11" fill="#64748b">${si(10**e)}</text>`; }
+  h+=`<text x="${(L+W-R)/2}" y="${H-8}" text-anchor="middle" font-size="12" fill="#334155">parameters N (log)</text><text transform="translate(14 ${(T+H-B)/2}) rotate(-90)" text-anchor="middle" font-size="12" fill="#334155">training tokens D (log)</text>`;
+  // iso-FLOP lines: D = C/(6N)
+  for(let e=17;e<=27;e+=1){ const C=10**e; const pts=[]; for(let lx=x0;lx<=x1;lx+=0.25){ const N=10**lx, D=C/(6*N); const ly=Math.log10(D); if(ly>=y0&&ly<=y1) pts.push(X(N).toFixed(1)+","+Y(D).toFixed(1)); } if(pts.length>1){ h+=`<polyline points="${pts.join(" ")}" fill="none" stroke="#cbd5e1" stroke-dasharray="4 4"/>`; const [px,py]=pts[0].split(","); h+=`<text x="${+px+4}" y="${+py-4}" font-size="10" fill="#94a3b8">1e${e}</text>`; } }
+  // user's iso line
+  { const pts=[]; for(let lx=x0;lx<=x1;lx+=0.1){ const N=10**lx, D=s.C/(6*N); const ly=Math.log10(D); if(ly>=y0&&ly<=y1) pts.push(X(N).toFixed(1)+","+Y(D).toFixed(1)); } if(pts.length>1) h+=`<polyline points="${pts.join(" ")}" fill="none" stroke="#2563eb" stroke-width="2" stroke-dasharray="6 3"/>`; }
+  // chinchilla line
+  { const pts=[]; for(let lx=x0;lx<=x1;lx+=0.5){ const N=10**lx, D=20*N; const ly=Math.log10(D); if(ly>=y0&&ly<=y1) pts.push(X(N).toFixed(1)+","+Y(D).toFixed(1)); } h+=`<polyline points="${pts.join(" ")}" fill="none" stroke="#f59e0b" stroke-width="2"/>`; }
+  const clamp=(N,D)=>Math.log10(N)>=x0&&Math.log10(N)<=x1&&Math.log10(D)>=y0&&Math.log10(D)<=y1;
+  for(const r of REFS) if(clamp(r.N,r.D)) h+=`<circle cx="${X(r.N)}" cy="${Y(r.D)}" r="5" fill="#64748b"/><text x="${X(r.N)+8}" y="${Y(r.D)+4}" font-size="11" fill="#334155">${r.name.split(" (")[0]}</text>`;
+  for(const r of [100,500,2000]){ const N=Math.sqrt(s.C/(6*r)), D=r*N; if(clamp(N,D)) h+=`<circle cx="${X(N)}" cy="${Y(D)}" r="5" fill="#7c3aed" opacity="${r===s.r?1:0.5}"/><text x="${X(N)+7}" y="${Y(D)-6}" font-size="10" fill="#7c3aed">r=${r}</text>`; }
+  if(clamp(s.N,s.D)) h+=`<circle cx="${X(s.N)}" cy="${Y(s.D)}" r="8" fill="#2563eb" stroke="#fff" stroke-width="2"/><text x="${X(s.N)+11}" y="${Y(s.D)+22}" font-size="12" font-weight="600" fill="#2563eb">you: ${si(s.N)} / ${si(s.D)} (r=${s.r})</text>`;
+  else h+=`<text x="${L+10}" y="${T+18}" font-size="12" fill="#dc2626">your point is off the chart (N=${si(s.N)}, D=${si(s.D)})</text>`;
+  $("iso").innerHTML=h;
+}
+const PRESETS={
+  nanochat:{gpus:3,gtype:"989",mfu:40,hours:5,price:2.5,ratio:20},
+  "10k":{gpus:5,gtype:"989",mfu:40,hours:125,price:2.5,ratio:20},
+  "10m":{gpus:11,gtype:"2200",mfu:40,hours:800,price:2.44,ratio:100},
+  laptop:{gpus:0,gtype:"989",mfu:40,hours:24,price:2.5,ratio:20},
+};
+document.querySelectorAll("[data-p]").forEach(b=>b.onclick=()=>{ const p=PRESETS[b.dataset.p]; $("gpus").value=p.gpus; $("gtype").value=p.gtype; $("mfu").value=p.mfu; $("hours").value=p.hours; $("price").value=p.price; $("ratio").value=p.ratio; update(); });
+document.querySelectorAll("[data-r]").forEach(b=>b.onclick=()=>{ $("ratio").value=b.dataset.r; update(); });
+$("gtype").onchange=()=>{ $("price").value=$("gtype").selectedOptions[0].dataset.price; update(); };
+for(const id of ["gpus","mfu","hours","price","ratio"]) $(id).addEventListener("input",update);
+update();
+</script>
+</body>
+</html>

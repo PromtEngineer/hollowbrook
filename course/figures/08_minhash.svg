@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520" font-family="system-ui, sans-serif">
+  <rect width="900" height="520" fill="#ffffff"/>
+  <text x="450" y="30" text-anchor="middle" font-size="18" font-weight="600" fill="#0f172a">MinHash + LSH: from two documents to "are they near-duplicates?"</text>
+
+  <!-- Step 1: documents -> shingles -->
+  <text x="20" y="66" font-size="13" font-weight="600" fill="#2563eb">1. Shingle</text>
+  <rect x="20" y="76" width="260" height="66" rx="6" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+  <text x="30" y="96" font-size="12" fill="#0f172a">A: "mia had a red kite at the park"</text>
+  <text x="30" y="114" font-size="11" fill="#64748b">3-word shingles: {mia had a, had a red,</text>
+  <text x="30" y="130" font-size="11" fill="#64748b">a red kite, red kite at, kite at the, at the park}</text>
+
+  <rect x="20" y="150" width="260" height="66" rx="6" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b"/>
+  <text x="30" y="170" font-size="12" fill="#0f172a">B: "mia had a red kite at the beach"</text>
+  <text x="30" y="188" font-size="11" fill="#64748b">{mia had a, had a red, a red kite,</text>
+  <text x="30" y="204" font-size="11" fill="#64748b">red kite at, kite at the, at the beach}</text>
+
+  <text x="20" y="240" font-size="12" fill="#0f172a">true Jaccard = |A ∩ B| / |A ∪ B| = 5 / 7 = 0.71</text>
+
+  <!-- arrow -->
+  <path d="M290 146 L340 146" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#64748b"/></marker></defs>
+
+  <!-- Step 2: hash functions -> min -->
+  <text x="350" y="66" font-size="13" font-weight="600" fill="#7c3aed">2. Sign: for each hash h_k, keep the MIN over shingles</text>
+  <g font-size="11" fill="#0f172a">
+    <text x="350" y="92">h_1(shingle) → A: {41, 7, 93, 12, 58, 30} → min 7</text>
+    <text x="350" y="110">                    B: {41, 7, 93, 12, 58, 77} → min 7  ✓ same</text>
+    <text x="350" y="134">h_2(shingle) → A: {19, 84, 3, 66, 50, 21} → min 3</text>
+    <text x="350" y="152">                    B: {19, 84, 3, 66, 50, 2}   → min 2  ✗ differ</text>
+    <text x="350" y="176" fill="#64748b">... 64 hash functions ...</text>
+  </g>
+  <text x="350" y="204" font-size="12" fill="#0f172a">P(min agrees) = P(the min of A ∪ B lies in A ∩ B) = Jaccard</text>
+  <text x="350" y="222" font-size="12" fill="#0f172a">so 64 columns agree in ≈ 0.71 × 64 ≈ 45 positions</text>
+
+  <!-- signatures -->
+  <text x="20" y="284" font-size="13" font-weight="600" fill="#16a34a">3. Signatures (64 numbers each), cut into 16 bands × 4 rows</text>
+  <g>
+    <text x="20" y="310" font-size="11" fill="#2563eb">sig(A)</text>
+    <text x="20" y="346" font-size="11" fill="#f59e0b">sig(B)</text>
+  </g>
+  <!-- 16 bands as boxes; identical bands shaded green -->
+  <g id="bands">
+    <rect x="70" y="296" width="48" height="20" fill="#16a34a" fill-opacity="0.2" stroke="#16a34a"/>
+    <rect x="70" y="332" width="48" height="20" fill="#16a34a" fill-opacity="0.2" stroke="#16a34a"/>
+    <text x="94" y="310" font-size="10" text-anchor="middle" fill="#0f172a">7 3 88 12</text>
+    <text x="94" y="346" font-size="10" text-anchor="middle" fill="#0f172a">7 3 88 12</text>
+
+    <rect x="122" y="296" width="48" height="20" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/>
+    <rect x="122" y="332" width="48" height="20" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/>
+    <text x="146" y="310" font-size="10" text-anchor="middle" fill="#0f172a">5 61 9 40</text>
+    <text x="146" y="346" font-size="10" text-anchor="middle" fill="#0f172a">5 2 9 40</text>
+
+    <rect x="174" y="296" width="48" height="20" fill="#16a34a" fill-opacity="0.2" stroke="#16a34a"/>
+    <rect x="174" y="332" width="48" height="20" fill="#16a34a" fill-opacity="0.2" stroke="#16a34a"/>
+    <text x="198" y="310" font-size="10" text-anchor="middle" fill="#0f172a">14 6 71 8</text>
+    <text x="198" y="346" font-size="10" text-anchor="middle" fill="#0f172a">14 6 71 8</text>
+
+    <rect x="226" y="296" width="48" height="20" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/>
+    <rect x="226" y="332" width="48" height="20" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/>
+    <text x="250" y="310" font-size="10" text-anchor="middle" fill="#0f172a">33 4 20 1</text>
+    <text x="250" y="346" font-size="10" text-anchor="middle" fill="#0f172a">33 4 55 1</text>
+
+    <text x="300" y="310" font-size="11" fill="#64748b">… 12 more bands …</text>
+    <text x="300" y="346" font-size="11" fill="#64748b">… 12 more bands …</text>
+    <rect x="430" y="296" width="48" height="20" fill="#16a34a" fill-opacity="0.2" stroke="#16a34a"/>
+    <rect x="430" y="332" width="48" height="20" fill="#16a34a" fill-opacity="0.2" stroke="#16a34a"/>
+    <text x="454" y="310" font-size="10" text-anchor="middle" fill="#0f172a">9 27 2 60</text>
+    <text x="454" y="346" font-size="10" text-anchor="middle" fill="#0f172a">9 27 2 60</text>
+  </g>
+  <text x="20" y="378" font-size="12" fill="#0f172a">A band matches only if all 4 rows agree: P = J⁴. Any of 16 bands matching makes the pair a candidate:</text>
+  <text x="20" y="398" font-size="13" font-weight="600" fill="#0f172a">P(candidate) = 1 − (1 − J⁴)¹⁶   →   J = 0.3: 0.12     J = 0.5: 0.64     J = 0.8: 0.9998</text>
+
+  <!-- Step 4: buckets -->
+  <text x="520" y="284" font-size="13" font-weight="600" fill="#dc2626">4. Buckets (LSH)</text>
+  <rect x="520" y="296" width="360" height="96" rx="6" fill="#dc2626" fill-opacity="0.08" stroke="#dc2626"/>
+  <text x="530" y="316" font-size="11" fill="#0f172a">key (band 0, "7 3 88 12") → [A, B]</text>
+  <text x="530" y="334" font-size="11" fill="#0f172a">key (band 1, "5 61 9 40") → [A]</text>
+  <text x="530" y="352" font-size="11" fill="#0f172a">key (band 1, "5 2 9 40")  → [B]</text>
+  <text x="530" y="370" font-size="11" fill="#0f172a">key (band 2, "14 6 71 8") → [A, B, Q]  ← Q is a false candidate</text>
+  <text x="530" y="388" font-size="11" fill="#64748b">only documents sharing a bucket are compared exactly</text>
+
+  <!-- Step 5: verify -->
+  <text x="20" y="436" font-size="13" font-weight="600" fill="#0f172a">5. Verify candidates with the exact Jaccard, drop if ≥ 0.8 (this is what llm/data.py::minhash_dedup does)</text>
+  <text x="20" y="460" font-size="12" fill="#64748b">Cost: hashing is O(docs × shingles × 64); candidate checks are O(pairs that share a bucket), not O(docs²).</text>
+  <text x="20" y="480" font-size="12" fill="#64748b">A and B above: J = 0.71 → candidate (P ≈ 0.99) but NOT dropped at threshold 0.8. Change one word in a 40-word story: J ≈ 0.86 → dropped.</text>
+  <text x="20" y="504" font-size="11" fill="#64748b">Hash values shown are illustrative; the lab prints real ones.</text>
+</svg>

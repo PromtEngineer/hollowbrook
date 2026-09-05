@@ -153,7 +153,7 @@ def train(model: TinyLM, train_tokens: Tensor, val_tokens: Optional[Tensor], cfg
             history.lr.append(scale * (cfg.lr if cfg.optimizer == "adamw" else cfg.muon_lr))
             history.tokens_per_sec.append(tps)
             if verbose:
-                print(f"step {step:5d} | loss {loss_acc:.4f} | lr×{scale:.3f} | grad_norm {grad_norm:.2f} | {tps:,.0f} tok/s")
+                print(f"step {step:5d} | loss {loss_acc:.4f} | lr×{scale:.3f} | grad_norm {grad_norm:.2f} | {tps:,.0f} tok/s", flush=True)
         if on_step is not None:
             on_step(step, loss_acc)
 
@@ -163,7 +163,7 @@ def train(model: TinyLM, train_tokens: Tensor, val_tokens: Optional[Tensor], cfg
             history.val_step.append(step)
             history.val_loss.append(vl)
             if verbose:
-                print(f"   val loss {vl:.4f}  (perplexity {math.exp(vl):.1f})")
+                print(f"   val loss {vl:.4f}  (perplexity {math.exp(vl):.1f})", flush=True)
             if cfg.ckpt_path:
                 save_checkpoint(cfg.ckpt_path, model, optimizers, step + 1, cfg, history)
     model.eval()

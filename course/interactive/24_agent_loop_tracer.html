@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agent Loop Tracer</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page */
+select{width:auto}.ctl label{display:inline-flex;flex-direction:column;gap:2px}.ctl label b{color:var(--ink);font-weight:600;font-size:13px}
+button:disabled{opacity:.45;cursor:default}
+.note{font-size:13px;color:var(--muted)}
+.events{max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:8px;font-size:13px}
+.ev{display:grid;grid-template-columns:44px 110px 1fr;gap:8px;padding:5px 8px;border-bottom:1px solid var(--line);cursor:pointer;color:var(--muted)}
+.ev.done{color:var(--ink)}.ev.cur{background:#eef2ff;color:var(--ink);font-weight:600}.ev .t{font-variant-numeric:tabular-nums}
+.ev .k{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.k.assistant{color:var(--blue)}.k.tool_call{color:var(--purple)}.k.tool_result{color:var(--green)}.k.permission_denied,.k.error{color:var(--red)}.k.hook{color:#b45309}.k.permission{color:#0891b2}.k.compaction{color:#78716c}.k.done{color:var(--green)}
+.msgs{max-height:420px;overflow:auto;display:flex;flex-direction:column;gap:6px}
+.msg{border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;white-space:pre-wrap;word-break:break-word}
+.msg .r{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--muted)}
+.msg.user{background:#f8fafc}.msg.assistant{background:#eff6ff}.msg.tool_result{background:#f0fdf4}.msg.tool_result.err{background:#fef2f2}.msg.new{outline:2px solid var(--blue)}
+.bar{height:22px;border:1px solid var(--line);border-radius:6px;overflow:hidden;display:flex;background:#f8fafc}.bar div{height:100%}
+.detail pre{max-height:260px}
+.phase{font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Agent Loop Tracer <a class="chip" href="../chapters/24-the-agent-loop.md">Chapter 24</a></h1>
+  <p class="sub">Step through a coding-agent run one event at a time: think → act (hooks, permission gate, tool) → observe, with the message list and the context budget growing under your eyes.</p>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Press <em>Next</em> repeatedly and watch which phase of the loop lights up for each event; open the tool-call JSON and the result the model gets back. Then flip <em>write_file</em> to <em>deny</em> and reset: the trace re-routes because the denial arrives as an ordinary tool result. Switch to the second transcript to see a tool error handled the same way.</div>
+
+<div class="panel">
+  <div class="row ctl">
+    <label><b>transcript</b><select id="scenario"><option value="A">A: fix a failing test</option><option value="B">B: tool error, then recovery</option></select></label>
+    <label><b>permission policy</b><select id="policy"><option value="ask">ask (permission_fn decides)</option><option value="allow_read_only">allow_read_only</option><option value="allow_all">allow_all</option></select></label>
+    <label><b>write_file under "ask"</b><select id="writePerm"><option value="allow">allow</option><option value="deny">deny</option></select></label>
+    <label><b>pre_tool hook: protect tests/</b><select id="hookTests"><option value="0">off</option><option value="1">on</option></select></label>
+    <label><b>context budget</b><select id="budget"><option>1500</option><option>3000</option><option selected>8000</option></select></label>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <button id="prev" onclick="go(-1)" class="secondary">◀ Prev</button>
+    <button id="next" onclick="go(1)">Next ▶</button>
+    <button id="auto" onclick="toggleAuto()" class="secondary">Auto-play</button>
+    <button onclick="rebuild()" class="secondary">Reset trace</button>
+    <span class="note" id="pos"></span>
+  </div>
+</div>
+
+<div class="grid two">
+  <div class="panel">
+    <svg id="loop" viewBox="0 0 480 200" style="width:100%;height:auto;display:block" role="img" aria-label="observe think act loop"></svg>
+    <div class="note" id="phaseText" style="margin:4px 0 10px"></div>
+    <strong>Events</strong> <span class="note">(the harness's <code>Transcript.events</code>; click one to jump)</span>
+    <div class="events" id="events"></div>
+  </div>
+  <div class="panel detail">
+    <strong>Current event</strong>
+    <div id="detail" style="margin-top:6px"></div>
+  </div>
+</div>
+
+<div class="grid two">
+  <div class="panel">
+    <strong>Messages</strong> <span class="note">(what the model sees on its next call; newest outlined)</span>
+    <div class="msgs" id="msgs" style="margin-top:6px"></div>
+  </div>
+  <div class="panel">
+    <strong>Context budget</strong> <span class="note" id="tokText"></span>
+    <div class="bar" id="bar" style="margin:8px 0"></div>
+    <div class="note legend"><span style="background:#94a3b8"></span>system + tool schemas (fixed) &nbsp;<span style="background:#cbd5e1"></span>user &nbsp;<span style="background:var(--blue)"></span>assistant &nbsp;<span style="background:var(--green)"></span>tool results &nbsp;<span style="background:#fee2e2;border:1px solid var(--red)"></span>over budget</div>
+    <p class="note">Tokens are estimated as chars ÷ 4 (<code>estimate_tokens</code> in <code>llm/agent/context.py</code>). The harness checks <code>needs_compaction</code> after each turn at 80 % of the budget and, if needed, calls <code>compact(messages, keep_last=6)</code>: older tool results become one-line stubs. Lower the budget to 1500 to see it fire.</p>
+    <strong>Sandbox files</strong> <span class="note">(virtual; written by write_file)</span>
+    <pre id="fs" style="max-height:220px"></pre>
+  </div>
+</div>
+
+<div class="box challenge"><strong>Challenge.</strong> Set <em>write_file</em> to <em>deny</em>, reset, and — before stepping past the write — predict what the agent does next, how the run ends (<code>stop_reason</code>) and how many turns it takes. Then check.
+<details><summary>Show answer</summary><p>The gate refuses, but nothing crashes: <code>_execute</code> returns the text "Permission denied: 'write_file' is not allowed under policy 'ask'. Try a different approach or ask the user." and that text is appended as a <code>tool_result</code> message like any other observation. On its next call the model reads it, cannot edit the file, and replies <em>without</em> a tool call: it explains the one-line fix and asks the user to apply it or grant permission. A reply with no tool calls is the stop condition, so the run ends with <code>stop_reason = "done"</code> after 5 turns (transcript A) — "done" here means "the model stopped", not "the task succeeded": the tests are still failing, which is why Chapter 27's harness runs the tests itself rather than trusting the model's summary. Policy <code>allow_read_only</code> gives the same route; <code>allow_all</code> never asks.</p></details></div>
+
+<footer><a href="index.html">← All interactive explainers</a> · The loop, the gate, the hooks and the compaction are a line-by-line port of <code>Agent.run</code> / <code>Agent._execute</code> in <code>llm/agent/harness.py</code>; the model replies are scripted (a <code>ScriptedBackend</code>) and the tools run against a tiny virtual file system.</footer>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const estimateTokens = t => Math.max(1, Math.floor(t.length / 4));
+const messageText = m => m.content + (m.tool_calls ? '\n' + JSON.stringify(m.tool_calls) : '');
+// --------------------------------------------------------------- tools (llm/agent/tools.py, virtual)
+const SYSTEM = 'You are a careful assistant that can call tools. Use a tool when it helps, read the result, and when you have the answer reply in plain text without calling a tool.';
+const params = (props, req) => ({ type: 'object', properties: Object.fromEntries(Object.entries(props).map(([k, [t, d]]) => [k, { type: t, description: d }])), required: req });
+const TOOLS = {
+  read_file: { description: 'Read a UTF-8 text file inside the workdir.', input_schema: params({ path: ['string', 'Path relative to the workdir'] }, ['path']), read_only: true },
+  write_file: { description: 'Create or overwrite a text file inside the workdir.', input_schema: params({ path: ['string', 'Path relative to the workdir'], content: ['string', 'Full new file content'] }, ['path', 'content']), read_only: false },
+  list_dir: { description: "List the entries of a directory (directories end with '/').", input_schema: params({ path: ['string', "Directory, default '.'"] }, []), read_only: true },
+  run_python: { description: 'Run a Python snippet in the workdir (10 s timeout) and return its output.', input_schema: params({ code: ['string', 'Python source code'] }, ['code']), read_only: false },
+  run_tests: { description: 'Run `python -m pytest -q` in the workdir; returns PASS/FAIL and the last lines.', input_schema: params({ path: ['string', "Test file or directory, default 'tests'"] }, []), read_only: true },
+};
+const SCHEMAS = Object.entries(TOOLS).map(([name, t]) => ({ name, description: t.description, input_schema: t.input_schema }));
+const BUGGY = 'def mean(xs):\n    """Arithmetic mean of a non-empty list."""\n    return sum(xs) / (len(xs) - 1)\n';
+const FIXED = 'def mean(xs):\n    """Arithmetic mean of a non-empty list."""\n    return sum(xs) / len(xs)\n';
+const MEDIAN_V1 = FIXED + '\n\ndef median(xs):\n    s = sorted(xs)\n    return s[len(s) // 2]\n';
+const MEDIAN_V2 = FIXED + '\n\ndef median(xs):\n    s = sorted(xs)\n    n = len(s)\n    mid = n // 2\n    return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2\n';
+const TEST_MATH = 'from mathlib import mean\n\ndef test_mean():\n    assert mean([1, 2, 3]) == 2\n    assert mean([10]) == 10\n';
+const TEST_MATH2 = TEST_MATH + '\n\nfrom mathlib import median\n\ndef test_median():\n    assert median([3, 1, 2]) == 2\n    assert median([1, 2, 3, 4]) == 2.5\n';
+function makeFS(scn) { return { 'mathlib.py': scn === 'A' ? BUGGY : FIXED, 'tests/__init__.py': '', 'tests/test_math.py': TEST_MATH, 'README.md': '# demo repo\n' }; }
+function runTool(fs, name, args) {
+  if (!(name in TOOLS)) return `Error: unknown tool '${name}'`;
+  if (name === 'read_file') return args.path in fs ? fs[args.path] : `Error: FileNotFoundError: '${args.path}' does not exist in the workdir`;
+  if (name === 'write_file') { fs[args.path] = args.content; return `Wrote ${args.content.length} chars to ${args.path}`; }
+  if (name === 'list_dir') { const p = (args.path || '.').replace(/\/$/, ''); const out = new Set(); Object.keys(fs).forEach(k => { const rel = p === '.' ? k : (k.startsWith(p + '/') ? k.slice(p.length + 1) : null); if (rel === null) return; const first = rel.split('/')[0]; out.add(rel.includes('/') ? first + '/' : first); }); return [...out].sort().join('\n') || '(empty)'; }
+  if (name === 'run_python') { if (/median\(\[1, 2, 3, 4\]\)/.test(args.code)) return (fs['mathlib.py'].includes('n % 2') ? '2.5' : '3') + '\n[exit code 0]'; return '(no output)\n[exit code 0]'; }
+  if (name === 'run_tests') {
+    const lib = fs['mathlib.py'], t = fs['tests/test_math.py'];
+    const fails = [];
+    if (lib.includes('len(xs) - 1')) fails.push('FAILED tests/test_math.py::test_mean - assert 3.0 == 2\n  where 3.0 = mean([1, 2, 3])');
+    if (t.includes('test_median')) { if (!lib.includes('def median')) fails.push("FAILED tests/test_math.py::test_median - ImportError: cannot import name 'median' from 'mathlib'"); else if (!lib.includes('n % 2')) fails.push('FAILED tests/test_math.py::test_median - assert 3 == 2.5\n  where 3 = median([1, 2, 3, 4])'); }
+    const n = t.includes('test_median') ? 2 : 1;
+    if (fails.length) return `FAIL (exit code 1)\n${'F'.repeat(fails.length)}${'.'.repeat(n - fails.length)}\n` + fails.join('\n') + `\n${fails.length} failed, ${n - fails.length} passed in 0.04s`;
+    return `PASS (exit code 0)\n${'.'.repeat(n)}\n${n} passed in 0.03s`;
+  }
+}
+// --------------------------------------------------------------- scripted backend
+// Like ScriptedBackend, but each reply may look at the last tool result (the model "reads" it).
+function backend(scn, messages, turn) {
+  const last = messages[messages.length - 1], lastText = last.role === 'tool_result' ? last.content : '';
+  const denied = lastText.startsWith('Permission denied'), blocked = lastText.startsWith('Blocked by hook');
+  const results = messages.filter(m => m.role === 'tool_result').map(m => m.content);
+  const call = (name, args) => ({ id: 'call_' + turn, name, arguments: args });
+  if (scn === 'A') {
+    if (turn === 1) return { text: "I'll start by reading the failing test.", tool_calls: [call('read_file', { path: 'tests/test_math.py' })] };
+    if (turn === 2) return { text: 'The test expects mean([1, 2, 3]) == 2. Let me look at the implementation.', tool_calls: [call('read_file', { path: 'mathlib.py' })] };
+    if (turn === 3) return { text: 'I see `sum(xs) / (len(xs) - 1)` — an off-by-one. Confirming the failure before changing anything.', tool_calls: [call('run_tests', { path: 'tests' })] };
+    if (turn === 4) return { text: 'Confirmed: test_mean fails with 3.0 == 2. Fixing the divisor.', tool_calls: [call('write_file', { path: 'mathlib.py', content: FIXED })] };
+    if (denied) return { text: 'I could not edit mathlib.py: write_file was denied. The fix is a one-line change — replace `len(xs) - 1` with `len(xs)` in mean(). Please apply it, or allow write_file and ask me to continue.', tool_calls: [] };
+    if (turn === 5) return { text: 'Re-running the tests to verify the fix.', tool_calls: [call('run_tests', { path: 'tests' })] };
+    return { text: lastText.startsWith('PASS') ? 'Done. mean() divided by len(xs) - 1; it now divides by len(xs). tests/test_math.py passes (1 passed).' : 'The tests still fail; I need more information from you.', tool_calls: [] };
+  }
+  // scenario B: add median() with a test; first attempt hits a missing file, then a wrong even-length case
+  if (turn === 1) return { text: "I'll read mathlib.py to match its style.", tool_calls: [call('read_file', { path: 'mathlib.py' })] };
+  if (turn === 2) return { text: 'Now the test file for median.', tool_calls: [call('read_file', { path: 'tests/test_median.py' })] };
+  if (turn === 3) return { text: "That file does not exist — the error is just an observation. Let me list tests/ to see what is there.", tool_calls: [call('list_dir', { path: 'tests' })] };
+  if (turn === 4) return { text: 'Only tests/test_math.py exists. I will add a median test there and implement median in mathlib.py.', tool_calls: [{ ...call('write_file', { path: 'tests/test_math.py', content: TEST_MATH2 }), id: 'call_4a' }, { ...call('write_file', { path: 'mathlib.py', content: MEDIAN_V1 }), id: 'call_4b' }] };
+  if (results.some(r => r.startsWith('Permission denied'))) return { text: 'write_file was denied, so I cannot add the test or the function. Proposed code:\n\n' + MEDIAN_V2.split('\n\n')[1] + '\n\nPlease allow write_file or apply it yourself.', tool_calls: [] };
+  if (turn === 5) {
+    if (results.some(r => r.startsWith('Blocked by hook'))) return { text: 'A hook blocked the edit to tests/, so I will verify median with run_python instead.', tool_calls: [call('run_python', { code: 'from mathlib import median\nprint(median([1, 2, 3, 4]))' })] };
+    return { text: 'Both files written. Running the tests.', tool_calls: [call('run_tests', { path: 'tests' })] };
+  }
+  if (turn === 6 && (lastText.startsWith('3') || lastText.includes('assert 3 == 2.5'))) return { text: 'The even-length case is wrong: median([1, 2, 3, 4]) must average the two middle values. Fixing.', tool_calls: [call('write_file', { path: 'mathlib.py', content: MEDIAN_V2 })] };
+  if (turn === 7) return { text: 'Verifying again.', tool_calls: [call(results.some(r => r.startsWith('Blocked by hook')) ? 'run_python' : 'run_tests', results.some(r => r.startsWith('Blocked by hook')) ? { code: 'from mathlib import median\nprint(median([1, 2, 3, 4]))' } : { path: 'tests' })] };
+  return { text: 'Done. median() sorts the list and averages the two middle values for even lengths; ' + (lastText.startsWith('PASS') ? 'tests/test_math.py passes (2 passed).' : 'verified with run_python (2.5).'), tool_calls: [] };
+}
+// --------------------------------------------------------------- the loop (harness.py Agent.run, ported)
+function truncateToolResult(t, max = 2000) { if (t.length <= max) return t; const h = Math.floor(max / 2); return t.slice(0, h) + `\n... [${t.length - 2 * h} chars truncated] ...\n` + t.slice(-h); }
+function compact(messages, keepLast = 6) {
+  if (messages.length <= keepLast + 1) return messages.slice();
+  const head = messages.slice(0, 1), middle = messages.slice(1, -keepLast), tail = messages.slice(-keepLast);
+  return head.concat(middle.map(m => m.role === 'tool_result' ? { ...m, content: `[tool result truncated: ${m.content.length} chars]` } : m), tail);
+}
+function runAgent(cfg) {
+  const fs = makeFS(cfg.scn), events = [];
+  let messages = [{ role: 'user', content: cfg.scn === 'A' ? 'tests/test_math.py::test_mean fails. Find the bug in mathlib.py and fix it.' : 'Add a median() function to mathlib.py and a test for it.' }];
+  const fixed = estimateTokens(SYSTEM) + estimateTokens(JSON.stringify(SCHEMAS));
+  const used = () => fixed + messages.reduce((s, m) => s + estimateTokens(messageText(m)), 0);
+  const snap = () => JSON.parse(JSON.stringify(messages));
+  const emit = (kind, data, turn, phase) => events.push({ kind, data, turn, phase, messages: snap(), fs: { ...fs }, used: used() });
+  const hooksPre = [];
+  if (cfg.hookTests) hooksPre.push({ name: 'protect_tests', fn: c => c.name === 'write_file' && c.arguments.path.startsWith('tests/') ? 'tests/ is read-only for the agent (harness rule)' : null });
+  hooksPre.push({ name: 'guard_paths', fn: c => c.name === 'write_file' && (c.arguments.path.startsWith('..') || c.arguments.path.startsWith('/')) ? `path '${c.arguments.path}' is outside the workdir` : null });
+  const hooksPost = [{ name: 'log_to_harness.log', fn: () => null }];
+  const permitted = (call, tool) => cfg.policy === 'allow_all' ? true : (cfg.policy === 'allow_read_only' && tool.read_only) ? true : cfg.policy === 'ask' ? (tool.read_only || cfg.writePerm === 'allow') : false;
+  let stop = '', turns = 0;
+  for (let turn = 1; turn <= 20; turn++) {
+    turns = turn;
+    const reply = backend(cfg.scn, messages, turn);                       // think
+    const m = { role: 'assistant', content: reply.text }; if (reply.tool_calls.length) m.tool_calls = reply.tool_calls;
+    messages.push(m); emit('assistant', { text: reply.text, n_tool_calls: reply.tool_calls.length }, turn, 'think');
+    if (!reply.tool_calls.length) { stop = 'done'; emit('done', { text: reply.text, stop_reason: 'done', turns: turn }, turn, 'done'); break; }
+    for (const call of reply.tool_calls) {                                 // act + observe
+      emit('tool_call', { id: call.id, name: call.name, arguments: call.arguments }, turn, 'act');
+      let result, reason = null;
+      for (const h of hooksPre) { reason = h.fn(call); emit('hook', { stage: 'pre_tool', hook: h.name, blocked: !!reason, reason }, turn, 'act'); if (reason) break; }
+      if (reason) result = 'Blocked by hook: ' + reason;
+      else {
+        const tool = TOOLS[call.name];
+        if (!tool) result = runTool(fs, call.name, call.arguments);
+        else {
+          const ok = permitted(call, tool);
+          emit(ok ? 'permission' : 'permission_denied', { name: call.name, read_only: tool.read_only, policy: cfg.policy, decision: ok ? 'allow' : 'deny', how: cfg.policy === 'allow_all' ? 'policy allow_all' : (cfg.policy === 'allow_read_only' && tool.read_only) ? 'policy allow_read_only + tool is read-only' : cfg.policy === 'ask' ? (tool.read_only ? 'permission_fn: read-only tool → allow' : 'permission_fn: your write_file setting → ' + cfg.writePerm) : 'no permission_fn → deny' }, turn, 'act');
+          result = ok ? runTool(fs, call.name, call.arguments) : `Permission denied: '${call.name}' is not allowed under policy '${cfg.policy}'. Try a different approach or ask the user.`;
+        }
+      }
+      result = truncateToolResult(result);
+      for (const h of hooksPost) { const nw = h.fn(call, result); emit('hook', { stage: 'post_tool', hook: h.name, rewrote: nw !== null }, turn, 'act'); if (nw !== null) result = nw; }
+      messages.push({ role: 'tool_result', tool_call_id: call.id, content: result });
+      emit('tool_result', { id: call.id, name: call.name, content: result }, turn, 'observe');
+    }
+    if (used() >= 0.8 * cfg.budget) { const before = used(); messages = compact(messages, 6); emit('compaction', { tokens_before: before, tokens_after: used(), keep_last: 6 }, turn, 'observe'); }
+  }
+  if (!stop) emit('max_turns', { max_turns: 20 }, 20, 'done');
+  return { events, fixed, turns, stop };
+}
+// --------------------------------------------------------------- UI
+let T = null, idx = 0, timer = null;
+function cfg() { return { scn: $('scenario').value, policy: $('policy').value, writePerm: $('writePerm').value, hookTests: $('hookTests').value === '1', budget: parseInt($('budget').value) }; }
+function rebuild() { T = runAgent(cfg()); idx = 0; stopAuto(); render(); }
+function go(d) { idx = Math.max(0, Math.min(T.events.length - 1, idx + d)); render(); }
+function toggleAuto() { if (timer) return stopAuto(); $('auto').textContent = 'Stop'; timer = setInterval(() => { if (idx >= T.events.length - 1) return stopAuto(); go(1); }, 900); }
+function stopAuto() { clearInterval(timer); timer = null; $('auto').textContent = 'Auto-play'; }
+const PHASES = { think: 'THINK — backend.complete(messages, schemas, system)', act: 'ACT — hooks → permission gate → registry.call', observe: 'OBSERVE — the result is appended as a tool_result message', done: 'STOP — a reply with no tool calls is the final answer' };
+function drawLoop(phase) {
+  const svg = $('loop'); svg.innerHTML = '';
+  const N = 'http://www.w3.org/2000/svg', mk = (t, a, tx) => { const e = document.createElementNS(N, t); for (const k in a) e.setAttribute(k, a[k]); if (tx !== undefined) e.textContent = tx; svg.appendChild(e); return e; };
+  const nodes = { think: [90, 100, 'THINK', 'model call'], act: [240, 100, 'ACT', 'hooks · gate · tool'], observe: [390, 100, 'OBSERVE', 'append result'] };
+  mk('defs', {}).innerHTML = '<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#64748b"/></marker>';
+  mk('path', { d: 'M148 100 L182 100', stroke: '#64748b', 'stroke-width': 2, 'marker-end': 'url(#ah)' });
+  mk('path', { d: 'M298 100 L332 100', stroke: '#64748b', 'stroke-width': 2, 'marker-end': 'url(#ah)' });
+  mk('path', { d: 'M390 150 Q390 185 240 185 Q90 185 90 152', stroke: '#64748b', 'stroke-width': 2, fill: 'none', 'marker-end': 'url(#ah)' });
+  mk('text', { x: 240, y: 179, 'text-anchor': 'middle', 'font-size': 11, fill: '#64748b' }, 'next turn (until max_turns or the context budget needs compaction)');
+  mk('path', { d: 'M90 50 L90 22', stroke: phase === 'done' ? '#16a34a' : '#94a3b8', 'stroke-width': 2, 'marker-end': 'url(#ah)', 'stroke-dasharray': '4 3' });
+  mk('text', { x: 100, y: 22, 'font-size': 11, fill: phase === 'done' ? '#16a34a' : '#64748b', 'font-weight': phase === 'done' ? 700 : 400 }, 'no tool calls → STOP (final answer)');
+  for (const k in nodes) { const [x, y, lab, sub] = nodes[k]; const on = phase === k; mk('rect', { x: x - 58, y: y - 50, width: 116, height: 100, rx: 12, fill: on ? '#2563eb' : '#f8fafc', stroke: on ? '#2563eb' : '#e2e8f0', 'stroke-width': 2 }); mk('text', { x, y: y - 6, 'text-anchor': 'middle', 'font-size': 16, 'font-weight': 700, fill: on ? '#fff' : '#0f172a' }, lab); mk('text', { x, y: y + 16, 'text-anchor': 'middle', 'font-size': 11, fill: on ? '#dbeafe' : '#64748b' }, sub); }
+}
+function render() {
+  const ev = T.events[idx], c = cfg();
+  $('pos').textContent = `event ${idx + 1} / ${T.events.length} · turn ${ev.turn} · run ends: stop_reason="${T.stop || 'max_turns'}" after ${T.turns} turns`;
+  $('prev').disabled = idx === 0; $('next').disabled = idx === T.events.length - 1;
+  drawLoop(ev.phase); $('phaseText').innerHTML = '<span class="phase">' + PHASES[ev.phase] + '</span>';
+  $('events').innerHTML = T.events.map((e, i) => `<div class="ev ${i < idx ? 'done' : ''} ${i === idx ? 'cur' : ''}" data-i="${i}"><span class="t">t${e.turn}</span><span class="k ${e.kind}">${e.kind}</span><span>${esc(evSummary(e))}</span></div>`).join('');
+  $('events').querySelectorAll('.ev').forEach(d => d.addEventListener('click', () => { idx = parseInt(d.dataset.i); render(); }));
+  const cur = $('events').querySelector('.ev.cur'); if (cur) cur.scrollIntoView({ block: 'nearest' });
+  $('detail').innerHTML = evDetail(ev);
+  const prevCount = idx > 0 ? T.events[idx - 1].messages.length : 0;
+  $('msgs').innerHTML = ev.messages.map((m, i) => `<div class="msg ${m.role}${m.role === 'tool_result' && /^(Error|Permission denied|Blocked|FAIL)/.test(m.content) ? ' err' : ''}${i >= prevCount || (ev.kind === 'compaction' && i < ev.messages.length - 6) ? ' new' : ''}"><div class="r">${m.role}${m.tool_call_id ? ' · ' + m.tool_call_id : ''} · ~${estimateTokens(messageText(m))} tok</div>${esc(m.content.length > 400 ? m.content.slice(0, 400) + '…' : m.content)}${m.tool_calls ? '\n' + esc(m.tool_calls.map(t => `→ ${t.name}(${JSON.stringify(t.arguments).slice(0, 80)}${JSON.stringify(t.arguments).length > 80 ? '…' : ''})`).join('\n')) : ''}</div>`).join('');
+  $('msgs').scrollTop = $('msgs').scrollHeight;
+  const B = c.budget, segs = [['#94a3b8', T.fixed]]; ev.messages.forEach(m => segs.push([m.role === 'user' ? '#cbd5e1' : m.role === 'assistant' ? '#2563eb' : '#16a34a', estimateTokens(messageText(m))]));
+  const total = segs.reduce((s, x) => s + x[1], 0), scale = Math.max(B, total);
+  $('bar').innerHTML = segs.map(([col, n]) => `<div style="width:${(n / scale * 100).toFixed(2)}%;background:${col};border-right:1px solid #fff" title="${n} tokens"></div>`).join('') + (total > B ? '' : `<div style="width:${((B - total) / scale * 100).toFixed(2)}%;background:transparent"></div>`);
+  if (total > B) $('bar').style.outline = '2px solid var(--red)'; else $('bar').style.outline = 'none';
+  $('tokText').innerHTML = `~<b>${total}</b> / ${B} tokens (${(total / B * 100).toFixed(0)} %) — fixed cost ${T.fixed}, compaction threshold ${Math.round(0.8 * B)}${total >= 0.8 * B ? ' <span style="color:var(--red)">· needs_compaction = True</span>' : ''}`;
+  $('fs').textContent = Object.entries(ev.fs).map(([k, v]) => `── ${k} ──\n${v}`).join('\n');
+}
+function evSummary(e) {
+  const d = e.data;
+  if (e.kind === 'assistant') return `"${d.text.slice(0, 60)}${d.text.length > 60 ? '…' : ''}" · ${d.n_tool_calls} tool call(s)`;
+  if (e.kind === 'tool_call') return `${d.name}(${Object.keys(d.arguments).join(', ')})`;
+  if (e.kind === 'hook') return `${d.stage}: ${d.hook} → ${d.blocked ? 'BLOCK: ' + d.reason : d.stage === 'pre_tool' ? 'pass' : d.rewrote ? 'rewrote result' : 'logged, unchanged'}`;
+  if (e.kind === 'permission' || e.kind === 'permission_denied') return `${d.name}: ${d.decision.toUpperCase()} (${d.how})`;
+  if (e.kind === 'tool_result') return d.content.split('\n')[0].slice(0, 70);
+  if (e.kind === 'compaction') return `${d.tokens_before} → ${d.tokens_after} tokens (keep_last=${d.keep_last})`;
+  if (e.kind === 'done') return `stop_reason="done" after ${d.turns} turns`;
+  return JSON.stringify(d);
+}
+function evDetail(e) {
+  const d = e.data, pre = o => `<pre>${esc(typeof o === 'string' ? o : JSON.stringify(o, null, 2))}</pre>`;
+  if (e.kind === 'assistant') return `<p>The backend returned an <code>AssistantMessage</code>${d.n_tool_calls ? ' with ' + d.n_tool_calls + ' tool call(s) — the loop will execute each one' : ' with no tool calls — the stop condition'}.</p>${pre(d.text)}`;
+  if (e.kind === 'tool_call') return `<p>The tool call as the harness sees it (<code>ToolCall.to_dict()</code>). Next: pre-tool hooks, then the permission gate.</p>${pre(d)}`;
+  if (e.kind === 'hook') return `<p><b>${d.stage}</b> hook <code>${d.hook}</code>: ${d.blocked ? '<span style="color:var(--red)">blocked</span> — the call never runs; the reason becomes the tool result' : d.stage === 'pre_tool' ? 'returned None → the call may proceed' : d.rewrote ? 'returned a replacement result' : 'returned None → result unchanged (it only appended a line to harness.log)'}.</p>${pre(d)}<p class="note">Hooks are the harness owner's code, not the model's (<code>Hooks</code> in harness.py). The course harness emits an event only when a pre-hook blocks; this tracer shows every hook call so you can see where they sit.</p>`;
+  if (e.kind === 'permission' || e.kind === 'permission_denied') return `<p><b>Permission gate</b> (<code>Agent._permitted</code>): tool <code>${d.name}</code> is ${d.read_only ? 'read-only' : '<b>not</b> read-only'}; policy <code>${d.policy}</code>; decision <b style="color:${d.decision === 'allow' ? 'var(--green)' : 'var(--red)'}">${d.decision.toUpperCase()}</b> — ${d.how}.</p>${d.decision === 'deny' ? '<p>The tool does not run. The model gets the text below as its observation.</p>' + pre(`Permission denied: '${d.name}' is not allowed under policy '${d.policy}'. Try a different approach or ask the user.`) : ''}`;
+  if (e.kind === 'tool_result') return `<p>Appended as <code>{"role": "tool_result", "tool_call_id": "${d.id}"}</code>. Errors, denials and hook blocks all arrive this way — <em>errors are observations</em>.</p>${pre(d.content)}`;
+  if (e.kind === 'compaction') return `<p><b>Compaction</b>: usage crossed 80 % of the budget, so <code>compact(messages, keep_last=6)</code> ran. The first message (the task) and the last 6 are kept verbatim; older tool results become one-line stubs.</p>${pre(d)}`;
+  if (e.kind === 'done') return `<p><b>Stop.</b> <code>Transcript.stop_reason = "done"</code>, <code>final_text</code> is the last reply. "Done" means the model stopped calling tools — it is a claim, not proof (see the challenge).</p>${pre(d.text)}`;
+  return pre(d);
+}
+['scenario', 'policy', 'writePerm', 'hookTests', 'budget'].forEach(k => $(k).addEventListener('change', rebuild));
+rebuild();
+</script>
+</body>
+</html>

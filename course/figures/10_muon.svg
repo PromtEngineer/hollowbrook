@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="500" viewBox="0 0 900 500" font-family="system-ui, sans-serif">
+  <rect width="900" height="500" fill="#ffffff"/>
+  <defs><marker id="ar2" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#64748b"/></marker></defs>
+  <text x="450" y="30" text-anchor="middle" font-size="18" font-weight="600" fill="#0f172a">Muon: orthogonalise the momentum matrix, then step (llm/optim.py)</text>
+
+  <!-- Panel 1: momentum matrix as an ellipse-shaped map -->
+  <g transform="translate(30,60)">
+    <text x="130" y="0" text-anchor="middle" font-size="13" font-weight="600" fill="#2563eb">1. momentum M = 0.95·M + g</text>
+    <rect x="0" y="12" width="260" height="230" rx="8" fill="#2563eb" fill-opacity="0.08" stroke="#2563eb"/>
+    <!-- unit circle -> ellipse -->
+    <circle cx="70" cy="130" r="45" fill="none" stroke="#64748b" stroke-dasharray="4 3"/>
+    <text x="70" y="195" text-anchor="middle" font-size="10" fill="#64748b">unit circle (inputs)</text>
+    <ellipse cx="190" cy="130" rx="60" ry="10" fill="#2563eb" fill-opacity="0.25" stroke="#2563eb" transform="rotate(-30 190 130)"/>
+    <path d="M118 130 L 135 130" stroke="#64748b" stroke-width="2" marker-end="url(#ar2)"/>
+    <text x="190" y="195" text-anchor="middle" font-size="10" fill="#64748b">M squashes: σ₁ = 60, σ₂ = 10</text>
+    <text x="130" y="222" text-anchor="middle" font-size="11" fill="#0f172a">a few directions dominate the update</text>
+  </g>
+
+  <!-- Panel 2: Newton-Schulz -->
+  <g transform="translate(320,60)">
+    <text x="130" y="0" text-anchor="middle" font-size="13" font-weight="600" fill="#7c3aed">2. Newton–Schulz, 5 iterations</text>
+    <rect x="0" y="12" width="260" height="230" rx="8" fill="#7c3aed" fill-opacity="0.08" stroke="#7c3aed"/>
+    <g font-size="11" fill="#0f172a">
+      <text x="14" y="38">X ← M / ‖M‖_F          (so σ ≤ 1)</text>
+      <text x="14" y="60">repeat 5×:</text>
+      <text x="30" y="78">A = X Xᵀ</text>
+      <text x="30" y="96">X ← 3.44·X − 4.78·A X + 2.03·A² X</text>
+    </g>
+    <!-- singular value plot: p(s) -->
+    <line x1="30" y1="215" x2="240" y2="215" stroke="#0f172a"/>
+    <line x1="30" y1="215" x2="30" y2="120" stroke="#0f172a"/>
+    <text x="135" y="232" text-anchor="middle" font-size="10" fill="#64748b">singular value before  →</text>
+    <text x="22" y="118" text-anchor="end" font-size="10" fill="#64748b">after</text>
+    <!-- the quintic maps s in (0,1] toward 1 -->
+    <path d="M30 215 C 45 130, 80 128, 120 132 C 160 136, 200 128, 240 130" fill="none" stroke="#7c3aed" stroke-width="2"/>
+    <line x1="30" y1="130" x2="240" y2="130" stroke="#16a34a" stroke-dasharray="4 3"/>
+    <text x="244" y="134" font-size="10" fill="#16a34a">1</text>
+    <text x="70" y="200" font-size="10" fill="#64748b">σ = 0.1</text>
+    <text x="200" y="200" font-size="10" fill="#64748b">σ = 1</text>
+    <text x="130" y="112" text-anchor="middle" font-size="10" fill="#0f172a">each iteration pushes every σ toward 1 (matrix-only ops: matmuls)</text>
+  </g>
+
+  <!-- Panel 3: orthogonal update -->
+  <g transform="translate(610,60)">
+    <text x="130" y="0" text-anchor="middle" font-size="13" font-weight="600" fill="#16a34a">3. update O ≈ U Vᵀ: all σ ≈ 1</text>
+    <rect x="0" y="12" width="260" height="230" rx="8" fill="#16a34a" fill-opacity="0.08" stroke="#16a34a"/>
+    <circle cx="70" cy="130" r="45" fill="none" stroke="#64748b" stroke-dasharray="4 3"/>
+    <circle cx="190" cy="130" r="45" fill="#16a34a" fill-opacity="0.25" stroke="#16a34a" transform="rotate(-30 190 130)"/>
+    <line x1="190" y1="130" x2="229" y2="107" stroke="#16a34a" stroke-width="2"/>
+    <path d="M118 130 L 135 130" stroke="#64748b" stroke-width="2" marker-end="url(#ar2)"/>
+    <text x="190" y="195" text-anchor="middle" font-size="10" fill="#64748b">O rotates only: σ₁ = σ₂ = 1</text>
+    <text x="130" y="222" text-anchor="middle" font-size="11" fill="#0f172a">every direction gets an equal-size push</text>
+  </g>
+
+  <!-- Bottom: the step and what gets Muon -->
+  <g transform="translate(30,320)">
+    <rect x="0" y="0" width="840" height="150" rx="8" fill="#ffffff" stroke="#64748b"/>
+    <text x="14" y="24" font-size="13" font-weight="600" fill="#0f172a">4. W ← W·(1 − lr·wd) − lr · sqrt(max(1, rows/cols)) · O</text>
+    <text x="14" y="44" font-size="11" fill="#64748b">Read this as: decay the weights a little, then move by a fixed-size orthogonal step; the sqrt factor makes the update RMS match Adam's so one LR (0.02) works for every matrix shape.</text>
+    <g font-size="11" fill="#0f172a">
+      <text x="14" y="76" font-weight="600" fill="#16a34a">Muon (2-D weights that are linear maps)</text>
+      <text x="14" y="94">q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj</text>
+      <text x="14" y="112" fill="#64748b">"orthogonal" is meaningful for a map from one vector space to another</text>
+      <text x="440" y="76" font-weight="600" fill="#f59e0b">AdamW (everything else)</text>
+      <text x="440" y="94">embed / lm_head (rows are lookup entries, not a map), RMSNorm gains (1-D)</text>
+      <text x="440" y="112" fill="#64748b">split_params() in llm/optim.py:85 makes this decision by name and ndim</text>
+    </g>
+    <text x="14" y="138" font-size="11" fill="#64748b">Why it helps: Adam normalises each weight entry on its own; Muon normalises whole directions of the matrix, so rare-but-useful directions are not drowned out by dominant ones.</text>
+  </g>
+</svg>

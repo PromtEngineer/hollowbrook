@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Transformer Block Dataflow — Chapter 6</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page-specific */
+.grid>*{min-width:0}
+h3{margin:0 0 8px;font-size:15px}.small{font-size:13px;color:var(--muted)}
+select{width:auto}
+#diagram{width:100%;max-width:420px;height:auto;display:block;margin:0 auto}
+.node rect{fill:#fff;stroke:#cbd5e1;stroke-width:1.5}.node.on rect{stroke:var(--blue);stroke-width:3;fill:#eef2ff}.node.done rect{fill:#f8fafc}
+.node text{font-size:12px}.node .shape{font-family:ui-monospace,Menlo,monospace;font-size:10px;fill:#64748b}
+.stream{stroke:#0f172a;stroke-width:3;fill:none}.wire{stroke:#94a3b8;stroke-width:1.5;fill:none}
+.stageinfo{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:14px;min-height:110px}
+.stageinfo code{background:#e2e8f0;padding:0 4px;border-radius:4px}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--muted);font-weight:500}
+td.n{text-align:right;font-family:ui-monospace,Menlo,monospace;white-space:nowrap}td.f{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--muted)}
+tr.tot td{font-weight:700;border-top:2px solid var(--ink)}
+.ctl{display:grid;grid-template-columns:110px 1fr 70px;gap:6px 10px;align-items:center;font-size:13px}.ctl input[type=range]{width:100%}.ctl .v{font-family:ui-monospace,Menlo,monospace;text-align:right}
+.big{font-size:26px;font-weight:700;font-family:ui-monospace,Menlo,monospace}
+.meter{height:12px;background:#e2e8f0;border-radius:6px;overflow:hidden}.meter div{height:100%;background:var(--orange)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Inside one Transformer block <a class="chip" href="../chapters/06-transformer-block.md">Chapter 06</a></h1>
+  <div class="sub">Follow a token through RMSNorm → attention → residual add → RMSNorm → SwiGLU MLP → residual add, and count every parameter.</div>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Press <em>Step</em> to move the token vector one stage at a time and read the tensor shape at each stage (shapes follow the config on the right). Then drag <em>d_model</em> and <em>vocab</em> and watch which slice of the parameter budget grows: attention and MLP grow with d², the embedding with V·d. The two presets are TinyLM's real <code>nano</code> and <code>small</code> configs.</div>
+
+<div class="grid two">
+  <div class="panel">
+    <div class="row" style="margin-bottom:8px">
+      <button id="stepbtn">Step</button><button id="play">▶ Play</button><button class="secondary" id="rewind">⟲ Rewind</button>
+      <span class="small" id="stepcount"></span>
+    </div>
+    <svg id="diagram" viewBox="0 0 420 700" aria-label="Transformer block diagram"></svg>
+    <div class="stageinfo" id="stageinfo" style="margin-top:8px"></div>
+  </div>
+  <div class="panel">
+    <h3>Configuration</h3>
+    <div class="row" style="margin-bottom:8px">
+      <button class="secondary" id="preset-nano">nano preset</button><button class="secondary" id="preset-small">small preset</button><button class="secondary" id="preset-medium">medium preset</button>
+    </div>
+    <div class="ctl">
+      <label for="d">d_model</label><input type="range" id="d" min="32" max="1024" step="32" value="192"><span class="v" id="dv"></span>
+      <label for="L">n_layers</label><input type="range" id="L" min="1" max="48" value="6"><span class="v" id="Lv"></span>
+      <label for="h">n_heads</label><select id="h"></select><span class="v" id="hv"></span>
+      <label for="kv">n_kv_heads</label><select id="kv"></select><span class="v" id="kvv"></span>
+      <label for="V">vocab V</label><select id="V"></select><span class="v" id="Vv"></span>
+      <label for="T">seq len T</label><input type="range" id="T" min="4" max="512" step="4" value="8"><span class="v" id="Tv"></span>
+      <label for="tie">tie embeddings</label><input type="checkbox" id="tie" checked style="justify-self:start"><span></span>
+    </div>
+    <div class="small" id="derived" style="margin:8px 0"></div>
+    <h3>Parameter count</h3>
+    <div class="row" style="margin-bottom:6px">
+      <div><div class="big" id="total"></div><div class="small">total parameters N</div></div>
+      <div><div class="big" id="nonembed"></div><div class="small">non-embedding</div></div>
+      <div><div class="big" id="flops"></div><div class="small">≈ 6N training FLOPs / token</div></div>
+    </div>
+    <div class="small">embedding share of N: <span id="sharetxt"></span></div>
+    <div class="meter" style="margin:4px 0 10px"><div id="share" style="width:0%"></div></div>
+    <table id="tbl"></table>
+    <div class="small" style="margin-top:8px">The 6N rule: ≈ 2N FLOPs per token for the forward pass (one multiply-add per weight) and ≈ 4N for the backward. <code>TinyLM.flops_per_token()</code> adds the attention term 12·L·d·T = <span id="attnflops"></span> for T = <span id="Tv2"></span>, which matters only for long sequences.</div>
+  </div>
+</div>
+
+<div class="box challenge"><strong>Challenge.</strong> Find a configuration in which the embedding matrix is more than 50% of all parameters. Then find the smallest change that brings it under 25%. Which of the two models would you expect to be better at the same total N, and why?
+<details><summary>Show answer</summary>
+<p>Take the <em>nano</em> preset and set V = 4096 (the course's default tokenizer size): the embedding is 4096 × 96 = 393,216 parameters against 295,584 in the blocks, so ≈ 57% of N. Any small d with a large V does it. The quickest way down is to widen or deepen the model (the blocks grow with d² and L, the embedding only with d), or shrink the vocabulary. At equal N, parameters in the blocks are what compute with the input; an embedding row is only used by one token, so a model that spends most of N on the embedding table is a lookup table with a tiny brain. This is why scaling-law fits (Chapter 9) count non-embedding parameters.</p>
+</details></div>
+
+<footer><a href="index.html">← Back to all interactives</a></footer>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString('en-US');
+const VOCABS = [256,512,1024,2048,4096,8192,16384,32768,65536,131072,262144];
+$('V').innerHTML = VOCABS.map(v=>`<option value="${v}">${fmt(v)}</option>`).join('');
+const cfg = { d:192, L:6, h:6, kv:2, V:1024, T:8, tie:true };
+const divisors = n => Array.from({length:n},(_,i)=>i+1).filter(i=>n%i===0);
+function syncSelects(){
+  const hs = divisors(cfg.d).filter(h=>cfg.d/h>=4 && h<=64);
+  if (!hs.includes(cfg.h)) cfg.h = hs.reduce((b,h)=>Math.abs(h-cfg.h)<Math.abs(b-cfg.h)?h:b, hs[0]);
+  $('h').innerHTML = hs.map(h=>`<option value="${h}" ${h===cfg.h?'selected':''}>${h} (head_dim ${cfg.d/h})</option>`).join('');
+  const kvs = divisors(cfg.h);
+  if (!kvs.includes(cfg.kv)) cfg.kv = kvs.reduce((b,k)=>Math.abs(k-cfg.kv)<Math.abs(b-cfg.kv)?k:b, kvs[0]);
+  $('kv').innerHTML = kvs.map(k=>`<option value="${k}" ${k===cfg.kv?'selected':''}>${k}${k===cfg.h?' (MHA)':k===1?' (MQA)':' (GQA)'}</option>`).join('');
+  $('d').value = cfg.d; $('L').value = cfg.L; $('V').value = cfg.V; $('T').value = cfg.T; $('tie').checked = cfg.tie;
+}
+function count(){
+  const {d,L,h,kv,V,tie} = cfg, hd = d/h, dff = Math.max(64, Math.round(8*d/3/64)*64);
+  const q = d*h*hd, k = d*kv*hd, v = d*kv*hd, o = h*hd*d, attn = q+k+v+o;
+  const mlp = 3*d*dff, norms = 2*d, block = attn+mlp+norms, blocks = block*L, fin = d, embed = V*d, head = tie?0:V*d;
+  const total = blocks+fin+embed+head, nonembed = total-embed;
+  return {hd,dff,q,k,v,o,attn,mlp,norms,block,blocks,fin,embed,head,total,nonembed};
+}
+function render(){
+  syncSelects();
+  const c = count(), {d,L,h,kv,V,T,tie} = cfg;
+  $('dv').textContent = d; $('Lv').textContent = L; $('hv').textContent = ''; $('kvv').textContent = ''; $('Vv').textContent = ''; $('Tv').textContent = T; $('Tv2').textContent = T;
+  $('derived').innerHTML = `head_dim = d/h = <strong>${c.hd}</strong> · d_ff = round(8d/3/64)·64 = <strong>${c.dff}</strong> · KV cache per token per layer = 2·kv·hd = ${2*kv*c.hd} numbers`;
+  $('total').textContent = fmt(c.total); $('nonembed').textContent = fmt(c.nonembed);
+  $('flops').textContent = sci(6*c.total);
+  const share = c.embed/c.total; $('share').style.width = (share*100).toFixed(1)+'%'; $('sharetxt').textContent = `${(share*100).toFixed(1)}% (${fmt(c.embed)} of ${fmt(c.total)})` + (share>0.5?' — more than half!':'');
+  $('attnflops').textContent = sci(12*L*d*T);
+  const rows = [
+    ['q_proj', `d·(h·hd) = ${d}·${h*c.hd}`, c.q], ['k_proj', `d·(kv·hd) = ${d}·${kv*c.hd}`, c.k], ['v_proj', `d·(kv·hd)`, c.v], ['o_proj', `(h·hd)·d`, c.o],
+    ['attention total', '', c.attn],
+    ['MLP (gate, up, down)', `3·d·d_ff = 3·${d}·${c.dff}`, c.mlp],
+    ['2 RMSNorms', `2·d`, c.norms],
+    ['<strong>one block</strong>', '', c.block],
+    [`× ${L} layers`, '', c.blocks],
+    ['final RMSNorm', 'd', c.fin],
+    ['token embedding', `V·d = ${fmt(V)}·${d}`, c.embed],
+    ['LM head', tie ? 'tied → shares the embedding' : `V·d`, c.head],
+  ];
+  $('tbl').innerHTML = '<tr><th>part</th><th>formula</th><th style="text-align:right">params</th></tr>' + rows.map(([a,b,n])=>`<tr><td>${a}</td><td class="f">${b}</td><td class="n">${fmt(n)}</td></tr>`).join('') + `<tr class="tot"><td>total N</td><td class="f">${tie?'blocks + final norm + embedding':'blocks + final norm + embedding + head'}</td><td class="n">${fmt(c.total)}</td></tr>`;
+  drawDiagram();
+}
+function sci(n){ if (n<1e6) return fmt(n); const e = Math.floor(Math.log10(n)); return (n/10**e).toFixed(2)+'e'+e + (n>=1e9? ` (${(n/1e9).toFixed(2)} GFLOP)` : ` (${(n/1e6).toFixed(1)} MFLOP)`); }
+// ---------------- diagram + animation ----------------
+const STAGES = () => { const c = count(), {d,h,kv,T} = cfg, hd=c.hd; return [
+  {id:'in', y:40, label:'x — residual stream in', shape:`(B, ${T}, ${d})`, what:`The residual stream: one ${d}-vector per token. Every sub-layer reads it and adds something back.`, params:0},
+  {id:'n1', y:110, label:'RMSNorm', shape:`(B, ${T}, ${d})`, what:`Each token vector is rescaled to unit RMS then multiplied by a learned gain (${d} numbers). No mean subtraction, no bias.`, params:d},
+  {id:'qkv', y:180, label:'q / k / v projections', shape:`q (B, ${h}, ${T}, ${hd})  k,v (B, ${kv}, ${T}, ${hd})`, what:`Three matrix multiplies. q has ${h} heads; k and v have only ${kv} (${kv===h?'multi-head':kv===1?'multi-query':'grouped-query'} attention), each shared by ${h/kv} query head(s).`, params:c.q+c.k+c.v},
+  {id:'sc', y:250, label:'RoPE, scores, causal mask, softmax', shape:`(B, ${h}, ${T}, ${T})`, what:`q and k are rotated by position (RoPE), then scores = q·kᵀ/√${hd}; future positions are masked to −∞ and each row is softmaxed. No parameters here.`, params:0},
+  {id:'av', y:320, label:'weights · v, concat heads, W_o', shape:`(B, ${h}, ${T}, ${hd}) → (B, ${T}, ${h*hd}) → (B, ${T}, ${d})`, what:`Each head's weighted sum of values is concatenated and projected back to width d by o_proj (${fmt(c.o)} params).`, params:c.o},
+  {id:'add1', y:390, label:'⊕ residual add', shape:`(B, ${T}, ${d})`, what:`x ← x + attention(norm(x)). The attention output is written into the stream; the original x is kept, so gradients have a short path.`, params:0},
+  {id:'n2', y:460, label:'RMSNorm', shape:`(B, ${T}, ${d})`, what:`A second norm with its own gain, feeding the MLP.`, params:d},
+  {id:'gu', y:530, label:'gate & up projections', shape:`gate (B, ${T}, ${c.dff})  up (B, ${T}, ${c.dff})`, what:`Two matrices d → d_ff (d_ff = ${c.dff}). SwiGLU: silu(gate) ⊙ up, an elementwise product that lets the MLP switch features on and off.`, params:2*d*c.dff},
+  {id:'down', y:600, label:'silu(gate)·up → down projection', shape:`(B, ${T}, ${c.dff}) → (B, ${T}, ${d})`, what:`Back to width d (${fmt(d*c.dff)} params). The MLP is where most of a Transformer's parameters live: ${(100*c.mlp/c.block).toFixed(0)}% of this block.`, params:d*c.dff},
+  {id:'add2', y:665, label:'⊕ residual add → x out', shape:`(B, ${T}, ${d})`, what:`x ← x + mlp(norm(x)). The block's output has the same shape as its input, so ${cfg.L} blocks can be stacked; the stream is ${d} wide throughout.`, params:0},
+]; };
+let stage = 0, playing = false, animT = 0, raf = null;
+function drawDiagram(){
+  const S = STAGES(); const svg = $('diagram'); let s = '';
+  s += `<line class="stream" x1="60" y1="20" x2="60" y2="690"/>`;
+  s += `<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#94a3b8"/></marker></defs>`;
+  // branches: attention block (stages 1-4) and mlp block (6-8)
+  s += `<path class="wire" d="M60 ${S[0].y+18} H100" marker-end="url(#ar)"/><path class="wire" d="M330 ${S[4].y+18} H360 V${S[5].y} H82" marker-end="url(#ar)"/>`;
+  s += `<path class="wire" d="M60 ${S[5].y+18} H100" marker-end="url(#ar)"/><path class="wire" d="M330 ${S[8].y+18} H360 V${S[9].y} H82" marker-end="url(#ar)"/>`;
+  S.forEach((st,i)=>{
+    const isAdd = st.id.startsWith('add') || st.id==='in';
+    const x = isAdd ? 60 : 110, w = isAdd ? 0 : 220;
+    const cls = 'node' + (i===stage?' on':'') + (i<stage?' done':'');
+    if (isAdd){ s += `<g class="${cls}"><circle cx="60" cy="${st.y}" r="${st.id==='in'?8:14}" fill="${i===stage?'#eef2ff':'#fff'}" stroke="${i===stage?'#2563eb':'#0f172a'}" stroke-width="${i===stage?3:2}"/>${st.id==='in'?'':'<text x="60" y="'+(st.y+5)+'" text-anchor="middle" font-size="16">+</text>'}<text x="82" y="${st.y+4}" font-weight="600">${st.label}</text><text class="shape" x="82" y="${st.y+18}">${st.shape}</text></g>`; }
+    else s += `<g class="${cls}"><rect x="${x}" y="${st.y-20}" width="${w}" height="44" rx="8"/><text x="${x+10}" y="${st.y-2}" font-weight="600">${st.label}</text><text class="shape" x="${x+10}" y="${st.y+14}">${short(st.shape)}</text></g>`;
+    if (i>0 && !isAdd && !S[i-1].id.startsWith('add') && S[i-1].id!=='in') s += `<path class="wire" d="M220 ${S[i-1].y+24} V${st.y-20}" marker-end="url(#ar)"/>`;
+  });
+  // token dot
+  const st = S[stage], nx = S[Math.min(stage+1,S.length-1)];
+  const px = p => (p.id.startsWith('add')||p.id==='in') ? 60 : 220;
+  const cx = px(st) + (px(nx)-px(st))*animT, cy = st.y + (nx.y-st.y)*animT;
+  s += `<circle cx="${cx}" cy="${cy}" r="9" fill="#f59e0b" stroke="#fff" stroke-width="2"/>`;
+  svg.innerHTML = s;
+  const cur = S[stage];
+  $('stageinfo').innerHTML = `<div><strong>Stage ${stage+1}/${S.length}: ${cur.label}</strong></div><div style="margin:4px 0"><code>${cur.shape}</code></div><div class="small">${cur.what}</div><div class="small" style="margin-top:4px">parameters in this stage: <strong>${fmt(cur.params)}</strong></div>`;
+  $('stepcount').textContent = `stage ${stage+1} of ${S.length}`;
+}
+function short(sh){ return sh.length > 40 ? sh.replace(/\(B, /g,'(').replace(/\s+→\s+/g,' → ') : sh; }
+function step(){ playing = false; cancelAnimationFrame(raf); animT = 0; stage = (stage+1) % STAGES().length; drawDiagram(); $('play').textContent = '▶ Play'; }
+function playLoop(ts){
+  if (!playing) return;
+  animT += 0.03;
+  if (animT >= 1){ animT = 0; stage++; if (stage >= STAGES().length){ stage = STAGES().length-1; playing = false; $('play').textContent = '▶ Play'; drawDiagram(); return; } }
+  drawDiagram(); raf = requestAnimationFrame(playLoop);
+}
+$('stepbtn').addEventListener('click', step);
+$('play').addEventListener('click', ()=>{ playing = !playing; if (playing){ if (stage >= STAGES().length-1){ stage = 0; } $('play').textContent = '⏸ Pause'; raf = requestAnimationFrame(playLoop); } else { $('play').textContent = '▶ Play'; cancelAnimationFrame(raf); } });
+$('rewind').addEventListener('click', ()=>{ playing=false; cancelAnimationFrame(raf); stage=0; animT=0; $('play').textContent='▶ Play'; drawDiagram(); });
+$('d').addEventListener('input', ()=>{ cfg.d = +$('d').value; render(); });
+$('L').addEventListener('input', ()=>{ cfg.L = +$('L').value; render(); });
+$('T').addEventListener('input', ()=>{ cfg.T = +$('T').value; render(); });
+$('h').addEventListener('change', ()=>{ cfg.h = +$('h').value; render(); });
+$('kv').addEventListener('change', ()=>{ cfg.kv = +$('kv').value; render(); });
+$('V').addEventListener('change', ()=>{ cfg.V = +$('V').value; render(); });
+$('tie').addEventListener('change', ()=>{ cfg.tie = $('tie').checked; render(); });
+const PRESETS = { nano:{d:96,L:3,h:3,kv:1,V:1024,T:8,tie:true}, small:{d:192,L:6,h:6,kv:2,V:1024,T:8,tie:true}, medium:{d:384,L:12,h:12,kv:4,V:4096,T:16,tie:true} };
+for (const k in PRESETS) $('preset-'+k).addEventListener('click', ()=>{ Object.assign(cfg, PRESETS[k]); render(); });
+render();
+</script>
+</body>
+</html>

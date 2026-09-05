@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Policy Gradient Bandit</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page */
+select{width:auto}.ctl label{display:inline-flex;flex-direction:column;gap:2px}.ctl label b{color:var(--ink);font-weight:600;font-size:13px}
+svg.plot{width:100%;height:auto;display:block}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.stat{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:8px 10px}.stat .k{font-size:12px;color:var(--muted)}.stat .v{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}th{color:var(--muted);font-weight:600}td:first-child,th:first-child{text-align:left}
+.formula{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-family:ui-monospace,Menlo,monospace;font-size:13px;overflow-x:auto}
+.note{font-size:13px;color:var(--muted)}
+.badge{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}.badge.ok{background:#dcfce7;color:#166534}.badge.dim{background:#f1f5f9;color:var(--muted)}
+.map td{text-align:left;vertical-align:top}
+.tip{position:absolute;pointer-events:none;background:#0f172a;color:#fff;font-size:12px;padding:4px 8px;border-radius:6px;white-space:nowrap;display:none}.plotwrap{position:relative}
+.tblwrap{overflow-x:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Policy Gradient Bandit <a class="chip" href="../chapters/18-rl-for-llms.md">Chapter 18</a></h1>
+  <p class="sub">A k-armed bandit whose policy is a softmax over logits, trained with REINFORCE — every update computed for real, with and without a baseline.</p>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Press <em>Sample one action</em> a few times and read the update line: the sampled arm's logit moves by α·(r − b)·(1 − π<sub>a</sub>), every other arm by −α·(r − b)·π<sub>j</sub>. Then <em>Run 100 steps</em> repeatedly and watch the probability lines separate. Switch the baseline on and compare the exact update variance in the right-hand panel — the expected update is identical, the noise is not.</div>
+
+<div class="panel">
+  <div class="row ctl">
+    <label><b>arms k</b><select id="k"><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></label>
+    <label><b>learning rate α = <span id="v_alpha"></span></b><input type="range" id="alpha" min="0.01" max="0.5" step="0.01" value="0.1"></label>
+    <label><b>baseline b</b><select id="baseline"><option value="none">none (b = 0)</option><option value="mean">running mean of rewards</option></select></label>
+    <button id="btnOne" onclick="stepN(1)">Sample one action</button>
+    <button id="btn100" onclick="stepN(100)">Run 100 steps</button>
+    <button class="secondary" onclick="resetPolicy()">Reset policy</button>
+    <button class="secondary" onclick="newBandit()">New hidden rewards</button>
+    <button class="secondary" onclick="hardBandit()">Preset: hard bandit (0.9 vs 0.85)</button>
+    <button class="secondary" id="revealBtn" onclick="toggleReveal()">Reveal hidden p</button>
+  </div>
+</div>
+
+<div class="grid two">
+  <div class="panel">
+    <strong>Policy π<sub>θ</sub> = softmax(θ)</strong> <span class="note">(bars) — hidden Bernoulli reward probabilities p<sub>i</sub> shown as outlines when revealed</span>
+    <svg id="bars" class="plot" viewBox="0 0 480 220" role="img" aria-label="Arm probabilities"></svg>
+    <div class="stats" style="margin-top:8px">
+      <div class="stat"><div class="k">steps</div><div class="v" id="s_t">0</div></div>
+      <div class="stat"><div class="k">mean reward (last 100)</div><div class="v" id="s_r">–</div></div>
+      <div class="stat"><div class="k">π(best arm)</div><div class="v" id="s_best">–</div></div>
+      <div class="stat"><div class="k">baseline b now</div><div class="v" id="s_b">0</div></div>
+    </div>
+  </div>
+  <div class="panel">
+    <strong>Last update</strong> <span class="note">θ ← θ + α·(r − b)·∇<sub>θ</sub> log π(a), with ∇<sub>θ<sub>j</sub></sub> log π(a) = 1[j = a] − π<sub>j</sub></span>
+    <div class="formula" id="lastUpd" style="margin-top:6px">no step yet — press "Sample one action"</div>
+    <div style="margin-top:10px"><strong>Update variance at the current policy</strong> <span class="note">(exact: the bandit is discrete, so E‖g‖² is a finite sum over (arm, reward))</span></div>
+    <div class="tblwrap"><table id="varTable"><thead><tr><th>baseline</th><th>‖E[g]‖² = ‖∇J‖²</th><th>E‖g‖²</th><th>Var = E‖g‖² − ‖E g‖²</th></tr></thead><tbody></tbody></table></div>
+    <p class="note" style="margin-bottom:0">Both rows have the same expected gradient ∇J — subtracting a constant from the reward never changes where the policy is heading on average. What changes is the spread of the individual updates. With b = 0 a reward of 0 produces no update at all and a reward of 1 produces a large one; with b ≈ mean reward every sample carries information ("better or worse than usual?").</p>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="row" style="justify-content:space-between"><strong>Arm probabilities over time</strong><span class="note" id="legend"></span></div>
+  <div class="plotwrap"><svg id="hist" class="plot" viewBox="0 0 900 260" role="img" aria-label="Arm probabilities over training steps"></svg><div class="tip" id="tip"></div></div>
+</div>
+
+<div class="grid two">
+  <div class="panel">
+    <strong>Compare: steps to reach π(best) ≥ 0.9</strong>
+    <p class="note">Runs fresh trials from θ = 0 with the current α and hidden rewards, for both baseline settings, with the same random seeds. Median over the trials (max 4000 steps per trial; trials that do not get there count as 4000).</p>
+    <div class="row"><label><b>trials</b> <select id="ntrials"><option>10</option><option selected>20</option><option>40</option></select></label><button id="cmpBtn" onclick="compare()">Run comparison</button></div>
+    <div class="tblwrap"><table id="cmpTable" style="margin-top:8px"><thead><tr><th>baseline</th><th>median steps</th><th>min</th><th>max</th><th>did not converge</th></tr></thead><tbody><tr><td colspan="5" class="note">not run yet</td></tr></tbody></table></div>
+  </div>
+  <div class="panel">
+    <strong>The LLM translation</strong>
+    <table class="map">
+      <thead><tr><th>bandit</th><th>language model RL</th></tr></thead>
+      <tbody>
+        <tr><td>the one state</td><td>the prompt x (each prompt is its own bandit)</td></tr>
+        <tr><td>arm a (one of k)</td><td>one complete response y — the "arms" are every possible token sequence</td></tr>
+        <tr><td>θ, k logits</td><td>all model weights; π<sub>θ</sub>(y|x) = Π<sub>t</sub> softmax(logits<sub>t</sub>)[y<sub>t</sub>]</td></tr>
+        <tr><td>sample a ~ π<sub>θ</sub></td><td>generate a response at temperature 1</td></tr>
+        <tr><td>reward r ∈ {0, 1} at the end</td><td>verifier / reward model score for the whole response</td></tr>
+        <tr><td>∇ log π(a) = 1[·=a] − π</td><td>backprop of Σ<sub>t</sub> log π(y<sub>t</sub>|x, y<sub>&lt;t</sub>) through the network</td></tr>
+        <tr><td>baseline b (running mean)</td><td>value head (PPO) or the group mean reward (GRPO, Chapter 19)</td></tr>
+        <tr><td>k = 4…8 arms</td><td>≈ V<sup>T</sup> arms: the reason variance is <em>the</em> problem</td></tr>
+      </tbody>
+    </table>
+    <p class="note" style="margin-bottom:0">This is <code>reinforce_loss</code> in <code>llm/rl.py</code>: L = −mean[(R − b)·Σ<sub>t</sub> log π(token<sub>t</sub>)]; its gradient is exactly the update above, one arm = one whole answer.</p>
+  </div>
+</div>
+
+<div class="box challenge"><strong>Challenge.</strong> Make the policy converge to the best arm (π(best) ≥ 0.9) twice from a fresh reset — once with <em>no baseline</em> and once with the <em>running-mean</em> baseline — using the same α, and note the steps each needed. Then press <em>Run comparison</em> to see whether your two runs were typical. Status: <span id="chal" class="badge dim">no converged run yet</span>
+<details><summary>Show answer</summary><p>Two things to notice, both measured by the comparison table. (1) The <em>median</em> number of steps barely changes (with the default arms and α = 0.1, roughly 420 either way): the expected gradient is identical, and in this easy bandit the average drift dominates. (2) The <em>tail</em> changes a lot: raise α to 0.3–0.5, or use the "hard bandit" preset (0.9 vs 0.85), and the no-baseline runs that lock onto the wrong arm and never recover become common (in our measurements about 1 in 3 at α = 0.5 on the hard bandit, versus fewer than 1 in 10 with the running mean). Why: with b = 0 a reward of 0 on the best arm teaches nothing, while a lucky r = 1 on a mediocre arm gives it a full-size push; a few such pushes early on and the softmax has already committed. The running mean turns r = 0 into a real negative signal. The exact-variance table shows the same fact without sampling. LLM RL has exactly this shape — thousands of prompts, a few samples each, a small learning rate — which is why GRPO (Chapter 19) uses the group mean as its baseline.</p></details></div>
+
+<footer><a href="index.html">← All interactive explainers</a> · Simulation: a real k-armed Bernoulli bandit with exact softmax REINFORCE updates (seeded RNG); nothing is faked.</footer>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const f = (x, d = 3) => (Math.abs(x) < 1e-12 ? 0 : x).toFixed(d);
+const COLORS = ['#2563eb', '#f59e0b', '#16a34a', '#7c3aed', '#dc2626', '#0891b2', '#db2777', '#78716c'];
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const NS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+function fitW(svg, H, max) { const w = svg.parentElement.clientWidth || max; const W = Math.max(330, Math.min(max, w)); svg.setAttribute('viewBox', `0 0 ${W} ${H}`); return W; }
+
+// ------------------------------------------------------------ bandit
+let banditSeed = 7, rng = mulberry32(1), P = [], K = 4;
+let theta = [], t = 0, rewards = [], bsum = 0, hist = [], reveal = false, last = null;
+function softmax(z) { const m = Math.max(...z); const e = z.map(v => Math.exp(v - m)); const s = e.reduce((a, b) => a + b, 0); return e.map(v => v / s); }
+function makeP(seed, k) { const r = mulberry32(seed); let p; do { p = Array.from({ length: k }, () => Math.round((0.1 + 0.75 * r()) * 100) / 100); } while (new Set(p).size < k || Math.max(...p) - [...p].sort((a, b) => b - a)[1] < 0.1); return p; }
+function hardBandit() { $('k').value = '4'; K = 4; P = [0.7, 0.9, 0.85, 0.6]; bestSteps = { none: null, mean: null }; resetPolicy(); }
+function newBandit() { banditSeed += 1; P = makeP(banditSeed, K); resetPolicy(); }
+function resetPolicy() { theta = new Array(K).fill(0); t = 0; rewards = []; bsum = 0; hist = [softmax(theta)]; last = null; rng = mulberry32(1000 + t); render(); }
+function baselineValue() { return $('baseline').value === 'mean' && t > 0 ? bsum / t : 0; }
+function reinforceStep(th, alpha, b, r_) {
+  const pi = softmax(th); let u = r_(), a = 0; for (; a < th.length - 1; a++) { u -= pi[a]; if (u < 0) break; }
+  const r = r_() < P[a] ? 1 : 0;
+  const g = pi.map((p, j) => (j === a ? 1 : 0) - p);
+  const adv = r - b;
+  const nth = th.map((v, j) => v + alpha * adv * g[j]);
+  return { a, r, b, adv, g, pi, nth };
+}
+function stepN(n) {
+  const alpha = parseFloat($('alpha').value);
+  for (let i = 0; i < n; i++) {
+    const b = baselineValue();
+    const s = reinforceStep(theta, alpha, b, rng);
+    theta = s.nth; t++; bsum += s.r; rewards.push(s.r); if (rewards.length > 100) rewards.shift();
+    hist.push(softmax(theta)); last = s;
+  }
+  render();
+}
+function toggleReveal() { reveal = !reveal; $('revealBtn').textContent = reveal ? 'Hide hidden p' : 'Reveal hidden p'; render(); }
+// exact variance of g = (r-b)(e_a - pi) under a~pi, r~Bernoulli(p_a)
+function exactVar(pi, b) {
+  let E2 = 0; const Eg = new Array(pi.length).fill(0);
+  pi.forEach((pa, a) => {
+    const norm2 = pi.reduce((s, pj, j) => s + Math.pow((j === a ? 1 : 0) - pj, 2), 0);
+    E2 += pa * (P[a] * (1 - b) * (1 - b) + (1 - P[a]) * b * b) * norm2;
+    pi.forEach((pj, j) => { Eg[j] += pa * (P[a] - b) * ((j === a ? 1 : 0) - pj); });
+  });
+  const En2 = Eg.reduce((s, v) => s + v * v, 0);
+  return { En2, E2, Var: E2 - En2 };
+}
+// ------------------------------------------------------------ render
+let bestSteps = { none: null, mean: null };
+function render() {
+  $('v_alpha').textContent = f(parseFloat($('alpha').value), 2);
+  const pi = softmax(theta), best = P.indexOf(Math.max(...P));
+  $('s_t').textContent = t; $('s_r').textContent = rewards.length ? f(rewards.reduce((a, b) => a + b, 0) / rewards.length, 2) : '–';
+  $('s_best').textContent = f(pi[best], 3); $('s_b').textContent = f(baselineValue(), 3);
+  if (pi[best] >= 0.9 && t > 0) { const key = $('baseline').value; if (bestSteps[key] === null) bestSteps[key] = t; }
+  const ch = $('chal'), parts = [];
+  if (bestSteps.none !== null) parts.push('no baseline: ' + bestSteps.none + ' steps'); if (bestSteps.mean !== null) parts.push('running mean: ' + bestSteps.mean + ' steps');
+  ch.textContent = parts.length ? parts.join(' · ') + (parts.length === 2 ? ' — both done' : '') : 'no converged run yet'; ch.className = 'badge ' + (parts.length === 2 ? 'ok' : 'dim');
+  drawBars(pi, best); drawHist(); drawVar(pi);
+  if (last) {
+    const s = last;
+    const alpha = parseFloat($('alpha').value);
+    $('lastUpd').innerHTML = `sampled arm a = <b>${s.a}</b> (π = ${f(s.pi[s.a])}), reward r = <b>${s.r}</b>, baseline b = ${f(s.b)}, (r − b) = <b>${f(s.adv)}</b><br>` +
+      `∇ log π(a) = [${s.g.map(v => f(v, 2)).join(', ')}]<br>Δθ = α·(r − b)·∇ log π(a) = [${s.g.map(v => f(alpha * s.adv * v, 3)).join(', ')}]<br>θ now = [${theta.map(v => f(v, 2)).join(', ')}]`;
+  }
+}
+function drawBars(pi, best) {
+  const svg = $('bars'); svg.innerHTML = ''; const H = 220, W = fitW(svg, H, 600), m = { l: 36, r: 10, t: 16, b: 30 };
+  const bw = (W - m.l - m.r) / K, Y = v => H - m.b - v * (H - m.t - m.b);
+  for (let i = 0; i <= 4; i++) { const v = i / 4; el('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: '#e2e8f0' }, svg); el('text', { x: m.l - 6, y: Y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: '#64748b' }, svg).textContent = v.toFixed(2); }
+  pi.forEach((p, i) => {
+    const x = m.l + i * bw + bw * 0.18, w = bw * 0.64;
+    el('rect', { x, y: Y(p), width: w, height: Y(0) - Y(p), fill: COLORS[i], rx: 3 }, svg);
+    el('text', { x: x + w / 2, y: Y(p) - 4, 'text-anchor': 'middle', 'font-size': 11, fill: '#0f172a' }, svg).textContent = 'π=' + p.toFixed(2);
+    el('text', { x: x + w / 2, y: H - m.b + 14, 'text-anchor': 'middle', 'font-size': 12, fill: '#0f172a' }, svg).textContent = 'arm ' + i + (reveal && i === best ? ' ★' : '');
+    if (reveal) { el('rect', { x: x - 3, y: Y(P[i]), width: w + 6, height: Y(0) - Y(P[i]), fill: 'none', stroke: '#0f172a', 'stroke-width': 1.5, 'stroke-dasharray': '4 3', rx: 3 }, svg); el('text', { x: x + w / 2, y: H - m.b + 27, 'text-anchor': 'middle', 'font-size': 11, fill: '#64748b' }, svg).textContent = 'p=' + P[i].toFixed(2); }
+    if (last && last.a === i) el('text', { x: x + w / 2, y: m.t - 3, 'text-anchor': 'middle', 'font-size': 11, fill: last.r ? '#16a34a' : '#dc2626', 'font-weight': 600 }, svg).textContent = 'r=' + last.r;
+  });
+}
+let histState = null;
+function drawHist() {
+  const svg = $('hist'); svg.innerHTML = ''; const H = 260, W = fitW(svg, H, 1000), m = { l: 40, r: 56, t: 14, b: 30 };
+  const n = Math.max(hist.length - 1, 10);
+  const X = i => m.l + i / n * (W - m.l - m.r), Y = v => H - m.b - v * (H - m.t - m.b);
+  for (let i = 0; i <= 4; i++) { const v = i / 4; el('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: '#e2e8f0' }, svg); el('text', { x: m.l - 6, y: Y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: '#64748b' }, svg).textContent = v.toFixed(2); }
+  const raw = n / 5, mag = Math.pow(10, Math.floor(Math.log10(raw))), tick = [1, 2, 5, 10].map(v => v * mag).find(v => v >= raw);
+  for (let s = 0; s <= n; s += tick) el('text', { x: X(s), y: H - m.b + 14, 'text-anchor': 'middle', 'font-size': 11, fill: '#64748b' }, svg).textContent = s;
+  el('text', { x: (m.l + W - m.r) / 2, y: H - 4, 'text-anchor': 'middle', 'font-size': 12, fill: '#64748b' }, svg).textContent = 'step';
+  const stride = Math.max(1, Math.floor(hist.length / 600));
+  for (let a = 0; a < K; a++) {
+    let d = ''; for (let i = 0; i < hist.length; i += stride) d += (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(hist[i][a]).toFixed(1);
+    if ((hist.length - 1) % stride) d += 'L' + X(hist.length - 1).toFixed(1) + ' ' + Y(hist[hist.length - 1][a]).toFixed(1);
+    el('path', { d, fill: 'none', stroke: COLORS[a], 'stroke-width': 2 }, svg);
+  }
+  // direct labels at the right end, pushed apart so they never overlap
+  const labs = hist[hist.length - 1].map((v, a) => ({ a, y: Y(v) })).sort((p, q) => p.y - q.y);
+  for (let i = 1; i < labs.length; i++) if (labs[i].y - labs[i - 1].y < 12) labs[i].y = labs[i - 1].y + 12;
+  labs.forEach(l => el('text', { x: X(hist.length - 1) + 5, y: l.y + 4, 'font-size': 11, fill: COLORS[l.a], 'font-weight': 600 }, svg).textContent = 'arm ' + l.a);
+  $('legend').innerHTML = P.map((p, i) => `<span class="legend"><span style="background:${COLORS[i]}"></span>arm ${i}${reveal ? ' p=' + p.toFixed(2) : ''}</span>`).join(' ');
+  histState = { X, Y, n, m, W };
+}
+$('hist').addEventListener('mousemove', ev => {
+  const svg = $('hist'), tip = $('tip'); if (!histState || hist.length < 2) return;
+  const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) / r.width * histState.W;
+  const i = Math.round((px - histState.m.l) / (histState.W - histState.m.l - histState.m.r) * histState.n);
+  if (i < 0 || i >= hist.length) { tip.style.display = 'none'; return; }
+  tip.style.display = 'block'; tip.innerHTML = `step ${i}<br>` + hist[i].map((v, a) => `arm ${a}: ${v.toFixed(3)}`).join('<br>');
+  tip.style.left = Math.min(ev.clientX - r.left + 12, r.width - 120) + 'px'; tip.style.top = (ev.clientY - r.top - 10) + 'px';
+});
+$('hist').addEventListener('mouseleave', () => $('tip').style.display = 'none');
+function drawVar(pi) {
+  const b = t > 0 ? bsum / t : 0.5;
+  const rows = [['none (b = 0)', exactVar(pi, 0)], [`running mean (b = ${f(b, 3)})`, exactVar(pi, b)]];
+  $('varTable').querySelector('tbody').innerHTML = rows.map(([n, v]) => `<tr><td>${n}</td><td>${f(v.En2, 4)}</td><td>${f(v.E2, 4)}</td><td><b>${f(v.Var, 4)}</b></td></tr>`).join('');
+}
+// ------------------------------------------------------------ comparison
+function compare() {
+  const alpha = parseFloat($('alpha').value), N = parseInt($('ntrials').value), MAX = 4000, best = P.indexOf(Math.max(...P));
+  const res = {};
+  for (const mode of ['none', 'mean']) {
+    const steps = [];
+    for (let tr = 0; tr < N; tr++) {
+      const r_ = mulberry32(5000 + tr); let th = new Array(K).fill(0), sum = 0, n = 0, done = MAX;
+      for (let s = 1; s <= MAX; s++) {
+        const b = mode === 'mean' && n > 0 ? sum / n : 0;
+        const st = reinforceStep(th, alpha, b, r_); th = st.nth; sum += st.r; n++;
+        if (softmax(th)[best] >= 0.9) { done = s; break; }
+      }
+      steps.push(done);
+    }
+    steps.sort((a, b) => a - b);
+    res[mode] = { med: steps[Math.floor(N / 2)], min: steps[0], max: steps[N - 1], fail: steps.filter(s => s === MAX).length };
+  }
+  $('cmpTable').querySelector('tbody').innerHTML = [['none (b = 0)', res.none], ['running mean', res.mean]].map(([n, r]) => `<tr><td>${n}</td><td><b>${r.med}</b></td><td>${r.min}</td><td>${r.max}</td><td>${r.fail} / ${N}</td></tr>`).join('');
+}
+// ------------------------------------------------------------ wiring
+$('k').addEventListener('change', () => { K = parseInt($('k').value); P = makeP(banditSeed, K); bestSteps = { none: null, mean: null }; resetPolicy(); });
+$('alpha').addEventListener('input', render); $('baseline').addEventListener('change', render);
+window.addEventListener('resize', render);
+P = [0.25, 0.6, 0.8, 0.4]; resetPolicy();
+</script>
+</body>
+</html>

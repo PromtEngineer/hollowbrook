@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420" font-family="system-ui, sans-serif">
+  <rect width="900" height="420" fill="#ffffff"/>
+  <text x="450" y="26" text-anchor="middle" font-size="17" font-weight="600" fill="#0f172a">Hybrid stack: mostly linear/state-space layers, a few full-attention layers kept for exact recall</text>
+
+  <!-- left: the layer stack -->
+  <text x="160" y="58" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">12-layer hybrid block (3:1 ratio)</text>
+  <g font-size="11" fill="#0f172a">
+    <rect x="60" y="70"  width="200" height="22" rx="4" fill="#16a34a" fill-opacity="0.15" stroke="#16a34a"/><text x="160" y="85" text-anchor="middle">linear / SSM (Mamba-2, DeltaNet)</text>
+    <rect x="60" y="96"  width="200" height="22" rx="4" fill="#16a34a" fill-opacity="0.15" stroke="#16a34a"/><text x="160" y="111" text-anchor="middle">linear / SSM</text>
+    <rect x="60" y="122" width="200" height="22" rx="4" fill="#16a34a" fill-opacity="0.15" stroke="#16a34a"/><text x="160" y="137" text-anchor="middle">linear / SSM</text>
+    <rect x="60" y="148" width="200" height="22" rx="4" fill="#2563eb" fill-opacity="0.18" stroke="#2563eb" stroke-width="1.5"/><text x="160" y="163" text-anchor="middle" font-weight="600">full attention (+ KV cache)</text>
+    <rect x="60" y="174" width="200" height="22" rx="4" fill="#16a34a" fill-opacity="0.15" stroke="#16a34a"/><text x="160" y="189" text-anchor="middle">linear / SSM</text>
+    <rect x="60" y="200" width="200" height="22" rx="4" fill="#16a34a" fill-opacity="0.15" stroke="#16a34a"/><text x="160" y="215" text-anchor="middle">linear / SSM</text>
+    <rect x="60" y="226" width="200" height="22" rx="4" fill="#16a34a" fill-opacity="0.15" stroke="#16a34a"/><text x="160" y="241" text-anchor="middle">linear / SSM</text>
+    <rect x="60" y="252" width="200" height="22" rx="4" fill="#2563eb" fill-opacity="0.18" stroke="#2563eb" stroke-width="1.5"/><text x="160" y="267" text-anchor="middle" font-weight="600">full attention (+ KV cache)</text>
+    <rect x="60" y="278" width="200" height="22" rx="4" fill="#16a34a" fill-opacity="0.15" stroke="#16a34a"/><text x="160" y="293" text-anchor="middle">linear / SSM</text>
+    <rect x="60" y="304" width="200" height="22" rx="4" fill="#16a34a" fill-opacity="0.15" stroke="#16a34a"/><text x="160" y="319" text-anchor="middle">linear / SSM</text>
+    <rect x="60" y="330" width="200" height="22" rx="4" fill="#16a34a" fill-opacity="0.15" stroke="#16a34a"/><text x="160" y="345" text-anchor="middle">linear / SSM</text>
+    <rect x="60" y="356" width="200" height="22" rx="4" fill="#2563eb" fill-opacity="0.18" stroke="#2563eb" stroke-width="1.5"/><text x="160" y="371" text-anchor="middle" font-weight="600">full attention (+ KV cache)</text>
+  </g>
+  <text x="160" y="400" text-anchor="middle" font-size="10" fill="#64748b">(MLP / MoE sub-layers omitted for clarity)</text>
+
+  <!-- middle: what each layer keeps per sequence -->
+  <text x="530" y="58" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">what the layer remembers while decoding</text>
+
+  <!-- attention: KV cache grows -->
+  <rect x="330" y="72" width="400" height="140" rx="8" fill="#2563eb" fill-opacity="0.06" stroke="#2563eb"/>
+  <text x="345" y="92" font-size="12" font-weight="600" fill="#2563eb">full attention: KV cache, grows with T</text>
+  <g fill="#2563eb" fill-opacity="0.45">
+    <rect x="345" y="105" width="14" height="30"/><rect x="361" y="105" width="14" height="30"/><rect x="377" y="105" width="14" height="30"/><rect x="393" y="105" width="14" height="30"/>
+    <rect x="409" y="105" width="14" height="30"/><rect x="425" y="105" width="14" height="30"/><rect x="441" y="105" width="14" height="30"/><rect x="457" y="105" width="14" height="30"/>
+    <rect x="473" y="105" width="14" height="30"/><rect x="489" y="105" width="14" height="30"/><rect x="505" y="105" width="14" height="30"/><rect x="521" y="105" width="14" height="30"/>
+    <rect x="537" y="105" width="14" height="30"/><rect x="553" y="105" width="14" height="30"/><rect x="569" y="105" width="14" height="30"/><rect x="585" y="105" width="14" height="30"/>
+  </g>
+  <text x="610" y="125" font-size="11" fill="#2563eb">… one (k, v) per past token</text>
+  <text x="345" y="158" font-size="11" fill="#0f172a">bytes = 2 · layers · kv_heads · head_dim · T · dtype</text>
+  <text x="345" y="176" font-size="11" fill="#0f172a">can look up ANY past token exactly (recall, copying, needle-in-haystack)</text>
+  <text x="345" y="196" font-size="11" fill="#dc2626">cost per new token grows with T; at 1M tokens the cache is the whole GPU</text>
+
+  <!-- SSM: fixed state -->
+  <rect x="330" y="228" width="400" height="140" rx="8" fill="#16a34a" fill-opacity="0.06" stroke="#16a34a"/>
+  <text x="345" y="248" font-size="12" font-weight="600" fill="#16a34a">linear / SSM layer: a fixed-size state, does not grow</text>
+  <rect x="345" y="262" width="120" height="30" rx="4" fill="#16a34a" fill-opacity="0.45"/>
+  <text x="405" y="282" text-anchor="middle" font-size="11" fill="#0f172a">S: (heads, d_k, d_v)</text>
+  <text x="480" y="282" font-size="11" fill="#16a34a">← same size at T = 10 or T = 1,000,000</text>
+  <text x="345" y="314" font-size="11" fill="#0f172a">S_t = decay ⊙ S_{t−1} + k_t ⊗ v_t ;   y_t = q_t · S_t</text>
+  <text x="345" y="332" font-size="11" fill="#0f172a">constant cost per token; a running summary, not a lookup table</text>
+  <text x="345" y="352" font-size="11" fill="#dc2626">lossy: old details fade, exact recall of a specific token is hard</text>
+
+  <!-- right: model examples -->
+  <rect x="750" y="72" width="140" height="296" rx="8" fill="#7c3aed" fill-opacity="0.06" stroke="#7c3aed"/>
+  <text x="820" y="92" text-anchor="middle" font-size="12" font-weight="600" fill="#7c3aed">2025–26 hybrids</text>
+  <g font-size="10" fill="#0f172a">
+    <text x="760" y="115">Nemotron-H</text><text x="760" y="129" fill="#64748b">Mamba-2 + attn</text>
+    <text x="760" y="153">Qwen3-Next</text><text x="760" y="167" fill="#64748b">gated DeltaNet</text><text x="760" y="181" fill="#64748b">+ gated attn, 3:1</text>
+    <text x="760" y="205">Kimi Linear</text><text x="760" y="219" fill="#64748b">linear attn + MLA</text>
+    <text x="760" y="243">Nemotron-Nano-V3</text><text x="760" y="257" fill="#64748b">hybrid MoE</text>
+    <text x="760" y="285" fill="#7c3aed">the pattern:</text>
+    <text x="760" y="299" fill="#64748b">most layers cheap,</text>
+    <text x="760" y="313" fill="#64748b">a few layers exact;</text>
+    <text x="760" y="327" fill="#64748b">KV cache shrinks</text>
+    <text x="760" y="341" fill="#64748b">several-fold at</text>
+    <text x="760" y="355" fill="#64748b">long context</text>
+  </g>
+
+  <!-- arrows from stack to boxes -->
+  <path d="M262 159 C 300 159, 300 140, 328 140" stroke="#2563eb" stroke-width="1.5" fill="none" marker-end="url(#arrowB)"/>
+  <path d="M262 211 C 300 211, 300 300, 328 300" stroke="#16a34a" stroke-width="1.5" fill="none" marker-end="url(#arrowGr)"/>
+  <defs>
+    <marker id="arrowB" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#2563eb"/></marker>
+    <marker id="arrowGr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#16a34a"/></marker>
+  </defs>
+</svg>

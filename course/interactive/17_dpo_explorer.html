@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DPO Explorer</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page */
+.tabs{display:flex;gap:6px;margin:12px 0 0}.tabs button{background:#e2e8f0;color:var(--ink)}.tabs button[aria-selected=true]{background:var(--blue);color:#fff}
+.ctl{display:grid;grid-template-columns:1fr;gap:8px}.ctl label{display:flex;flex-direction:column;gap:2px}.ctl label b{color:var(--ink);font-weight:600;font-size:13px}
+.ctl input[type=range]{width:100%}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.stat{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:8px 10px}.stat .k{font-size:12px;color:var(--muted)}.stat .v{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.stat.hi .v{color:var(--blue)}.stat.warn .v{color:var(--red)}.stat.ok .v{color:var(--green)}
+.badge{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}
+.badge.ok{background:#dcfce7;color:#166534}.badge.no{background:#fee2e2;color:#991b1b}.badge.dim{background:#f1f5f9;color:var(--muted)}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}th{color:var(--muted);font-weight:600}td:first-child,th:first-child{text-align:left}
+.formula{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-family:ui-monospace,Menlo,monospace;font-size:13px;overflow-x:auto}
+.note{font-size:13px;color:var(--muted)}
+.tip{position:absolute;pointer-events:none;background:#0f172a;color:#fff;font-size:12px;padding:4px 8px;border-radius:6px;white-space:nowrap;display:none}
+.plotwrap{position:relative}svg.plot{width:100%;height:auto;display:block}
+.arrow{font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>DPO Explorer <a class="chip" href="../chapters/17-reward-models-and-dpo.md">Chapter 17</a></h1>
+  <p class="sub">Move the four log-probabilities and β; watch the implicit rewards, the margin, the loss and its gradient — then take real gradient steps.</p>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Drag <em>log π(rejected)</em> down and watch the loss fall while the gradient σ(−β·margin) shrinks — DPO stops pushing once the pair is well separated. Then press <em>One gradient step</em> a few times: chosen goes up and rejected goes down at first, but with a long, similar rejected answer (dials at the bottom) <em>both</em> can go down while the loss still improves. That is the "DPO only cares about the difference" lesson.</div>
+
+<div class="tabs" role="tablist">
+  <button role="tab" aria-selected="true" id="tabA" onclick="showTab('A')">Playground</button>
+  <button role="tab" aria-selected="false" id="tabB" onclick="showTab('B')">DPO vs IPO vs SimPO</button>
+</div>
+
+<section id="paneA">
+<div class="grid two">
+  <div class="panel">
+    <div class="ctl">
+      <label><b>log π<sub>θ</sub>(chosen) = <span id="v_pc"></span></b><input type="range" id="pc" min="-80" max="0" step="0.01" value="-25"></label>
+      <label><b>log π<sub>θ</sub>(rejected) = <span id="v_pr"></span></b><input type="range" id="pr" min="-80" max="0" step="0.01" value="-30"></label>
+      <label><b>log π<sub>ref</sub>(chosen) = <span id="v_rc"></span></b><input type="range" id="rc" min="-80" max="0" step="0.5" value="-25"></label>
+      <label><b>log π<sub>ref</sub>(rejected) = <span id="v_rr"></span></b><input type="range" id="rr" min="-80" max="0" step="0.5" value="-25"></label>
+      <label><b>β = <span id="v_beta"></span></b><input type="range" id="beta" min="0.01" max="1" step="0.01" value="0.1"></label>
+    </div>
+    <p class="note">Log-probabilities of a <em>whole response</em> are sums over its tokens, so −25 nats is a typical value for a short answer (e.g. 25 tokens at 37 % each). The sliders are the four numbers <code>dpo_loss</code> in <code>llm/dpo.py</code> receives.</p>
+    <div class="row" style="margin-top:8px"><button class="secondary" onclick="preset('start')">Reset: π = π<sub>ref</sub></button><button class="secondary" onclick="preset('good')">Preset: well separated</button><button class="secondary" onclick="preset('flip')">Preset: pair flipped</button></div>
+  </div>
+  <div class="panel">
+    <div class="stats">
+      <div class="stat"><div class="k">r̂(chosen) = β(log π − log π<sub>ref</sub>)</div><div class="v" id="s_rc"></div></div>
+      <div class="stat"><div class="k">r̂(rejected)</div><div class="v" id="s_rr"></div></div>
+      <div class="stat hi"><div class="k">log-ratio margin Δ</div><div class="v" id="s_margin"></div></div>
+      <div class="stat hi"><div class="k">reward margin β·Δ</div><div class="v" id="s_bmargin"></div></div>
+      <div class="stat"><div class="k">P(chosen ≻ rejected) = σ(β·Δ)</div><div class="v" id="s_prob"></div></div>
+      <div class="stat warn"><div class="k">DPO loss −log σ(β·Δ)</div><div class="v" id="s_loss"></div></div>
+      <div class="stat"><div class="k">gradient weight σ(−β·Δ)</div><div class="v" id="s_grad"></div></div>
+      <div class="stat"><div class="k">vs reference</div><div class="v" style="font-size:14px"><span id="s_vc"></span><br><span id="s_vr"></span></div></div>
+    </div>
+    <div class="formula" style="margin-top:10px">loss = −log σ( β·[ (log π(c) − log π<sub>ref</sub>(c)) − (log π(r) − log π<sub>ref</sub>(r)) ] )<br>∂loss/∂log π(c) = −β·σ(−β·Δ) &nbsp;&nbsp; ∂loss/∂log π(r) = +β·σ(−β·Δ)</div>
+    <p class="note" style="margin-bottom:0">Read: the loss only sees the <em>difference</em> Δ. Any change that leaves Δ alone — lowering both answers by the same amount — leaves the loss untouched.</p>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="row" style="justify-content:space-between"><strong>Loss and gradient weight as a function of the margin Δ</strong>
+    <span class="legend note"><span style="background:var(--blue)"></span>loss −log σ(βΔ) &nbsp; <span style="background:var(--orange)"></span>gradient weight σ(−βΔ) &nbsp; ● current state</span></div>
+  <div class="plotwrap"><svg id="plot" class="plot" viewBox="0 0 640 260" role="img" aria-label="DPO loss versus margin"></svg><div class="tip" id="tip"></div></div>
+</div>
+
+<div class="panel">
+  <div class="row" style="justify-content:space-between">
+    <div><strong>One gradient step</strong> <span class="note">(first-order model of an SGD step — see below)</span></div>
+    <div class="row"><button id="stepBtn" onclick="step()">One gradient step</button><button class="secondary" onclick="steps(10)">10 steps</button><button class="secondary" onclick="clearLog()">Clear log</button></div>
+  </div>
+  <div class="grid two" style="margin-top:8px">
+    <div class="ctl">
+      <label><b>learning rate η = <span id="v_lr"></span></b><input type="range" id="lr" min="0.5" max="40" step="0.5" value="10"></label>
+      <label><b>gradient overlap cos(g<sub>c</sub>, g<sub>r</sub>) = <span id="v_rho"></span></b><input type="range" id="rho" min="-1" max="1" step="0.05" value="0.5"></label>
+      <label><b>norm ratio ‖g<sub>r</sub>‖ / ‖g<sub>c</sub>‖ = <span id="v_s"></span></b><input type="range" id="s" min="0.2" max="3" step="0.05" value="1"></label>
+    </div>
+    <div>
+      <div class="formula" id="stepFormula"></div>
+      <p class="note">Let g<sub>c</sub> = ∇<sub>θ</sub> log π(c) and g<sub>r</sub> = ∇<sub>θ</sub> log π(r). One SGD step is θ ← θ − η∇loss = θ + ηβσ(−βΔ)(g<sub>c</sub> − g<sub>r</sub>). To first order, log π(c) then moves by ηβσ(−βΔ)·(g<sub>c</sub>·g<sub>c</sub> − g<sub>c</sub>·g<sub>r</sub>) and log π(r) by ηβσ(−βΔ)·(g<sub>c</sub>·g<sub>r</sub> − g<sub>r</sub>·g<sub>r</sub>). With ‖g<sub>c</sub>‖ = 1 the two dials fix these dot products. Similar answers (high overlap) with a longer rejected answer (larger norm — a sum over more tokens) make <em>both</em> numbers negative: Δ still grows, so the loss still falls. This is a linearised model, not a real network, but the sign pattern is the one seen in practice.</p>
+    </div>
+  </div>
+  <table id="log" style="margin-top:8px"><thead><tr><th>step</th><th>σ(−βΔ)</th><th>Δ log π(c)</th><th>Δ log π(r)</th><th>Δ margin</th><th>loss after</th></tr></thead><tbody></tbody></table>
+</div>
+</section>
+
+<section id="paneB" hidden>
+<div class="panel">
+  <div class="grid two">
+    <div class="ctl">
+      <label><b>β (DPO, IPO) = <span id="v_beta2"></span></b><input type="range" id="beta2" min="0.02" max="1" step="0.01" value="0.1"></label>
+      <label><b>SimPO β = <span id="v_bs"></span></b><input type="range" id="bs" min="0.5" max="5" step="0.1" value="2"></label>
+      <label><b>SimPO γ (target margin) = <span id="v_gs"></span></b><input type="range" id="gs" min="0" max="3" step="0.1" value="0.5"></label>
+      <label><b>x-axis range ±<span id="v_xr2"></span></b><input type="range" id="xr2" min="2" max="40" step="1" value="12"></label>
+    </div>
+    <div>
+      <div class="formula">DPO:&nbsp;&nbsp; loss = −log σ( β·Δ ), &nbsp;Δ = log-ratio(c) − log-ratio(r)<br>IPO:&nbsp;&nbsp; loss = ( Δ − 1/(2β) )²<br>SimPO: loss = −log σ( β·Δ<sub>avg</sub> − γ ), &nbsp;Δ<sub>avg</sub> = avg log π(c) − avg log π(r) (per token, no reference)</div>
+      <p class="note">These are <code>dpo_loss</code>, <code>ipo_loss</code> and <code>simpo_loss</code> from <code>llm/dpo.py</code>. Same x-axis for all three, but note what "margin" means: for DPO/IPO it is the difference of log-ratios against the reference; for SimPO it is the difference of <em>length-averaged</em> log-probabilities, with no reference model at all. DPO keeps asking for a bigger gap (the loss never reaches 0); IPO wants the gap to land exactly on 1/(2β) and penalises overshooting; SimPO demands a gap of at least γ/β before it is satisfied.</p>
+    </div>
+  </div>
+  <div class="row note legend" style="margin:6px 0"><span style="background:var(--blue)"></span>DPO &nbsp;<span style="background:var(--purple)"></span>IPO &nbsp;<span style="background:var(--green)"></span>SimPO</div>
+  <div class="plotwrap"><svg id="plot2" class="plot" viewBox="0 0 640 280" role="img" aria-label="Loss curves for DPO, IPO and SimPO"></svg><div class="tip" id="tip2"></div></div>
+</div>
+</section>
+
+<div class="box challenge"><strong>Challenge.</strong> Find a state where the DPO loss is below 0.2 <em>and</em> both the chosen and the rejected answer are <em>less</em> likely under π<sub>θ</sub> than under π<sub>ref</sub>. You can do it with the sliders alone, or by taking gradient steps with the dials set so that both answers drift down. The page shows a badge when you have it: <span id="chal" class="badge dim">not yet</span>
+<details><summary>Show answer</summary><p>Example: log π<sub>ref</sub>(c) = log π<sub>ref</sub>(r) = −25, log π<sub>θ</sub>(c) = −27, log π<sub>θ</sub>(r) = −47, β = 0.1. Then r̂(c) = −0.2, r̂(r) = −2.2, Δ = 20, β·Δ = 2 and loss = −log σ(2) = 0.127. Both answers lost probability (chosen by 2 nats, rejected by 22) — the mass moved to other responses the loss never looks at. Real DPO runs show exactly this: the chosen log-probability usually <em>drops</em> during training; only the gap grows. Or take steps with overlap 0.9 and norm ratio 1.6: each step lowers both, because (g<sub>c</sub>·g<sub>c</sub> − g<sub>c</sub>·g<sub>r</sub>) = 1 − 1.44 &lt; 0.</p></details></div>
+
+<footer><a href="index.html">← All interactive explainers</a> · Formulas match <code>llm/dpo.py</code>; the gradient-step panel is a first-order (linearised) model and says so.</footer>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const sig = x => 1 / (1 + Math.exp(-x));
+const logsig = x => x >= 0 ? -Math.log1p(Math.exp(-x)) : x - Math.log1p(Math.exp(x));
+const f = (x, d = 3) => (Math.abs(x) < 1e-12 ? 0 : x).toFixed(d);
+const ids = ['pc', 'pr', 'rc', 'rr', 'beta', 'lr', 'rho', 's', 'beta2', 'bs', 'gs', 'xr2'];
+const S = {};
+function readAll() { ids.forEach(k => S[k] = parseFloat($(k).value)); }
+function compute() {
+  const rewc = S.beta * (S.pc - S.rc), rewr = S.beta * (S.pr - S.rr);
+  const D = (S.pc - S.rc) - (S.pr - S.rr);
+  return { rewc, rewr, D, loss: -logsig(S.beta * D), grad: sig(-S.beta * D), prob: sig(S.beta * D) };
+}
+function render() {
+  readAll();
+  const c = compute();
+  $('v_pc').textContent = f(S.pc, 1); $('v_pr').textContent = f(S.pr, 1); $('v_rc').textContent = f(S.rc, 1); $('v_rr').textContent = f(S.rr, 1);
+  $('v_beta').textContent = f(S.beta, 2); $('v_lr').textContent = f(S.lr, 1); $('v_rho').textContent = f(S.rho, 2); $('v_s').textContent = f(S.s, 2);
+  $('s_rc').textContent = f(c.rewc); $('s_rr').textContent = f(c.rewr); $('s_margin').textContent = f(c.D, 2);
+  $('s_bmargin').textContent = f(S.beta * c.D); $('s_prob').textContent = f(c.prob); $('s_loss').textContent = f(c.loss); $('s_grad').textContent = f(c.grad);
+  const dc = S.pc - S.rc, dr = S.pr - S.rr;
+  $('s_vc').innerHTML = 'chosen ' + (dc >= 0 ? '<span class="arrow" style="color:var(--green)">↑</span>' : '<span class="arrow" style="color:var(--red)">↓</span>') + ' ' + f(dc, 1) + ' nats';
+  $('s_vr').innerHTML = 'rejected ' + (dr >= 0 ? '<span class="arrow" style="color:var(--green)">↑</span>' : '<span class="arrow" style="color:var(--red)">↓</span>') + ' ' + f(dr, 1) + ' nats';
+  const k = S.lr * S.beta * c.grad;
+  $('stepFormula').innerHTML = `Δlog π(c) = ${f(S.lr,1)}·${f(S.beta,2)}·${f(c.grad)}·(1 − ${f(S.rho,2)}·${f(S.s,2)}) = <b>${f(k * (1 - S.rho * S.s))}</b><br>Δlog π(r) = ${f(S.lr,1)}·${f(S.beta,2)}·${f(c.grad)}·(${f(S.rho,2)}·${f(S.s,2)} − ${f(S.s,2)}²) = <b>${f(k * (S.rho * S.s - S.s * S.s))}</b>`;
+  const ch = $('chal');
+  if (c.loss < 0.2 && dc < 0 && dr < 0) { ch.textContent = 'solved: loss ' + f(c.loss) + ', both below the reference'; ch.className = 'badge ok'; }
+  else { ch.textContent = 'not yet' + (c.loss < 0.2 ? ' (loss is low, but ' + (dc >= 0 ? 'chosen' : 'rejected') + ' is not below π_ref)' : ' (loss ' + f(c.loss) + ')'); ch.className = 'badge dim'; }
+  drawPlot(c);
+  $('v_beta2').textContent = f(S.beta2, 2); $('v_bs').textContent = f(S.bs, 1); $('v_gs').textContent = f(S.gs, 1); $('v_xr2').textContent = S.xr2;
+  drawPlot2();
+}
+// --------------------------------------------------------------- plots
+const NS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+function axes(svg, W, H, m, x0, x1, y0, y1, xl, yl) {
+  const X = v => m.l + (v - x0) / (x1 - x0) * (W - m.l - m.r), Y = v => H - m.b - (v - y0) / (y1 - y0) * (H - m.t - m.b);
+  const nx = 6, ny = 4;
+  for (let i = 0; i <= ny; i++) { const v = y0 + (y1 - y0) * i / ny; el('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: '#e2e8f0' }, svg); el('text', { x: m.l - 6, y: Y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: '#64748b' }, svg).textContent = f(v, 1); }
+  for (let i = 0; i <= nx; i++) { const v = x0 + (x1 - x0) * i / nx; el('text', { x: X(v), y: H - m.b + 14, 'text-anchor': 'middle', 'font-size': 11, fill: '#64748b' }, svg).textContent = f(v, 1); }
+  if (x0 < 0 && x1 > 0) el('line', { x1: X(0), x2: X(0), y1: m.t, y2: H - m.b, stroke: '#cbd5e1', 'stroke-dasharray': '3 3' }, svg);
+  el('text', { x: (m.l + W - m.r) / 2, y: H - 4, 'text-anchor': 'middle', 'font-size': 12, fill: '#64748b' }, svg).textContent = xl;
+  el('text', { x: 12, y: m.t - 6, 'font-size': 12, fill: '#64748b' }, svg).textContent = yl;
+  return { X, Y };
+}
+function fitW(svg, H) { const w = svg.parentElement.clientWidth || 640; const W = Math.max(330, Math.min(1000, w)); svg.setAttribute('viewBox', `0 0 ${W} ${H}`); return W; }
+function path(svg, pts, color, dash) { el('path', { d: pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(''), fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-dasharray': dash || 'none' }, svg); }
+let plotState = null;
+function drawPlot(c) {
+  const svg = $('plot'); svg.innerHTML = '';
+  const H = 260, W = fitW(svg, H), m = { l: 44, r: 16, t: 20, b: 34 };
+  const xr = Math.max(15, Math.ceil(Math.abs(c.D) * 1.3));
+  const lossAt = d => -logsig(S.beta * d), gradAt = d => sig(-S.beta * d);
+  const ymax = Math.max(1.05, lossAt(-xr) * 1.05);
+  const { X, Y } = axes(svg, W, H, m, -xr, xr, 0, ymax, 'margin Δ = log-ratio(chosen) − log-ratio(rejected)', 'loss / weight');
+  const N = 120, pl = [], pg = [];
+  for (let i = 0; i <= N; i++) { const d = -xr + 2 * xr * i / N; pl.push([X(d), Y(lossAt(d))]); pg.push([X(d), Y(gradAt(d))]); }
+  path(svg, pg, '#f59e0b', '5 4'); path(svg, pl, '#2563eb');
+  el('text', { x: X(-xr) + 6, y: Y(gradAt(-xr)) - 8, 'font-size': 11, fill: '#b45309' }, svg).textContent = 'gradient weight';
+  el('text', { x: X(-xr) + 6, y: Y(lossAt(-xr)) + 14, 'font-size': 11, fill: '#1d4ed8' }, svg).textContent = 'loss';
+  el('circle', { cx: X(c.D), cy: Y(c.loss), r: 6, fill: '#2563eb', stroke: '#fff', 'stroke-width': 2 }, svg);
+  el('circle', { cx: X(c.D), cy: Y(c.grad), r: 6, fill: '#f59e0b', stroke: '#fff', 'stroke-width': 2 }, svg);
+  el('line', { x1: X(c.D), x2: X(c.D), y1: m.t, y2: H - m.b, stroke: '#94a3b8', 'stroke-dasharray': '2 3' }, svg);
+  plotState = { X, Y, xr, W, H, m, lossAt, gradAt };
+}
+function hookHover(svgId, tipId, getInfo) {
+  const svg = $(svgId), tip = $(tipId);
+  svg.addEventListener('mousemove', ev => {
+    const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) / r.width * parseFloat(svg.getAttribute('viewBox').split(' ')[2]);
+    const info = getInfo(px); if (!info) { tip.style.display = 'none'; return; }
+    tip.style.display = 'block'; tip.innerHTML = info; tip.style.left = Math.min(ev.clientX - r.left + 12, r.width - 200) + 'px'; tip.style.top = (ev.clientY - r.top - 10) + 'px';
+  });
+  svg.addEventListener('mouseleave', () => tip.style.display = 'none');
+}
+hookHover('plot', 'tip', px => { if (!plotState) return null; const p = plotState; const d = -p.xr + (px - p.m.l) / (p.W - p.m.l - p.m.r) * 2 * p.xr; if (d < -p.xr || d > p.xr) return null; return `Δ = ${f(d, 2)}<br>loss = ${f(p.lossAt(d))}<br>weight σ(−βΔ) = ${f(p.gradAt(d))}`; });
+let plot2State = null;
+function drawPlot2() {
+  const svg = $('plot2'); svg.innerHTML = '';
+  const H = 280, W = fitW(svg, H), m = { l: 44, r: 16, t: 20, b: 34 }, xr = S.xr2;
+  const dpo = d => -logsig(S.beta2 * d), ipo = d => Math.pow(d - 1 / (2 * S.beta2), 2), simpo = d => -logsig(S.bs * d - S.gs);
+  let ymax = 0; for (let i = 0; i <= 60; i++) { const d = -xr + 2 * xr * i / 60; ymax = Math.max(ymax, dpo(d), Math.min(ipo(d), 50), simpo(d)); }
+  ymax = Math.min(ymax * 1.05, 30);
+  const { X, Y } = axes(svg, W, H, m, -xr, xr, 0, ymax, 'margin (Δ for DPO/IPO, Δavg for SimPO)', 'loss');
+  const N = 160, curves = [[dpo, '#2563eb', 'DPO'], [ipo, '#7c3aed', 'IPO'], [simpo, '#16a34a', 'SimPO']];
+  curves.forEach(([fn, col, name]) => {
+    const pts = []; let lab = null;
+    for (let i = 0; i <= N; i++) { const d = -xr + 2 * xr * i / N, v = fn(d); if (v <= ymax) { pts.push([X(d), Y(v)]); if (!lab && v < ymax * 0.8 && d > -xr * 0.3) lab = [X(d), Y(v)]; } else if (pts.length) { path(svg, pts, col); pts.length = 0; } }
+    if (pts.length) path(svg, pts, col);
+    if (lab) el('text', { x: lab[0] + 6, y: lab[1] - 6, 'font-size': 11, fill: col, 'font-weight': 600 }, svg).textContent = name;
+  });
+  const t = 1 / (2 * S.beta2); if (t < xr) { el('line', { x1: X(t), x2: X(t), y1: m.t, y2: H - m.b, stroke: '#7c3aed', 'stroke-dasharray': '3 3', opacity: .6 }, svg); el('text', { x: X(t) + 4, y: m.t + 12, 'font-size': 11, fill: '#7c3aed' }, svg).textContent = 'IPO target 1/(2β) = ' + f(t, 1); }
+  plot2State = { xr, m, W, dpo, ipo, simpo };
+}
+window.addEventListener('resize', render);
+hookHover('plot2', 'tip2', px => { const p = plot2State; if (!p) return null; const d = -p.xr + (px - p.m.l) / (p.W - p.m.l - p.m.r) * 2 * p.xr; if (d < -p.xr || d > p.xr) return null; return `margin = ${f(d, 2)}<br>DPO ${f(p.dpo(d))} · IPO ${f(p.ipo(d))} · SimPO ${f(p.simpo(d))}`; });
+// --------------------------------------------------------------- steps
+let nstep = 0;
+function step() {
+  readAll(); const c = compute();
+  const k = S.lr * S.beta * c.grad;
+  const dpc = k * (1 - S.rho * S.s), dpr = k * (S.rho * S.s - S.s * S.s);
+  const clamp = v => Math.max(-80, Math.min(0, v));
+  const oldpc = S.pc, oldpr = S.pr;
+  const npc = clamp(S.pc + dpc), npr = clamp(S.pr + dpr);
+  $('pc').value = npc; $('pr').value = npr;
+  readAll(); const c2 = compute(); nstep++;
+  const adc = npc - oldpc, adr = npr - oldpr;
+  const tb = $('log').querySelector('tbody');
+  const tr = document.createElement('tr');
+  const cell = (v, cls) => `<td${cls ? ' style="color:' + cls + '"' : ''}>${v}</td>`;
+  tr.innerHTML = cell(nstep) + cell(f(c.grad)) + cell(f(adc), adc >= 0 ? 'var(--green)' : 'var(--red)') + cell(f(adr), adr >= 0 ? 'var(--green)' : 'var(--red)') + cell('+' + f(c2.D - c.D)) + cell(f(c2.loss));
+  tb.insertBefore(tr, tb.firstChild); while (tb.children.length > 12) tb.removeChild(tb.lastChild);
+  render();
+}
+function steps(n) { for (let i = 0; i < n; i++) step(); }
+function clearLog() { $('log').querySelector('tbody').innerHTML = ''; nstep = 0; }
+function preset(name) {
+  const set = (a, b, c, d) => { $('pc').value = a; $('pr').value = b; $('rc').value = c; $('rr').value = d; };
+  if (name === 'start') set(-25, -25, -25, -25);
+  if (name === 'good') set(-24, -38, -25, -25);
+  if (name === 'flip') set(-28, -22, -25, -25);
+  render();
+}
+function showTab(t) { $('paneA').hidden = t !== 'A'; $('paneB').hidden = t !== 'B'; $('tabA').setAttribute('aria-selected', t === 'A'); $('tabB').setAttribute('aria-selected', t === 'B'); render(); }
+ids.forEach(k => $(k).addEventListener('input', render));
+render();
+</script>
+</body>
+</html>

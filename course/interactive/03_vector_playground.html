@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vector Playground — Chapter 3</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page-specific */
+.grid>*{min-width:0}
+h3{margin:0 0 8px;font-size:15px}.small{font-size:13px;color:var(--muted)}
+svg.plane{width:100%;height:auto;background:#fff;border:1px solid var(--line);border-radius:8px;touch-action:none;display:block}
+.handle{cursor:grab}.handle:active{cursor:grabbing}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.stat{background:#f8fafc;border-radius:8px;padding:8px 10px}.stat b{display:block;font-size:20px;font-family:ui-monospace,Menlo,monospace}.stat span{font-size:12px;color:var(--muted)}
+select{width:auto}
+.nn{font-family:ui-monospace,Menlo,monospace;font-size:13px}.nn div{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--line)}
+.nn .bar{height:8px;background:var(--purple);border-radius:3px;margin-top:6px}
+input[type=number]{font:inherit;padding:6px;border:1px solid var(--line);border-radius:8px;width:76px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Vector playground <a class="chip" href="../chapters/03-embeddings.md">Chapter 03</a></h1>
+  <div class="sub">Drag two vectors and watch the dot product, cosine similarity and angle update. Then do arithmetic on word embeddings.</div>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Drag the tips of <span style="color:var(--blue)">a</span> and <span style="color:var(--orange)">b</span>. Make them point the same way, opposite ways, and at right angles, and watch the dot product change sign while the cosine stays between −1 and 1. Then, in the word panel, compute <em>two − one + three</em> and check what the nearest neighbour of the result is.</div>
+
+<div class="grid two">
+  <div class="panel">
+    <h3>Two vectors</h3>
+    <svg id="plane" class="plane" viewBox="0 0 400 400" aria-label="draggable vector plane"></svg>
+    <div class="row" style="margin-top:8px">
+      <label>a = (<input type="number" id="ax" step="0.1" aria-label="a x">, <input type="number" id="ay" step="0.1" aria-label="a y">)</label>
+      <label>b = (<input type="number" id="bx" step="0.1" aria-label="b x">, <input type="number" id="by" step="0.1" aria-label="b y">)</label>
+    </div>
+  </div>
+  <div class="panel">
+    <h3>What the numbers say</h3>
+    <div class="stats" id="stats"></div>
+    <div class="small" id="reading" style="margin-top:10px"></div>
+    <pre id="formulas" style="margin-top:10px;font-size:12px"></pre>
+  </div>
+</div>
+
+<div class="grid two">
+  <div class="panel">
+    <h3>Word analogy: A − B + C = ?</h3>
+    <div class="row">
+      <select id="wa" aria-label="A"></select> <span>−</span>
+      <select id="wb" aria-label="B"></select> <span>+</span>
+      <select id="wc" aria-label="C"></select>
+    </div>
+    <div class="small" style="margin:8px 0">Twelve words with hand-made 2-D embeddings (a real model uses thousands of dimensions, learned from data; the structure here is drawn by hand so the arithmetic is visible). The dashed arrow is A − B: the "direction of difference". Adding it to C lands on the <span style="color:var(--red)">★</span>.</div>
+    <svg id="words" class="plane" viewBox="0 0 400 400" aria-label="word embedding plot"></svg>
+  </div>
+  <div class="panel">
+    <h3>Nearest neighbours of the result (by cosine)</h3>
+    <div id="resvec" class="small" style="margin-bottom:6px"></div>
+    <div class="nn" id="nn"></div>
+    <div class="small" style="margin-top:8px">A, B and C are excluded from the list, as word2vec did. Cosine ignores length: it asks "do these point the same way?", not "are they the same size?".</div>
+  </div>
+</div>
+
+<div class="box challenge"><strong>Challenge.</strong> Make <em>a</em> and <em>b</em> orthogonal (dot product 0) without making either of them the zero vector. Then find a second, different way to do it. What is the cosine similarity of orthogonal vectors, and why might an embedding model want two unrelated words to end up like this?
+<details><summary>Show answer</summary>
+<p>Any pair at 90°, e.g. a = (3, 0) and b = (0, 2), or a = (2, 2) and b = (−2, 2): dot = 2·(−2) + 2·2 = 0. Cosine similarity is dot ÷ (|a|·|b|) = 0. Orthogonal means "share nothing": neither vector can be predicted from the other. In a high-dimensional embedding space there is room for a huge number of nearly-orthogonal directions, which is how a model keeps unrelated concepts apart while letting related ones (cat/kitten) point the same way.</p>
+</details></div>
+
+<footer><a href="index.html">← Back to all interactives</a></footer>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const NS = 'http://www.w3.org/2000/svg';
+// ---------- two draggable vectors ----------
+const V = { a:{x:3, y:1}, b:{x:1, y:2.5} };
+const R = 5; // plane spans [-R, R]
+const px = v => 200 + v*40, py = v => 200 - v*40;
+const plane = $('plane');
+function drawPlane(){
+  let s = '';
+  for (let i=-R;i<=R;i++){ s += `<line x1="${px(i)}" y1="0" x2="${px(i)}" y2="400" stroke="${i?'#f1f5f9':'#94a3b8'}"/><line x1="0" y1="${py(i)}" x2="400" y2="${py(i)}" stroke="${i?'#f1f5f9':'#94a3b8'}"/>`; }
+  s += `<defs><marker id="ma" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2563eb"/></marker><marker id="mb" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f59e0b"/></marker></defs>`;
+  // angle arc
+  const ta = Math.atan2(V.a.y, V.a.x), tb = Math.atan2(V.b.y, V.b.x);
+  let d = tb - ta; while (d > Math.PI) d -= 2*Math.PI; while (d < -Math.PI) d += 2*Math.PI;
+  const r = 30, sweep = d > 0 ? 0 : 1;
+  s += `<path d="M${200+r*Math.cos(ta)} ${200-r*Math.sin(ta)} A${r} ${r} 0 ${Math.abs(d)>Math.PI?1:0} ${sweep} ${200+r*Math.cos(tb)} ${200-r*Math.sin(tb)}" fill="none" stroke="#7c3aed" stroke-width="2"/>`;
+  // projection of b onto a
+  const na2 = V.a.x**2 + V.a.y**2;
+  if (na2 > 1e-9){ const t = (V.a.x*V.b.x + V.a.y*V.b.y)/na2; const p = {x:V.a.x*t, y:V.a.y*t};
+    s += `<line x1="${px(V.b.x)}" y1="${py(V.b.y)}" x2="${px(p.x)}" y2="${py(p.y)}" stroke="#94a3b8" stroke-dasharray="4 3"/><circle cx="${px(p.x)}" cy="${py(p.y)}" r="3" fill="#94a3b8"/>`; }
+  for (const [k,c,m] of [['a','#2563eb','ma'],['b','#f59e0b','mb']]){
+    const v = V[k];
+    s += `<line x1="200" y1="200" x2="${px(v.x)}" y2="${py(v.y)}" stroke="${c}" stroke-width="3" marker-end="url(#${m})"/>`;
+    s += `<circle class="handle" data-k="${k}" cx="${px(v.x)}" cy="${py(v.y)}" r="14" fill="${c}" fill-opacity="0.18" stroke="${c}" tabindex="0" role="slider" aria-label="vector ${k} tip"/>`;
+    s += `<text x="${px(v.x)+12}" y="${py(v.y)-12}" fill="${c}" font-weight="700" font-size="16">${k}</text>`;
+  }
+  s += `<text x="6" y="14" fill="#94a3b8" font-size="11">grid step = 1</text>`;
+  plane.innerHTML = s;
+  stats();
+}
+function stats(){
+  const a=V.a, b=V.b, dot = a.x*b.x + a.y*b.y, na = Math.hypot(a.x,a.y), nb = Math.hypot(b.x,b.y);
+  const cos = (na*nb) > 1e-12 ? dot/(na*nb) : NaN, ang = isNaN(cos) ? NaN : Math.acos(Math.max(-1,Math.min(1,cos)))*180/Math.PI;
+  $('stats').innerHTML = [['a · b', dot.toFixed(2), 'dot product'],['cos θ', isNaN(cos)?'undef.':cos.toFixed(3), 'cosine similarity'],['θ', isNaN(ang)?'—':ang.toFixed(1)+'°','angle'],['|a|', na.toFixed(2),'norm of a'],['|b|', nb.toFixed(2),'norm of b'],['|a−b|', Math.hypot(a.x-b.x,a.y-b.y).toFixed(2),'euclidean distance']]
+    .map(([k,v,l])=>`<div class="stat"><span>${k}</span><b>${v}</b><span>${l}</span></div>`).join('');
+  let read;
+  if (isNaN(cos)) read = 'One vector is zero, so the angle is undefined: cosine similarity needs two directions.';
+  else if (Math.abs(dot) < 0.05) read = 'Dot product ≈ 0: the vectors are orthogonal. Neither has any component along the other; cosine ≈ 0.';
+  else if (cos > 0.9) read = 'The vectors point almost the same way: cosine near 1. Note the dot product also grows with length, the cosine does not.';
+  else if (cos < -0.9) read = 'The vectors point in opposite directions: cosine near −1, negative dot product.';
+  else if (dot > 0) read = `Positive dot product: the angle is less than 90°. The grey dot shows the projection of b onto a, which has length |b|·cos θ = ${(nb*cos).toFixed(2)}.`;
+  else read = 'Negative dot product: the angle is more than 90°, so b has a component pointing against a.';
+  $('reading').textContent = read;
+  $('formulas').textContent = `a·b   = ${a.x.toFixed(1)}·${b.x.toFixed(1)} + ${a.y.toFixed(1)}·${b.y.toFixed(1)} = ${dot.toFixed(2)}
+|a|   = sqrt(${a.x.toFixed(1)}² + ${a.y.toFixed(1)}²) = ${na.toFixed(2)}
+cos θ = a·b / (|a| |b|) = ${dot.toFixed(2)} / (${na.toFixed(2)} × ${nb.toFixed(2)}) = ${isNaN(cos)?'undefined':cos.toFixed(3)}`;
+  for (const k of ['a','b']) for (const c of ['x','y']) if (document.activeElement !== $(k+c)) $(k+c).value = V[k][c].toFixed(1);
+}
+function setVec(k, x, y){ V[k] = {x:Math.max(-R,Math.min(R,x)), y:Math.max(-R,Math.min(R,y))}; drawPlane(); }
+let drag = null;
+function toPlane(e){ const r = plane.getBoundingClientRect(); const sx = 400/r.width, sy = 400/r.height; return {x:((e.clientX-r.left)*sx-200)/40, y:(200-(e.clientY-r.top)*sy)/40}; }
+plane.addEventListener('pointerdown', e=>{ const h = e.target.closest('.handle'); if(!h) return; drag = h.dataset.k; plane.setPointerCapture(e.pointerId); e.preventDefault(); });
+plane.addEventListener('pointermove', e=>{ if(!drag) return; const p = toPlane(e); const snap = e.shiftKey ? 1 : 0.1; setVec(drag, Math.round(p.x/snap)*snap, Math.round(p.y/snap)*snap); });
+plane.addEventListener('pointerup', ()=>{ drag = null; });
+plane.addEventListener('keydown', e=>{ const h = e.target.closest('.handle'); if(!h) return; const k=h.dataset.k, d={ArrowLeft:[-0.5,0],ArrowRight:[0.5,0],ArrowUp:[0,0.5],ArrowDown:[0,-0.5]}[e.key]; if(!d) return; e.preventDefault(); setVec(k, V[k].x+d[0], V[k].y+d[1]); plane.querySelector(`.handle[data-k="${k}"]`).focus(); });
+for (const k of ['a','b']) for (const c of ['x','y']) $(k+c).addEventListener('input', ()=>{ const v = parseFloat($(k+c).value); if(!isNaN(v)){ V[k][c] = Math.max(-R,Math.min(R,v)); drawPlane(); } });
+
+// ---------- word embeddings ----------
+// Hand-made 2-D embeddings: numbers along a line (evenly spaced), animals with an adult→young offset, colours clustered.
+const WORDS = {
+  one:[-3.0,-2.6], two:[-2.2,-2.0], three:[-1.4,-1.4], four:[-0.6,-0.8],
+  cat:[2.4,2.6], kitten:[3.2,3.4], dog:[1.2,3.0], puppy:[2.0,3.8],
+  red:[-2.6,2.6], blue:[-3.2,1.6], green:[-1.8,1.8], yellow:[-2.2,3.2],
+};
+const GROUP = {one:'#0891b2',two:'#0891b2',three:'#0891b2',four:'#0891b2',cat:'#16a34a',kitten:'#16a34a',dog:'#16a34a',puppy:'#16a34a',red:'#dc2626',blue:'#dc2626',green:'#dc2626',yellow:'#dc2626'};
+const names = Object.keys(WORDS);
+for (const [id,def] of [['wa','two'],['wb','one'],['wc','three']]){ $(id).innerHTML = names.map(w=>`<option ${w===def?'selected':''}>${w}</option>`).join(''); $(id).addEventListener('change', analogy); }
+function cosine(u,v){ const d=u[0]*v[0]+u[1]*v[1], n=Math.hypot(...u)*Math.hypot(...v); return n>1e-12 ? d/n : 0; }
+function analogy(){
+  const A=WORDS[$('wa').value], B=WORDS[$('wb').value], C=WORDS[$('wc').value];
+  const r = [A[0]-B[0]+C[0], A[1]-B[1]+C[1]];
+  const ex = new Set([$('wa').value,$('wb').value,$('wc').value]);
+  const list = names.filter(w=>!ex.has(w)).map(w=>({w, c:cosine(r,WORDS[w]), d:Math.hypot(r[0]-WORDS[w][0], r[1]-WORDS[w][1])})).sort((p,q)=>q.c-p.c);
+  $('resvec').innerHTML = `${$('wa').value} − ${$('wb').value} + ${$('wc').value} = (${A[0].toFixed(1)} − ${B[0].toFixed(1)} + ${C[0].toFixed(1)}, ${A[1].toFixed(1)} − ${B[1].toFixed(1)} + ${C[1].toFixed(1)}) = <strong>(${r[0].toFixed(1)}, ${r[1].toFixed(1)})</strong> → nearest: <strong style="color:var(--red)">${list[0].w}</strong>`;
+  $('nn').innerHTML = list.map(x=>`<div><span>${x.w}</span><span><span class="bar" style="display:inline-block;width:${Math.max(0,x.c)*100}px;vertical-align:middle;margin-right:6px"></span>cos ${x.c.toFixed(3)} · dist ${x.d.toFixed(2)}</span></div>`).join('');
+  // plot
+  const p = v => [200+v*40, 200-v*40];
+  let s = '';
+  for (let i=-5;i<=5;i++) s += `<line x1="${p(i)[0]}" y1="0" x2="${p(i)[0]}" y2="400" stroke="${i?'#f1f5f9':'#cbd5e1'}"/><line x1="0" y1="${p(i)[1]}" x2="400" y2="${p(i)[1]}" stroke="${i?'#f1f5f9':'#cbd5e1'}"/>`;
+  s += `<defs><marker id="mw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#64748b"/></marker></defs>`;
+  const P = v => [200+v[0]*40, 200-v[1]*40];
+  const pa=P(A), pb=P(B), pc=P(C), pr=P(r);
+  s += `<line x1="${pb[0]}" y1="${pb[1]}" x2="${pa[0]}" y2="${pa[1]}" stroke="#64748b" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#mw)"/>`;
+  s += `<line x1="${pc[0]}" y1="${pc[1]}" x2="${pr[0]}" y2="${pr[1]}" stroke="#dc2626" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#mw)"/>`;
+  for (const w of names){ const [x,y]=P(WORDS[w]); const hi = ex.has(w); s += `<circle cx="${x}" cy="${y}" r="${hi?7:5}" fill="${GROUP[w]}" fill-opacity="${hi?1:0.55}"/><text x="${x+8}" y="${y+4}" font-size="12" fill="#0f172a" font-weight="${hi?700:400}">${w}</text>`; }
+  s += `<text x="${pr[0]}" y="${pr[1]+6}" font-size="18" fill="#dc2626" text-anchor="middle">★</text>`;
+  s += `<text x="6" y="14" fill="#94a3b8" font-size="11">● numbers  ● animals  ● colours</text>`;
+  $('words').innerHTML = s;
+}
+drawPlane(); analogy();
+</script>
+</body>
+</html>

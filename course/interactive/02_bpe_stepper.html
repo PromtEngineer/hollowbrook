@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BPE Stepper — Chapter 2</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page-specific */
+.grid>*{min-width:0}
+h3{margin:0 0 8px;font-size:15px}.small{font-size:13px;color:var(--muted)}
+input[type=number]{font:inherit;padding:6px;border:1px solid var(--line);border-radius:8px;width:80px}
+#step{width:100%;max-width:none}
+.toks{line-height:2;font-family:ui-monospace,Menlo,monospace;font-size:14px;word-break:break-word}
+.toks span{display:inline-block;padding:1px 2px;margin:0 1px;border-radius:4px;border-bottom:3px solid}
+.toks span.new{outline:2px solid var(--red);outline-offset:1px}
+.c0{background:#dbeafe;border-color:#3b82f6}.c1{background:#fde68a;border-color:#f59e0b}.c2{background:#bbf7d0;border-color:#16a34a}.c3{background:#e9d5ff;border-color:#7c3aed}.c4{background:#fecaca;border-color:#dc2626}.c5{background:#cffafe;border-color:#0891b2}
+.stat{font-size:20px;font-weight:600}
+table{border-collapse:collapse;font-size:13px;width:100%}td,th{padding:3px 6px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--muted);font-weight:500}
+.tbl{max-height:220px;overflow:auto}tr.cur{background:#fff7ed}
+.mono{font-family:ui-monospace,Menlo,monospace}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>BPE stepper <a class="chip" href="../chapters/02-tokenization.md">Chapter 02</a></h1>
+  <div class="sub">Watch byte-pair encoding learn a vocabulary from your text, one merge at a time.</div>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Press <em>Train</em>, then drag the step slider from 0 upward and watch the most frequent pair of neighbouring symbols get glued into a new token at each step. Notice the tokens-in-text count fall as the vocabulary grows. Paste new text in the encoder box to see how a vocabulary trained on one text splits another.</div>
+
+<div class="panel">
+  <h3>Training text</h3>
+  <textarea id="text" rows="5" aria-label="Training text"></textarea>
+  <div class="row" style="margin-top:8px">
+    <label>merges to learn <input type="number" id="nm" value="60" min="1" max="400" aria-label="merges to learn"></label>
+    <button id="train">Train</button>
+    <span class="small" id="traininfo"></span>
+  </div>
+  <div class="small" style="margin-top:6px">This runs the same algorithm as <code>llm/tokenizer.py</code>: pre-tokenize with a GPT-style regex (so merges never cross a space boundary), turn each chunk into UTF-8 bytes (a 256-symbol base vocabulary), then repeatedly merge the most frequent adjacent pair.</div>
+</div>
+
+<div class="panel">
+  <div class="row" style="justify-content:space-between">
+    <h3 style="margin:0">Replay merges</h3>
+    <div class="row">
+      <button class="secondary" id="prev" aria-label="previous merge">◀</button>
+      <button class="secondary" id="next" aria-label="next merge">▶</button>
+      <button class="secondary" id="playbtn">▶ play</button>
+    </div>
+  </div>
+  <input type="range" id="step" min="0" max="0" value="0" aria-label="merge step" style="margin:10px 0">
+  <div id="stepinfo" class="small"></div>
+  <div class="grid two" style="margin-top:8px">
+    <div>
+      <div class="small">Tokenized training text (colours mark token boundaries; the red outline is the token just created)</div>
+      <div class="toks" id="tokens"></div>
+    </div>
+    <div>
+      <div class="row" style="margin-bottom:8px">
+        <div><div class="stat" id="vs">256</div><div class="small">vocab size</div></div>
+        <div><div class="stat" id="tc">—</div><div class="small">tokens in text</div></div>
+        <div><div class="stat" id="bpt">—</div><div class="small">bytes / token</div></div>
+      </div>
+      <svg id="chart" width="100%" height="180" viewBox="0 0 460 180" aria-label="vocab size and token count vs merges"></svg>
+      <div class="legend small"><span style="background:var(--blue)"></span>tokens in text <span style="background:var(--orange);margin-left:10px"></span>vocab size</div>
+    </div>
+  </div>
+  <details style="margin-top:8px"><summary class="small">Merge table (all learned merges)</summary>
+    <div class="tbl"><table id="mtable"></table></div>
+  </details>
+</div>
+
+<div class="panel">
+  <h3>Encode new text with the merges learned so far</h3>
+  <input type="text" id="newtext" value="The kite-flying kid liked kittens." aria-label="text to encode">
+  <div class="toks" id="newtokens" style="margin-top:8px"></div>
+  <div class="small" id="newinfo"></div>
+</div>
+
+<div class="box challenge"><strong>Challenge.</strong> How many merges does it take before <code>kite</code> (with its leading space, <code> kite</code>) becomes a single token? Predict first: which pairs must be merged along the way? Then scrub the slider to find out. Change the text so that "kite" appears only once and see what happens.
+<details><summary>Show answer</summary>
+<p id="kiteans">Train first.</p>
+<p>BPE only merges pairs that are frequent. A word that appears once never gets its own token unless its pieces are common elsewhere; that is why rare words and names are split into several tokens, and why the vocabulary size (Chapter 2) is a trade-off between shorter sequences and a larger embedding table.</p>
+</details></div>
+
+<footer><a href="index.html">← Back to all interactives</a></footer>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+$('text').value = `The kite rose over the town. The kite loved the wind, and the wind loved the kite. Kids ran after the kite; the kite kept rising. "Kite!" they cried. The kite was the king of the sky, and the kite knew it.`;
+// GPT-4-style pre-tokenizer (same as llm/tokenizer.py, minus the possessive quantifiers JS lacks)
+const PRE = /'(?:[sdmtSDMT]|ll|LL|ve|VE|re|RE)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+/gu;
+const enc = new TextEncoder(), dec = new TextDecoder();
+function pretokenize(t){ return t.match(PRE) || []; }
+
+let merges = [];          // [{a,b,id,count,bytes}]
+let vocab = [];           // id -> Uint8Array
+let chunkCounts = [];     // [{ids:[...], count}] for the training text
+let step = 0, timer = null;
+
+function countPairs(words){
+  const m = new Map();
+  for (const {ids, count} of words) for (let i=0;i<ids.length-1;i++){ const k = ids[i]*65536+ids[i+1]; m.set(k, (m.get(k)||0)+count); }
+  return m;
+}
+function mergeWord(ids, a, b, nid){
+  const out = []; for (let i=0;i<ids.length;i++){ if (i<ids.length-1 && ids[i]===a && ids[i+1]===b){ out.push(nid); i++; } else out.push(ids[i]); } return out;
+}
+function train(){
+  const text = $('text').value, n = Math.max(1, Math.min(400, +$('nm').value||60));
+  vocab = []; for (let i=0;i<256;i++) vocab.push(new Uint8Array([i]));
+  const counts = new Map();
+  for (const c of pretokenize(text)) counts.set(c, (counts.get(c)||0)+1);
+  let words = [...counts.entries()].map(([c,count])=>({ids:[...enc.encode(c)], count}));
+  chunkCounts = words.map(w=>({ids:w.ids.slice(), count:w.count}));
+  merges = [];
+  for (let i=0;i<n;i++){
+    const pairs = countPairs(words); if (!pairs.size) break;
+    let best=null, bc=-1; for (const [k,c] of pairs) if (c>bc){ bc=c; best=k; }   // first max in insertion order, like Python's max()
+    const a = Math.floor(best/65536), b = best%65536, id = 256+i;
+    const bytes = new Uint8Array([...vocab[a], ...vocab[b]]); vocab.push(bytes);
+    merges.push({a, b, id, count:bc, bytes});
+    words = words.map(w=>({ids: mergeWord(w.ids, a, b, id), count:w.count}));
+  }
+  $('step').max = merges.length; $('step').value = merges.length;
+  $('traininfo').textContent = `${chunkCounts.length} distinct pre-tokens, ${merges.length} merges learned` + (merges.length<n ? ' (ran out of pairs)' : '');
+  buildTable(); setStep(merges.length);
+  const k = merges.findIndex(m=>str(m.bytes)===' kite');
+  const k2 = merges.findIndex(m=>str(m.bytes)==='kite');
+  $('kiteans').textContent = k>=0 ? `With this text and seed, " kite" becomes one token at merge #${k+1} (id ${merges[k].id}). Path: ${pathOf(k)}.` : (k2>=0 ? `"kite" (without a space) becomes one token at merge #${k2+1}: ${pathOf(k2)}.` : `Within ${merges.length} merges, "kite" never became a single token — it is not frequent enough relative to the other pairs. Increase the number of merges or add more kites.`);
+}
+function pathOf(k){ const seen=[]; (function walk(i){ const m=merges[i]; if (m.a>=256) walk(m.a-256); if (m.b>=256) walk(m.b-256); seen.push(`${show(m.a)}+${show(m.b)}→${show(m.id)} (#${i+1}, count ${m.count})`); })(k); return seen.join('; '); }
+function str(bytes){ return dec.decode(bytes); }
+function show(id){ return JSON.stringify(str(vocab[id])).slice(1,-1).replace(/ /g,'␣'); }
+
+// encode with merges[0..k) using priority order, as in tokenizer.py
+function encodeChunk(bytes, k){
+  let ids = [...bytes];
+  const rank = new Map(); for (let i=0;i<k;i++) rank.set(merges[i].a*65536+merges[i].b, i);
+  while (ids.length >= 2){
+    let best=-1, br=Infinity;
+    for (let i=0;i<ids.length-1;i++){ const r = rank.get(ids[i]*65536+ids[i+1]); if (r!==undefined && r<br){ br=r; best=i; } }
+    if (best<0) break;
+    const m = merges[br]; ids = mergeWord(ids, m.a, m.b, m.id);
+  }
+  return ids;
+}
+function encodeText(text, k){ const out=[]; for (const c of pretokenize(text)) out.push(...encodeChunk(enc.encode(c), k)); return out; }
+function renderTokens(el, ids, newId){
+  el.innerHTML = ids.map((id,i)=>`<span class="c${i%6} ${id===newId?'new':''}" title="id ${id}">${escapeH(str(vocab[id])).replace(/ /g,'␣').replace(/\n/g,'⏎')}</span>`).join('');
+}
+function escapeH(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+let series = null;
+function computeSeries(){ // tokens-in-text after each merge count
+  series = []; const text = $('text').value; const nbytes = enc.encode(text).length;
+  for (let k=0;k<=merges.length;k++) series.push(encodeText(text, k).length);
+  return nbytes;
+}
+let nbytes = 0;
+function setStep(k){
+  step = Math.max(0, Math.min(merges.length, k)); $('step').value = step;
+  const text = $('text').value;
+  if (!series) nbytes = computeSeries();
+  const ids = encodeText(text, step);
+  const m = step>0 ? merges[step-1] : null;
+  renderTokens($('tokens'), ids, m ? m.id : -1);
+  $('stepinfo').innerHTML = m ? `Merge <strong>${step}</strong> of ${merges.length}: pair <code>${show(m.a)}</code> + <code>${show(m.b)}</code> (ids ${m.a}, ${m.b}) occurred <strong>${m.count}</strong> times → new token <code>${show(m.id)}</code> (id ${m.id}).`
+                              : `Step 0: no merges yet, every token is a single byte (256-symbol base vocabulary).`;
+  $('vs').textContent = 256+step; $('tc').textContent = ids.length; $('bpt').textContent = (nbytes/Math.max(1,ids.length)).toFixed(2);
+  drawChart(); encodeNew();
+  document.querySelectorAll('#mtable tr').forEach((tr,i)=>tr.classList.toggle('cur', i===step));
+}
+function drawChart(){
+  const W=460, H=180, L=40, R=40, T=10, B=28, n=merges.length;
+  const x = k => L + (n? k/n : 0)*(W-L-R);
+  const maxT = series[0], minT = series[n]; const yT = v => T + (1 - (v-minT*0.9)/(maxT-minT*0.9||1))*(H-T-B);
+  const yV = v => T + (1 - (v-256)/(Math.max(1,n)))*(H-T-B);
+  let s = `<line x1="${L}" y1="${H-B}" x2="${W-R}" y2="${H-B}" stroke="#cbd5e1"/>`;
+  s += `<text x="${(L+W-R)/2}" y="${H-6}" font-size="11" fill="#64748b" text-anchor="middle">merges</text>`;
+  s += `<text x="${L-4}" y="${yT(maxT)+4}" font-size="11" fill="#2563eb" text-anchor="end">${maxT}</text><text x="${L-4}" y="${yT(minT)+4}" font-size="11" fill="#2563eb" text-anchor="end">${minT}</text>`;
+  s += `<text x="${W-R+4}" y="${yV(256)+4}" font-size="11" fill="#f59e0b">256</text><text x="${W-R+4}" y="${yV(256+n)+4}" font-size="11" fill="#f59e0b">${256+n}</text>`;
+  s += `<polyline fill="none" stroke="#2563eb" stroke-width="2" points="${series.map((v,k)=>`${x(k)},${yT(v)}`).join(' ')}"/>`;
+  s += `<polyline fill="none" stroke="#f59e0b" stroke-width="2" points="${series.map((v,k)=>`${x(k)},${yV(256+k)}`).join(' ')}"/>`;
+  s += `<line x1="${x(step)}" y1="${T}" x2="${x(step)}" y2="${H-B}" stroke="#dc2626" stroke-dasharray="3 3"/>`;
+  s += `<circle cx="${x(step)}" cy="${yT(series[step])}" r="4" fill="#2563eb"/>`;
+  $('chart').innerHTML = s;
+}
+function buildTable(){
+  $('mtable').innerHTML = '<tr><th>#</th><th>pair</th><th>count</th><th>new token</th><th>id</th></tr>' +
+    merges.map((m,i)=>`<tr><td>${i+1}</td><td class="mono">${escapeH(show(m.a))} + ${escapeH(show(m.b))}</td><td>${m.count}</td><td class="mono">${escapeH(show(m.id))}</td><td>${m.id}</td></tr>`).join('');
+}
+function encodeNew(){
+  const t = $('newtext').value; const ids = encodeText(t, step);
+  renderTokens($('newtokens'), ids, -1);
+  $('newinfo').textContent = `${enc.encode(t).length} bytes → ${ids.length} tokens using the first ${step} merges (${(enc.encode(t).length/Math.max(1,ids.length)).toFixed(2)} bytes/token).`;
+}
+$('train').addEventListener('click', ()=>{ series=null; train(); });
+$('step').addEventListener('input', ()=>setStep(+$('step').value));
+$('prev').addEventListener('click', ()=>setStep(step-1));
+$('next').addEventListener('click', ()=>setStep(step+1));
+$('playbtn').addEventListener('click', ()=>{
+  if (timer){ clearInterval(timer); timer=null; $('playbtn').textContent='▶ play'; return; }
+  if (step>=merges.length) setStep(0);
+  $('playbtn').textContent='⏸ pause';
+  timer = setInterval(()=>{ if (step>=merges.length){ clearInterval(timer); timer=null; $('playbtn').textContent='▶ play'; } else setStep(step+1); }, 350);
+});
+$('newtext').addEventListener('input', encodeNew);
+$('text').addEventListener('input', ()=>{ $('traininfo').textContent = 'text changed — press Train'; });
+train(); setStep(0);
+</script>
+</body>
+</html>

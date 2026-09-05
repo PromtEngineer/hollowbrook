@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520" font-family="system-ui, sans-serif">
+<title>A language model assigns a probability to every possible next token</title>
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker></defs>
+<rect width="900" height="520" fill="#ffffff"/>
+<text x="450" y="28" font-size="15" fill="#0f172a" font-weight="bold" text-anchor="middle">Next-token prediction: the model turns a context into a probability for every possible next token</text>
+<text x="20" y="62" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="start">A. The context so far</text>
+<rect x="20" y="76" width="49" height="34" rx="6" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+<text x="44.5" y="98" font-size="14" fill="#0f172a" font-weight="bold" text-anchor="middle">Mia</text>
+<rect x="77" y="76" width="49" height="34" rx="6" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+<text x="101.5" y="98" font-size="14" fill="#0f172a" font-weight="bold" text-anchor="middle">had</text>
+<rect x="134" y="76" width="31" height="34" rx="6" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+<text x="149.5" y="98" font-size="14" fill="#0f172a" font-weight="bold" text-anchor="middle">a</text>
+<rect x="173" y="76" width="44" height="34" rx="6" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626" stroke-width="1.5"/>
+<text x="195" y="99" font-size="16" fill="#dc2626" font-weight="bold" text-anchor="middle">?</text>
+<text x="20" y="138" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">The model has read &#x27;Mia had a&#x27; and must</text>
+<text x="20" y="153" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">guess the fourth token. It does not pick</text>
+<text x="20" y="168" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">one answer; it scores all V candidates.</text>
+<text x="20" y="200" font-size="11" fill="#0f172a" font-weight="bold" text-anchor="start">Counting in Storyland (trigram, Lab 1):</text>
+<text x="20" y="216" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">&#x27;had a&#x27; was seen 1,820 times in training.</text>
+<text x="20" y="231" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">&#x27;blue&#x27; followed it 205 times → 205/1820 ≈ 0.113</text>
+<text x="20" y="246" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">&#x27;red&#x27; followed it 200 times → 200/1820 ≈ 0.110</text>
+<text x="20" y="261" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">&#x27;kite&#x27; never followed it → ≈ 0 (smoothing gives</text>
+<text x="20" y="276" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">it a tiny share instead of exactly zero).</text>
+<text x="330" y="62" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="start">B. P(next token | &#x27;Mia had a&#x27;)  — one bar per candidate token</text>
+<text x="400" y="96" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="end">blue</text>
+<rect x="408" y="84" width="158.20000000000002" height="16" fill="#2563eb" fill-opacity="0.8"/>
+<text x="572.2" y="96" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">0.113</text>
+<text x="400" y="117" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="end">red</text>
+<rect x="408" y="105" width="154.0" height="16" fill="#2563eb" fill-opacity="0.8"/>
+<text x="568.0" y="117" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">0.110</text>
+<text x="400" y="138" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="end">green</text>
+<rect x="408" y="126" width="147.0" height="16" fill="#2563eb" fill-opacity="0.8"/>
+<text x="561.0" y="138" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">0.105</text>
+<text x="400" y="159" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="end">purple</text>
+<rect x="408" y="147" width="142.79999999999998" height="16" fill="#2563eb" fill-opacity="0.8"/>
+<text x="556.8" y="159" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">0.102</text>
+<text x="400" y="180" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="end">brown</text>
+<rect x="408" y="168" width="140.0" height="16" fill="#2563eb" fill-opacity="0.8"/>
+<text x="554.0" y="180" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">0.100</text>
+<text x="400" y="201" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="end">pink</text>
+<rect x="408" y="189" width="135.8" height="16" fill="#2563eb" fill-opacity="0.8"/>
+<text x="549.8" y="201" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">0.097</text>
+<text x="400" y="222" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="end">orange</text>
+<rect x="408" y="210" width="135.8" height="16" fill="#2563eb" fill-opacity="0.8"/>
+<text x="549.8" y="222" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">0.097</text>
+<text x="400" y="243" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="end">yellow</text>
+<rect x="408" y="231" width="133.0" height="16" fill="#2563eb" fill-opacity="0.8"/>
+<text x="547.0" y="243" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">0.095</text>
+<text x="400" y="264" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="end">kite</text>
+<rect x="408" y="252" width="2" height="16" fill="#dc2626" fill-opacity="0.8"/>
+<text x="414.0" y="264" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">≈ 0 (never seen in training)</text>
+<text x="400" y="285" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="end">… 380 more</text>
+<rect x="408" y="273" width="252.0" height="16" fill="#f59e0b" fill-opacity="0.8"/>
+<text x="666.0" y="285" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">0.18 (all the rest, together)</text>
+<text x="330" y="304" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">All bars add up to 1.0: it is a probability distribution over the vocabulary.</text>
+<text x="330" y="319" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">Sampling = pick a bar at random, in proportion to its length.</text>
+<line x1="20" y1="338" x2="880" y2="338" stroke="#64748b" stroke-width="0.8"/>
+<text x="20" y="356" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="start">C. The chain rule: the probability of a whole sentence is a product of next-token probabilities</text>
+<text x="20" y="382" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">P(Mia had a red kite .) = P(Mia) · P(had | Mia) · P(a | Mia had) · P(red | Mia had a)</text>
+<text x="196" y="400" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">· P(kite | Mia had a red) · P(. | Mia had a red kite)</text>
+<text x="20" y="426" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">Storyland trigram (Lab 1):  0.028 · 0.157 · 0.971 · 0.110 · 0.026 · 0.456  ≈  5.5 × 10⁻⁶</text>
+<text x="20" y="444" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">= 21 bits of surprise in total = 3.0 bits per token  →  perplexity 2^3.0 ≈ 8 (as if choosing among 8 equally likely tokens each step)</text>
+<text x="20" y="470" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">Read this as: to score a sentence, walk left to right and at each step ask &#x27;how likely was THIS token given everything before it?&#x27;, then multiply.</text>
+<text x="20" y="485" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">Every LLM, from a bigram to a trillion-parameter model, is a better and better estimate of each factor P(next | context).</text>
+</svg>

@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="640" viewBox="0 0 900 640" font-family="system-ui, sans-serif">
+<title>The LLM pipeline from raw text to a deployed agent</title>
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker></defs>
+<rect width="900" height="640" fill="#ffffff"/>
+<text x="450" y="30" font-size="16" fill="#0f172a" font-weight="bold" text-anchor="middle">The whole pipeline: raw text → deployed agent (what goes in and comes out of each stage)</text>
+<rect x="14" y="56" width="198" height="128" rx="8" fill="#64748b" fill-opacity="0.12" stroke="#64748b" stroke-width="1.5"/>
+<text x="24" y="78" font-size="14" fill="#0f172a" font-weight="bold" text-anchor="start">0. Raw text</text>
+<text x="202" y="174" font-size="11" fill="#64748b" font-weight="bold" text-anchor="end">Ch. 8</text>
+<text x="24" y="100" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">in: Common Crawl, code,</text>
+<text x="24" y="115" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">books, papers, transcripts</text>
+<text x="24" y="134" font-size="11" fill="#64748b" font-weight="bold" text-anchor="start">out: raw documents</text>
+<text x="24" y="149" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">(petabytes, mostly junk)</text>
+<rect x="234" y="56" width="198" height="128" rx="8" fill="#64748b" fill-opacity="0.12" stroke="#64748b" stroke-width="1.5"/>
+<text x="244" y="78" font-size="14" fill="#0f172a" font-weight="bold" text-anchor="start">1. Curation</text>
+<text x="422" y="174" font-size="11" fill="#64748b" font-weight="bold" text-anchor="end">Ch. 8</text>
+<text x="244" y="100" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">in: raw documents</text>
+<text x="244" y="119" font-size="11" fill="#64748b" font-weight="bold" text-anchor="start">out: filtered, deduplicated,</text>
+<text x="244" y="134" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">decontaminated, mixed docs</text>
+<rect x="454" y="56" width="198" height="128" rx="8" fill="#64748b" fill-opacity="0.12" stroke="#64748b" stroke-width="1.5"/>
+<text x="464" y="78" font-size="14" fill="#0f172a" font-weight="bold" text-anchor="start">2. Tokenizer</text>
+<text x="642" y="174" font-size="11" fill="#64748b" font-weight="bold" text-anchor="end">Ch. 2</text>
+<text x="464" y="100" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">in: text (UTF-8 bytes)</text>
+<text x="464" y="119" font-size="11" fill="#64748b" font-weight="bold" text-anchor="start">out: integer token ids</text>
+<text x="464" y="134" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">+ a vocabulary</text>
+<rect x="674" y="56" width="198" height="128" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+<text x="684" y="78" font-size="14" fill="#0f172a" font-weight="bold" text-anchor="start">3. Pretraining</text>
+<text x="862" y="174" font-size="11" fill="#2563eb" font-weight="bold" text-anchor="end">Ch. 9–12</text>
+<text x="684" y="100" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">in: trillions of tokens,</text>
+<text x="684" y="115" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">GPU-months of compute</text>
+<text x="684" y="134" font-size="11" fill="#2563eb" font-weight="bold" text-anchor="start">out: base model</text>
+<text x="684" y="149" font-size="11" fill="#2563eb" font-weight="normal" text-anchor="start">(a next-token predictor)</text>
+<rect x="14" y="236" width="198" height="128" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+<text x="24" y="258" font-size="14" fill="#0f172a" font-weight="bold" text-anchor="start">4. Mid-training</text>
+<text x="202" y="354" font-size="11" fill="#2563eb" font-weight="bold" text-anchor="end">Ch. 13</text>
+<text x="24" y="280" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">in: base model + high-quality,</text>
+<text x="24" y="295" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">long, reasoning-rich docs</text>
+<text x="24" y="314" font-size="11" fill="#2563eb" font-weight="bold" text-anchor="start">out: annealed base,</text>
+<text x="24" y="329" font-size="11" fill="#2563eb" font-weight="normal" text-anchor="start">longer context window</text>
+<rect x="234" y="236" width="198" height="128" rx="8" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="244" y="258" font-size="14" fill="#0f172a" font-weight="bold" text-anchor="start">5. SFT</text>
+<text x="422" y="354" font-size="11" fill="#f59e0b" font-weight="bold" text-anchor="end">Ch. 15</text>
+<text x="244" y="280" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">in: instruction / chat</text>
+<text x="244" y="295" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">examples (prompt → answer)</text>
+<text x="244" y="314" font-size="11" fill="#f59e0b" font-weight="bold" text-anchor="start">out: instruct model</text>
+<text x="244" y="329" font-size="11" fill="#f59e0b" font-weight="normal" text-anchor="start">(follows the chat format)</text>
+<rect x="454" y="236" width="198" height="128" rx="8" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="464" y="258" font-size="14" fill="#0f172a" font-weight="bold" text-anchor="start">6. Reward model / DPO</text>
+<text x="642" y="354" font-size="11" fill="#f59e0b" font-weight="bold" text-anchor="end">Ch. 16–17</text>
+<text x="464" y="280" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">in: preference pairs</text>
+<text x="464" y="295" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">(chosen vs rejected)</text>
+<text x="464" y="314" font-size="11" fill="#f59e0b" font-weight="bold" text-anchor="start">out: a reward model, or a</text>
+<text x="464" y="329" font-size="11" fill="#f59e0b" font-weight="normal" text-anchor="start">preference-tuned policy</text>
+<rect x="674" y="236" width="198" height="128" rx="8" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="684" y="258" font-size="14" fill="#0f172a" font-weight="bold" text-anchor="start">7. RLVR (GRPO)</text>
+<text x="862" y="354" font-size="11" fill="#f59e0b" font-weight="bold" text-anchor="end">Ch. 18–19</text>
+<text x="684" y="280" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">in: prompts + verifiers</text>
+<text x="684" y="295" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">(unit tests, answer keys)</text>
+<text x="684" y="314" font-size="11" fill="#f59e0b" font-weight="bold" text-anchor="start">out: reasoning model</text>
+<text x="684" y="329" font-size="11" fill="#f59e0b" font-weight="normal" text-anchor="start">(thinks before answering)</text>
+<rect x="14" y="416" width="198" height="128" rx="8" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="24" y="438" font-size="14" fill="#0f172a" font-weight="bold" text-anchor="start">8. On-policy distillation</text>
+<text x="202" y="534" font-size="11" fill="#f59e0b" font-weight="bold" text-anchor="end">Ch. 20</text>
+<text x="24" y="460" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">in: student samples +</text>
+<text x="24" y="475" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">teacher log-probs per token</text>
+<text x="24" y="494" font-size="11" fill="#f59e0b" font-weight="bold" text-anchor="start">out: smaller student with</text>
+<text x="24" y="509" font-size="11" fill="#f59e0b" font-weight="normal" text-anchor="start">the teacher&#x27;s skills</text>
+<rect x="234" y="416" width="198" height="128" rx="8" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+<text x="244" y="438" font-size="14" fill="#0f172a" font-weight="bold" text-anchor="start">9. Evals</text>
+<text x="422" y="534" font-size="11" fill="#16a34a" font-weight="bold" text-anchor="end">Ch. 23</text>
+<text x="244" y="460" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">in: any checkpoint +</text>
+<text x="244" y="475" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">benchmarks, judges, users</text>
+<text x="244" y="494" font-size="11" fill="#16a34a" font-weight="bold" text-anchor="start">out: scores, error analysis,</text>
+<text x="244" y="509" font-size="11" fill="#16a34a" font-weight="normal" text-anchor="start">ship / don&#x27;t ship</text>
+<rect x="454" y="416" width="198" height="128" rx="8" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="464" y="438" font-size="14" fill="#0f172a" font-weight="bold" text-anchor="start">10. Agent harness</text>
+<text x="642" y="534" font-size="11" fill="#7c3aed" font-weight="bold" text-anchor="end">Ch. 24–28</text>
+<text x="464" y="460" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">in: model + tools + context</text>
+<text x="464" y="475" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">policy + permissions</text>
+<text x="464" y="494" font-size="11" fill="#7c3aed" font-weight="bold" text-anchor="start">out: an agent that observes,</text>
+<text x="464" y="509" font-size="11" fill="#7c3aed" font-weight="normal" text-anchor="start">thinks, acts, and verifies</text>
+<line x1="212" y1="120.0" x2="233" y2="120.0" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+<line x1="432" y1="120.0" x2="453" y2="120.0" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+<line x1="652" y1="120.0" x2="673" y2="120.0" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+<path d="M773.0,184 V202 H113.0 V235" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+<line x1="212" y1="300.0" x2="233" y2="300.0" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+<line x1="432" y1="300.0" x2="453" y2="300.0" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+<line x1="652" y1="300.0" x2="673" y2="300.0" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+<path d="M773.0,364 V382 H113.0 V415" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+<line x1="212" y1="480.0" x2="233" y2="480.0" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+<line x1="432" y1="480.0" x2="453" y2="480.0" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+<path d="M333.0,416 V390 H333.0 V365" fill="none" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arr)"/>
+<text x="464" y="384" font-size="11" fill="#16a34a" font-weight="normal" text-anchor="start">evals feed back into every training stage (dashed)</text>
+<text x="14" y="578" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="start">Legend:</text>
+<rect x="80" y="566" width="16" height="16" rx="3" fill="#64748b" fill-opacity="0.12" stroke="#64748b" stroke-width="1.5"/>
+<text x="102" y="578" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start">data</text>
+<rect x="200" y="566" width="16" height="16" rx="3" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+<text x="222" y="578" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start">pretraining</text>
+<rect x="320" y="566" width="16" height="16" rx="3" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="342" y="578" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start">post-training</text>
+<rect x="440" y="566" width="16" height="16" rx="3" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+<text x="462" y="578" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start">evaluation</text>
+<rect x="560" y="566" width="16" height="16" rx="3" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="582" y="578" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start">deployment</text>
+<text x="14" y="604" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">Checkpoints you can ship: base (after 5), instruct (after 6–7), reasoning (after 8–9). The tokenizer (3) is fixed before pretraining and never changes afterwards.</text>
+<text x="14" y="622" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">Everything after stage 5 is &#x27;post-training&#x27;. Stages 6–9 are run in this order in 2026, often more than once, sometimes with 7 and 8 swapped or merged.</text>
+</svg>

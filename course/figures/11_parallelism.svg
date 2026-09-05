@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="400" viewBox="0 0 900 400" font-family="system-ui, sans-serif">
+  <rect width="900" height="400" fill="#ffffff"/>
+  <text x="450" y="26" text-anchor="middle" font-size="17" font-weight="600" fill="#0f172a">Four ways to split one training run across devices (each square is one GPU)</text>
+
+  <!-- ===== Panel 1: Data parallel ===== -->
+  <g transform="translate(15,45)">
+    <rect x="0" y="0" width="205" height="330" rx="8" fill="#2563eb" fill-opacity="0.06" stroke="#2563eb" stroke-opacity="0.5"/>
+    <text x="102" y="22" text-anchor="middle" font-size="14" font-weight="600" fill="#2563eb">Data parallel (DP)</text>
+    <text x="102" y="40" text-anchor="middle" font-size="11" fill="#64748b">whole model on every GPU</text>
+    <!-- 4 gpus each with the full model -->
+    <g id="dp-gpu">
+      <rect x="18" y="55" width="80" height="90" rx="6" fill="#ffffff" stroke="#0f172a"/>
+      <rect x="26" y="63" width="64" height="12" fill="#2563eb" fill-opacity="0.35"/>
+      <rect x="26" y="79" width="64" height="12" fill="#2563eb" fill-opacity="0.35"/>
+      <rect x="26" y="95" width="64" height="12" fill="#2563eb" fill-opacity="0.35"/>
+      <rect x="26" y="111" width="64" height="12" fill="#2563eb" fill-opacity="0.35"/>
+      <text x="58" y="138" text-anchor="middle" font-size="10" fill="#0f172a">all layers</text>
+    </g>
+    <use href="#dp-gpu" x="90"/>
+    <use href="#dp-gpu" y="100"/>
+    <use href="#dp-gpu" x="90" y="100"/>
+    <text x="58" y="50" text-anchor="middle" font-size="10" fill="#f59e0b">batch shard 0</text>
+    <text x="148" y="50" text-anchor="middle" font-size="10" fill="#f59e0b">batch shard 1</text>
+    <text x="58" y="150" text-anchor="middle" font-size="10" fill="#f59e0b">batch shard 2</text>
+    <text x="148" y="150" text-anchor="middle" font-size="10" fill="#f59e0b">batch shard 3</text>
+    <!-- ring all-reduce arrows -->
+    <path d="M100 100 A 45 45 0 1 1 100 200" fill="none" stroke="#dc2626" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#arrowR)"/>
+    <path d="M110 200 A 45 45 0 1 1 110 100" fill="none" stroke="#dc2626" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#arrowR)"/>
+    <text x="102" y="270" text-anchor="middle" font-size="11" fill="#dc2626">all-reduce gradients</text>
+    <text x="102" y="286" text-anchor="middle" font-size="11" fill="#dc2626">(every step, 2·(N−1)/N·|grads|)</text>
+    <text x="102" y="312" text-anchor="middle" font-size="10" fill="#64748b">ZeRO/FSDP: shard the copies too</text>
+  </g>
+
+  <!-- ===== Panel 2: Tensor parallel ===== -->
+  <g transform="translate(235,45)">
+    <rect x="0" y="0" width="205" height="330" rx="8" fill="#16a34a" fill-opacity="0.06" stroke="#16a34a" stroke-opacity="0.5"/>
+    <text x="102" y="22" text-anchor="middle" font-size="14" font-weight="600" fill="#16a34a">Tensor parallel (TP)</text>
+    <text x="102" y="40" text-anchor="middle" font-size="11" fill="#64748b">one matrix, split by columns</text>
+    <!-- weight matrix split -->
+    <text x="102" y="62" text-anchor="middle" font-size="11" fill="#0f172a">W = [ W₀ | W₁ | W₂ | W₃ ]</text>
+    <g id="tp-gpu">
+      <rect x="18" y="72" width="80" height="90" rx="6" fill="#ffffff" stroke="#0f172a"/>
+      <rect x="26" y="80" width="16" height="70" fill="#16a34a" fill-opacity="0.45"/>
+      <rect x="44" y="80" width="46" height="70" fill="#64748b" fill-opacity="0.08" stroke="#64748b" stroke-dasharray="2 2"/>
+    </g>
+    <use href="#tp-gpu"/>
+    <g transform="translate(90,0)">
+      <rect x="18" y="72" width="80" height="90" rx="6" fill="#ffffff" stroke="#0f172a"/>
+      <rect x="26" y="80" width="16" height="70" fill="#64748b" fill-opacity="0.08" stroke="#64748b" stroke-dasharray="2 2"/>
+      <rect x="44" y="80" width="16" height="70" fill="#16a34a" fill-opacity="0.45"/>
+      <rect x="62" y="80" width="28" height="70" fill="#64748b" fill-opacity="0.08" stroke="#64748b" stroke-dasharray="2 2"/>
+    </g>
+    <g transform="translate(0,100)">
+      <rect x="18" y="72" width="80" height="90" rx="6" fill="#ffffff" stroke="#0f172a"/>
+      <rect x="26" y="80" width="34" height="70" fill="#64748b" fill-opacity="0.08" stroke="#64748b" stroke-dasharray="2 2"/>
+      <rect x="62" y="80" width="16" height="70" fill="#16a34a" fill-opacity="0.45"/>
+      <rect x="80" y="80" width="10" height="70" fill="#64748b" fill-opacity="0.08" stroke="#64748b" stroke-dasharray="2 2"/>
+    </g>
+    <g transform="translate(90,100)">
+      <rect x="18" y="72" width="80" height="90" rx="6" fill="#ffffff" stroke="#0f172a"/>
+      <rect x="26" y="80" width="48" height="70" fill="#64748b" fill-opacity="0.08" stroke="#64748b" stroke-dasharray="2 2"/>
+      <rect x="76" y="80" width="14" height="70" fill="#16a34a" fill-opacity="0.45"/>
+    </g>
+    <text x="102" y="285" text-anchor="middle" font-size="11" fill="#dc2626">all-reduce activations</text>
+    <text x="102" y="301" text-anchor="middle" font-size="11" fill="#dc2626">twice per block (attn, MLP)</text>
+    <text x="102" y="320" text-anchor="middle" font-size="10" fill="#64748b">needs NVLink-speed links</text>
+  </g>
+
+  <!-- ===== Panel 3: Pipeline parallel ===== -->
+  <g transform="translate(455,45)">
+    <rect x="0" y="0" width="205" height="330" rx="8" fill="#f59e0b" fill-opacity="0.06" stroke="#f59e0b" stroke-opacity="0.5"/>
+    <text x="102" y="22" text-anchor="middle" font-size="14" font-weight="600" fill="#b45309">Pipeline parallel (PP)</text>
+    <text x="102" y="40" text-anchor="middle" font-size="11" fill="#64748b">consecutive layers per GPU</text>
+    <g id="pp-gpu"><rect x="18" y="0" width="170" height="30" rx="6" fill="#ffffff" stroke="#0f172a"/></g>
+    <use href="#pp-gpu" y="55"/><rect x="26" y="62" width="154" height="16" fill="#f59e0b" fill-opacity="0.35"/><text x="102" y="74" text-anchor="middle" font-size="10" fill="#0f172a">layers 0–7</text>
+    <use href="#pp-gpu" y="95"/><rect x="26" y="102" width="154" height="16" fill="#f59e0b" fill-opacity="0.35"/><text x="102" y="114" text-anchor="middle" font-size="10" fill="#0f172a">layers 8–15</text>
+    <use href="#pp-gpu" y="135"/><rect x="26" y="142" width="154" height="16" fill="#f59e0b" fill-opacity="0.35"/><text x="102" y="154" text-anchor="middle" font-size="10" fill="#0f172a">layers 16–23</text>
+    <use href="#pp-gpu" y="175"/><rect x="26" y="182" width="154" height="16" fill="#f59e0b" fill-opacity="0.35"/><text x="102" y="194" text-anchor="middle" font-size="10" fill="#0f172a">layers 24–31</text>
+    <path d="M102 85 v8" stroke="#dc2626" stroke-width="2" marker-end="url(#arrowR)"/>
+    <path d="M102 125 v8" stroke="#dc2626" stroke-width="2" marker-end="url(#arrowR)"/>
+    <path d="M102 165 v8" stroke="#dc2626" stroke-width="2" marker-end="url(#arrowR)"/>
+    <!-- bubble timeline -->
+    <text x="102" y="232" text-anchor="middle" font-size="11" fill="#0f172a">time → (micro-batches a,b,c,d)</text>
+    <g transform="translate(18,240)" font-size="8" fill="#0f172a">
+      <rect x="0" y="0" width="170" height="60" fill="#ffffff" stroke="#64748b"/>
+      <rect x="2" y="2" width="18" height="12" fill="#f59e0b" fill-opacity="0.5"/><text x="11" y="11" text-anchor="middle">a</text>
+      <rect x="22" y="2" width="18" height="12" fill="#f59e0b" fill-opacity="0.5"/><text x="31" y="11" text-anchor="middle">b</text>
+      <rect x="42" y="2" width="18" height="12" fill="#f59e0b" fill-opacity="0.5"/><text x="51" y="11" text-anchor="middle">c</text>
+      <rect x="62" y="2" width="18" height="12" fill="#f59e0b" fill-opacity="0.5"/><text x="71" y="11" text-anchor="middle">d</text>
+      <rect x="22" y="16" width="18" height="12" fill="#f59e0b" fill-opacity="0.5"/><text x="31" y="25" text-anchor="middle">a</text>
+      <rect x="42" y="16" width="18" height="12" fill="#f59e0b" fill-opacity="0.5"/><text x="51" y="25" text-anchor="middle">b</text>
+      <rect x="62" y="16" width="18" height="12" fill="#f59e0b" fill-opacity="0.5"/><text x="71" y="25" text-anchor="middle">c</text>
+      <rect x="82" y="16" width="18" height="12" fill="#f59e0b" fill-opacity="0.5"/><text x="91" y="25" text-anchor="middle">d</text>
+      <rect x="42" y="30" width="18" height="12" fill="#f59e0b" fill-opacity="0.5"/><text x="51" y="39" text-anchor="middle">a</text>
+      <rect x="62" y="30" width="18" height="12" fill="#f59e0b" fill-opacity="0.5"/><text x="71" y="39" text-anchor="middle">b</text>
+      <rect x="82" y="30" width="18" height="12" fill="#f59e0b" fill-opacity="0.5"/><text x="91" y="39" text-anchor="middle">c</text>
+      <rect x="102" y="30" width="18" height="12" fill="#f59e0b" fill-opacity="0.5"/><text x="111" y="39" text-anchor="middle">d</text>
+      <rect x="62" y="44" width="18" height="12" fill="#f59e0b" fill-opacity="0.5"/><text x="71" y="53" text-anchor="middle">a</text>
+      <rect x="82" y="44" width="18" height="12" fill="#f59e0b" fill-opacity="0.5"/><text x="91" y="53" text-anchor="middle">b</text>
+      <rect x="102" y="44" width="18" height="12" fill="#f59e0b" fill-opacity="0.5"/><text x="111" y="53" text-anchor="middle">c</text>
+      <rect x="122" y="44" width="18" height="12" fill="#f59e0b" fill-opacity="0.5"/><text x="131" y="53" text-anchor="middle">d</text>
+      <rect x="2" y="16" width="18" height="12" fill="#dc2626" fill-opacity="0.15"/>
+      <rect x="2" y="30" width="38" height="12" fill="#dc2626" fill-opacity="0.15"/>
+      <rect x="2" y="44" width="58" height="12" fill="#dc2626" fill-opacity="0.15"/>
+      <text x="25" y="53" text-anchor="middle" font-size="8" fill="#dc2626">bubble</text>
+    </g>
+    <text x="102" y="318" text-anchor="middle" font-size="10" fill="#64748b">idle time = bubble; 1F1B shrinks it</text>
+  </g>
+
+  <!-- ===== Panel 4: Expert parallel ===== -->
+  <g transform="translate(675,45)">
+    <rect x="0" y="0" width="210" height="330" rx="8" fill="#7c3aed" fill-opacity="0.06" stroke="#7c3aed" stroke-opacity="0.5"/>
+    <text x="105" y="22" text-anchor="middle" font-size="14" font-weight="600" fill="#7c3aed">Expert parallel (EP)</text>
+    <text x="105" y="40" text-anchor="middle" font-size="11" fill="#64748b">MoE experts spread out</text>
+    <g id="ep-gpu">
+      <rect x="0" y="0" width="82" height="70" rx="6" fill="#ffffff" stroke="#0f172a"/>
+      <rect x="8" y="8" width="30" height="54" rx="3" fill="#7c3aed" fill-opacity="0.35"/>
+      <rect x="44" y="8" width="30" height="54" rx="3" fill="#7c3aed" fill-opacity="0.35"/>
+    </g>
+    <use href="#ep-gpu" x="18" y="55"/><text x="59" y="140" text-anchor="middle" font-size="10" fill="#0f172a">experts 0,1</text>
+    <use href="#ep-gpu" x="110" y="55"/><text x="151" y="140" text-anchor="middle" font-size="10" fill="#0f172a">experts 2,3</text>
+    <use href="#ep-gpu" x="18" y="155"/><text x="59" y="240" text-anchor="middle" font-size="10" fill="#0f172a">experts 4,5</text>
+    <use href="#ep-gpu" x="110" y="155"/><text x="151" y="240" text-anchor="middle" font-size="10" fill="#0f172a">experts 6,7</text>
+    <!-- all-to-all cross arrows -->
+    <path d="M100 100 L110 190" stroke="#dc2626" stroke-width="1.5" marker-end="url(#arrowR)"/>
+    <path d="M110 100 L100 190" stroke="#dc2626" stroke-width="1.5" marker-end="url(#arrowR)"/>
+    <path d="M100 125 h10" stroke="#dc2626" stroke-width="1.5" marker-end="url(#arrowR)"/>
+    <path d="M110 165 h-10" stroke="#dc2626" stroke-width="1.5" marker-end="url(#arrowR)"/>
+    <text x="105" y="270" text-anchor="middle" font-size="11" fill="#dc2626">all-to-all: each token travels</text>
+    <text x="105" y="286" text-anchor="middle" font-size="11" fill="#dc2626">to its expert's GPU and back</text>
+    <text x="105" y="312" text-anchor="middle" font-size="10" fill="#64748b">2026 runs stack DP×TP×PP×EP</text>
+  </g>
+
+  <defs>
+    <marker id="arrowR" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#dc2626"/>
+    </marker>
+  </defs>
+</svg>
