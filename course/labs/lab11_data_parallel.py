@@ -27,12 +27,7 @@ from llm.model import TinyLM
 from llm.train import get_batch
 from llm.pipeline import get_tokenizer, get_tokens
 
-args = setup("Lab 11: data-parallel training with torch.distributed")
-
 WORLD = 2                                   # number of workers ("GPUs")
-STEPS = 8 if args.quick else 40
-B_LOCAL = 8 if args.quick else 16           # rows per worker; the global batch is WORLD * B_LOCAL
-T = 64 if args.quick else 128
 LR = 1e-3
 BYTES_PER_GRAD = 4                          # float32 gradients on CPU
 
@@ -173,6 +168,12 @@ def zero_memory_gb(n_params: float, world: int, stage: int) -> float:
 
 
 if __name__ == "__main__":
+    # Everything below runs only in the launcher. Worker processes are started with the
+    # "spawn" method, which re-imports this file, so they must not re-run setup().
+    args = setup("Lab 11: data-parallel training with torch.distributed")
+    STEPS = 8 if args.quick else 40
+    B_LOCAL = 8 if args.quick else 16       # rows per worker; the global batch is WORLD * B_LOCAL
+    T = 64 if args.quick else 128
     tok = get_tokenizer()
     train_tokens, _ = get_tokens(tok)
     n_params = make_model(tok.vocab_size, args.seed).num_params(non_embedding=False)
@@ -198,12 +199,14 @@ if __name__ == "__main__":
         print(f"   rank {r}: first loss {res['losses'][0]:.4f} -> last loss {res['losses'][-1]:.4f} "
               f"| train wall {res['wall']:.1f}s | time inside all-reduce {res['comm']:.2f}s")
     print(f"   whole launch incl. process start-up: {launch_wall:.1f}s  ({mode})")
+    if mode == "torch.distributed":
+        print("   (time inside all-reduce includes WAITING for the other rank: the slower rank shows less,")
+        print("    the faster rank shows more. That waiting is the straggler cost of synchronous training.)")
     rank_diff = max_param_diff(results[0]["state_dict"], results[1]["state_dict"])
     check(rank_diff < 1e-6, f"both workers hold identical weights after training (max |diff| = {rank_diff:.2e})")
 
     # ---------------------------------------------------------------- 2. one process, whole batch
     section("2. reference: ONE process, the whole global batch every step")
-    torch.set_num_threads(torch.get_num_threads())
     ref = make_model(tok.vocab_size, args.seed)
     t0 = time.perf_counter()
     ref_losses, _ = train_shard(ref, train_tokens, rank=0, world=1, steps=STEPS,
@@ -245,8 +248,12 @@ if __name__ == "__main__":
     comm_frac = results[0]["comm"] / max(results[0]["wall"], 1e-9)
     print(f"   this run: {100 * comm_frac:.1f}% of worker wall-clock was spent inside all-reduce")
     speedup = ref_wall / max(results[0]["wall"], 1e-9)
-    print(f"   speed: single-process {ref_wall:.1f}s vs data-parallel {results[0]['wall']:.1f}s -> {speedup:.2f}x "
-          f"(ideal {WORLD}x; CPUs share memory bandwidth, so expect less)")
+    tok_step = WORLD * B_LOCAL * T
+    print(f"   speed: single-process {ref_wall:.1f}s ({STEPS * tok_step / ref_wall:,.0f} tok/s) vs "
+          f"data-parallel {results[0]['wall']:.1f}s ({STEPS * tok_step / results[0]['wall']:,.0f} tok/s) "
+          f"-> {speedup:.2f}x with {WORLD} workers")
+    print("   (on a quiet machine expect between 1x and 2x: the two workers share the same cores and memory bus;")
+    print("    on a busy machine this number is noise)")
 
     # ---------------------------------------------------------------- 5. ZeRO table
     section("5. memory per GPU for a 70B model under AdamW mixed precision (weights+grads+optimizer only)")

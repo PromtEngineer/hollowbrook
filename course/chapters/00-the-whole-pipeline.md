@@ -189,7 +189,7 @@ P(next | 'Mia had a'): ' blue'=0.110, ' orange'=0.108, ' pink'=0.099, ' white'=0
 ✅ logits have shape (B, T, V)
 ```
 
-The first time you run this there is no checkpoint, and `get_base_model` pretrains the nano model for 150 steps (about a minute on an idle laptop; the loss falls from 6.8, which is ln 871, the uniform guess, to around 2). After that it loads in a fraction of a second. The logits shape `(1, 3, 871)` is the signature described above, and the top-5 row is a base model doing its one job: after `Mia had a`, Storyland continues with a colour, and the model has learned the ten colours are roughly equally likely (Chapter 1 gets the same answer by counting).
+The first time you run this there is no checkpoint, and `get_base_model` pretrains the nano model for 150 steps (about a minute on an idle laptop; the loss starts at 6.8, which is ln 871, the cost of a uniform guess over the vocabulary, and after 150 steps the checkpoint scores 1.08 per token on held-out Storyland, a perplexity of 2.9). After that it loads in a fraction of a second. The logits shape `(1, 3, 871)` is the signature described above, and the top-5 row is a base model doing its one job: after `Mia had a`, Storyland continues with a colour, and the model has learned the ten colours are roughly equally likely (Chapter 1 gets the same answer by counting).
 
 ```
 --- generate ---

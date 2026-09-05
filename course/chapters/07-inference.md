@@ -252,8 +252,8 @@ intensity = FLOPs / bytes ≈ (2·N·B) / (2·N) = B   FLOP per byte
 ```
 
 Read this as: "at batch size one, each weight you fetch from memory is used for exactly one
-multiply-add." A chip has a fixed ratio of the two resources. An H100 does about 1000 TFLOP/s of
-dense bf16 arithmetic and moves 3.35 TB/s from its memory, so its **ridge point** is
+multiply-add." A chip has a fixed ratio of the two resources. An H100 does about 1000 TFLOP/s (10¹⁵ FLOPs per
+second) of dense bf16 arithmetic and moves 3.35 TB/s from its memory, so its **ridge point** is
 `1000e12 / 3.35e12 ≈ 300` FLOP per byte. The **roofline** model says: below the ridge you are
 **memory-bound** (time = bytes / bandwidth), above it you are **compute-bound** (time = FLOPs /
 peak). Batch-1 decode sits at intensity 1, three hundred times below the ridge. The numbers for a
@@ -524,7 +524,8 @@ it did see in pretraining) and never `<|end|>` (which it did not).
 4. **Your own roofline.** Estimate your CPU's peak FLOP/s (`cores × clock × 2 × SIMD width`) and
    memory bandwidth (a quick `torch.randn(2**28).sum()` timing gives a rough number). Compute your
    ridge point and the arithmetic intensity of TinyLM decode in fp32 at batch 1. Is a CPU
-   memory-bound on TinyLM? (Hint: the whole model fits in cache.)
+   memory-bound on TinyLM? (Hint: the whole model fits in the CPU's on-chip cache memory, which
+   is much faster than main memory.)
 5. **Sampling-mode speculation.** Extend `speculative_greedy` to temperature 1: draw the draft's
    tokens from `softmax(draft logits)`, accept each with probability
    `min(1, p_target / p_draft)`, and on rejection sample from `max(0, p_target − p_draft)`

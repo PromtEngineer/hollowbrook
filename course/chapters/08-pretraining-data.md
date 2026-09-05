@@ -136,7 +136,7 @@ print({d["planted"] for d in dirty if d.get("planted")})
 **The cheap filters.** Each returns `None` to keep or a reason string to drop, so the report can count reasons:
 
 ```python
-print(english_score("Mia had a red kite and took it to the park."))   # 0.40 (stopword fraction)
+print(english_score("Mia had a red kite and took it to the park."))   # 0.545 (6 of 11 words are stopwords)
 print(english_score("Der Hund läuft schnell durch den Park."))         # 0.0
 print(gopher_reason("Click here to subscribe!!! BUY NOW >>> $$$ ####"))   # 'symbol_heavy'
 print(gopher_reason("ok"))                                                 # 'too_short'
@@ -149,10 +149,10 @@ print(scrub_pii("mail mia@example.com or call 555-0123-4567"))
 ```python
 a = shingles("mia had a red kite and took it to the park on a sunny day")
 b = shingles("mia had a red kite and took it to the beach on a sunny day")
-print(len(a), len(a & b), jaccard(a, b))                  # 12 9 0.6
+print(len(a), len(a & b), jaccard(a, b))                  # 13 10 0.625
 sig_a, sig_b = minhash_signature(a, 64), minhash_signature(b, 64)   # each (64,) int64
-print(sig_a.shape, (sig_a == sig_b).mean())               # (64,) ~0.6 ± 0.06
-print(1 - (1 - 0.6 ** 4) ** 16)                           # P(LSH candidate) = 0.90
+print(sig_a.shape, (sig_a == sig_b).mean())               # (64,) 0.578  (true J = 0.625, ± 0.06)
+print(1 - (1 - 0.625 ** 4) ** 16)                         # P(LSH candidate) = 0.92
 ```
 
 **A quality classifier from a few hundred labels.** Good = clean documents, bad = the planted junk; the features are hashed word counts, the model is logistic regression trained by gradient descent:
@@ -161,7 +161,7 @@ print(1 - (1 - 0.6 ** 4) ** 16)                           # P(LSH candidate) = 0
 junk = [d["text"] for d in dirty if d.get("planted") in ("spam", "non_english", "too_short")]
 good = [d["text"] for d in clean[:100]]
 clf = QualityClassifier().fit(good + junk[:100], [1] * 100 + [0] * 100)
-print(round(clf.score(clean[500]["text"]), 2), round(clf.score(junk[-1]), 2))   # ~0.8, ~0.2
+print(round(clf.score(clean[500]["text"]), 2), round(clf.score(junk[-1]), 2))   # 0.75 0.43
 ```
 
 **Decontamination and mixing.**
@@ -180,7 +180,7 @@ report = CurationReport()
 curated = curate(dirty, eval_texts=eval_qs, clf=clf, report=report)
 print(report.table())              # one line per stage: kept, dropped, planted problems caught
 tokens = tokenize_and_pack(curated, get_tokenizer())     # (n_tokens,) int64, EOS between docs
-print(len(curated), tokens.shape)                          # ~1310 documents, ~91k tokens
+print(len(curated), tokens.shape)                          # 1310 torch.Size([91177])
 ```
 
 ## Worked example 🧪

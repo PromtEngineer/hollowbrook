@@ -82,7 +82,7 @@ flowchart TB
     N --> H["lm_head: d → V<br/>(tied to embed)"]
     H --> LG["logits (B, T, V)"]
     LG --> Loss["cross-entropy vs<br/>next token"]
-    subgraph one block
+    subgraph blk["one block"]
         direction TB
         x0["x"] -->|"RMSNorm"| A["attention<br/>GQA + RoPE"]
         A -->|"+"| x1["x"]
@@ -159,8 +159,9 @@ class RMSNorm(nn.Module):
         return (x.float() * rms).type_as(x) * self.weight
 ```
 
-Note the `.float()`: the square-and-mean is done in 32-bit even when the model runs in bf16,
-because squaring small numbers in 16-bit loses precision. Check that it does what the formula
+Note the `.float()`: the square-and-mean is done in 32-bit even when the model runs in **bf16**
+(bfloat16, the 16-bit number format most models are trained and stored in; Chapter 10), because
+squaring small numbers in 16-bit loses precision. Check that it does what the formula
 says:
 
 ```python
@@ -498,7 +499,8 @@ T=0.8: 'At the park, Mia met' -> ' Ella. Ruby was calm because Nora lost a cup. 
 ```
 
 The untrained model's output includes raw byte tokens (the `�` characters) because a uniform
-draw over the vocabulary hits them often. The trained nano model — 150 optimizer steps, under a
+draw over the vocabulary hits them often. The loss is measured in **nats** (the unit of cross-entropy when the logarithm is natural; `ln 871 =
+6.77` nats is the uniform-guess ceiling). The trained nano model — 150 optimizer steps, under a
 minute of training — already speaks Storyland grammar, if not Storyland logic ("Mia met Mia").
 
 Section 8 is the ablation. Each sub-layer's write is zeroed in turn (a forward hook that returns

@@ -277,7 +277,7 @@ With 100 training documents the trigram is *worse* than the bigram (10.7 vs 10.5
 
 On Shakespeare, with 14,000 distinct words instead of 389, the trigram model has never seen 74% of the test contexts, and its perplexity is *five times worse* than the bigram's. This is the wall that counting hits. The 2026 fix is not a bigger table: it is a model that turns tokens into vectors (Chapter 3) so that `red kite` and `blue kite` share evidence, learns those vectors by gradient descent (Chapter 4), and looks at the whole context at once (Chapter 5). The objective those models minimise is exactly the per-token cross-entropy you computed here.
 
-The lab saves `figures/generated/lab01_ngram.png`: the `Mia had` bar chart, the perplexity ladder on a log scale, and the perplexity-vs-data curves that cross over.
+The lab saves `figures/generated/lab01_ngram.png`: the `had a` bar chart (ten colours, near-uniform), the perplexity ladder on a log scale, and the perplexity-vs-data curves that cross over.
 
 ## Try it yourself ✍️
 

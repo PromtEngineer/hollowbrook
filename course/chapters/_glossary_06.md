@@ -11,3 +11,5 @@
 - **induction heads** — attention heads that find an earlier occurrence of the current token and attend to what followed it; the mechanism behind in-context copying (Ch. 06)
 - **superposition** — storing more features than dimensions by using overlapping directions in the residual stream; why single neurons rarely mean one thing (Ch. 06)
 - **mHC** — manifold-constrained hyper-connections: several parallel residual streams with learned mixing, used by DeepSeek-V4 in place of plain residual addition (Ch. 06)
+- **bf16** — bfloat16, a 16-bit floating-point format with float32's exponent range and 8 bits of mantissa; the default for training and storing models (Ch. 06)
+- **nats** — the unit of cross-entropy loss when the logarithm is natural; an untrained model scores `ln V` nats (Ch. 06)

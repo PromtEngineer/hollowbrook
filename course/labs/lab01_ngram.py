@@ -234,10 +234,10 @@ if not args.quick:
 # ----------------------------------------------------------- figures
 p = plt()
 fig, axes = p.subplots(1, 3, figsize=(13, 3.6))
-ctx = ("Mia", "had")
-top = models[3].top(ctx, 8)
+ctx = ("had", "a")
+top = models[3].top(ctx, 10)
 axes[0].barh([w for w, _ in top][::-1], [q for _, q in top][::-1], color="#2563eb")
-axes[0].set_title(f"trigram P(next | 'Mia had')")
+axes[0].set_title("trigram P(next | 'had a')")
 axes[0].set_xlabel("probability")
 axes[1].bar([f"{n}-gram" for n in (1, 2, 3)], [ppl[n] for n in (1, 2, 3)], color=["#64748b", "#f59e0b", "#16a34a"])
 axes[1].axhline(uniform_ppl, ls="--", color="#dc2626", label=f"uniform = V = {V}")
