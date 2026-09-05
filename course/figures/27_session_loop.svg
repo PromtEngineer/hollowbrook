@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="470" viewBox="0 0 900 470" font-family="system-ui, sans-serif">
+  <rect width="900" height="470" fill="#ffffff"/>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrowred" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowgreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#16a34a"/>
+    </marker>
+  </defs>
+  <text x="450" y="28" text-anchor="middle" font-size="17" font-weight="700" fill="#0f172a">The session loop: fresh contexts, persistent files, a verifier between them</text>
+  <text x="450" y="46" text-anchor="middle" font-size="12" fill="#64748b">MiniHarness.loop(): each session is a new Agent with an empty window; PLAN.md and PROGRESS.md carry the state across</text>
+
+  <!-- time axis -->
+  <line x1="40" y1="80" x2="880" y2="80" stroke="#64748b" stroke-width="1.2" marker-end="url(#arrow)"/>
+  <text x="870" y="72" text-anchor="end" font-size="10.5" fill="#64748b">time (and context windows, and possibly processes)</text>
+
+  <!-- initializer -->
+  <rect x="40" y="100" width="150" height="110" rx="10" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="115" y="122" text-anchor="middle" font-size="13" font-weight="700" fill="#0f172a">initializer</text>
+  <text x="115" y="138" text-anchor="middle" font-size="10" fill="#64748b">MiniHarness.plan()</text>
+  <text x="115" y="156" text-anchor="middle" font-size="10" fill="#0f172a">read-only tools</text>
+  <text x="115" y="170" text-anchor="middle" font-size="10" fill="#0f172a">list_dir · read_file · search</text>
+  <text x="115" y="188" text-anchor="middle" font-size="10" fill="#7c3aed">writes the plan once</text>
+  <text x="115" y="202" text-anchor="middle" font-size="9.5" fill="#64748b">(first run only)</text>
+
+  <!-- session 1 -->
+  <rect x="230" y="100" width="170" height="110" rx="10" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="315" y="122" text-anchor="middle" font-size="13" font-weight="700" fill="#0f172a">session 1</text>
+  <text x="315" y="138" text-anchor="middle" font-size="10" fill="#64748b">new Agent, empty context</text>
+  <text x="315" y="156" text-anchor="middle" font-size="10" fill="#0f172a">prompt = PLAN.md + PROGRESS.md</text>
+  <text x="315" y="170" text-anchor="middle" font-size="10" fill="#0f172a">edits with write_file, ≤ max_turns</text>
+  <text x="315" y="188" text-anchor="middle" font-size="10" fill="#2563eb">ends with a summary…</text>
+  <text x="315" y="202" text-anchor="middle" font-size="9.5" fill="#dc2626">…which is only a claim</text>
+
+  <!-- verify 1 -->
+  <rect x="430" y="115" width="90" height="80" rx="10" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626" stroke-width="1.5"/>
+  <text x="475" y="140" text-anchor="middle" font-size="13" font-weight="700" fill="#0f172a">verify</text>
+  <text x="475" y="156" text-anchor="middle" font-size="10" fill="#64748b">run_tests</text>
+  <text x="475" y="178" text-anchor="middle" font-size="12" font-weight="700" fill="#dc2626">FAIL</text>
+
+  <!-- session 2 -->
+  <rect x="550" y="100" width="170" height="110" rx="10" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="635" y="122" text-anchor="middle" font-size="13" font-weight="700" fill="#0f172a">session 2 (or resume)</text>
+  <text x="635" y="138" text-anchor="middle" font-size="10" fill="#64748b">new Agent, empty context</text>
+  <text x="635" y="156" text-anchor="middle" font-size="10" fill="#0f172a">sees the FAIL and the pytest tail</text>
+  <text x="635" y="170" text-anchor="middle" font-size="10" fill="#0f172a">through PROGRESS.md, not memory</text>
+  <text x="635" y="188" text-anchor="middle" font-size="10" fill="#2563eb">fixes the remaining case</text>
+  <text x="635" y="202" text-anchor="middle" font-size="9.5" fill="#64748b">same code path after a crash</text>
+
+  <!-- verify 2 -->
+  <rect x="750" y="115" width="90" height="80" rx="10" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="795" y="140" text-anchor="middle" font-size="13" font-weight="700" fill="#0f172a">verify</text>
+  <text x="795" y="156" text-anchor="middle" font-size="10" fill="#64748b">run_tests</text>
+  <text x="795" y="178" text-anchor="middle" font-size="12" font-weight="700" fill="#16a34a">PASS → stop</text>
+
+  <!-- arrows between boxes -->
+  <line x1="190" y1="155" x2="228" y2="155" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="400" y1="155" x2="428" y2="155" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="520" y1="155" x2="548" y2="155" stroke="#dc2626" stroke-width="1.6" marker-end="url(#arrowred)"/>
+  <line x1="720" y1="155" x2="748" y2="155" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- files band -->
+  <rect x="40" y="260" width="800" height="150" rx="10" fill="#16a34a" fill-opacity="0.08" stroke="#16a34a" stroke-width="1.2" stroke-dasharray="6 4"/>
+  <text x="55" y="282" font-size="12" font-weight="700" fill="#0f172a">files in the workdir (the checkpoint)</text>
+
+  <rect x="55" y="295" width="230" height="100" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="65" y="312" font-size="10.5" font-weight="700" fill="#7c3aed">PLAN.md   (written once, read-only for the agent)</text>
+  <text x="65" y="330" font-size="10" fill="#0f172a" font-family="ui-monospace, monospace">1. Read mathlib.py.</text>
+  <text x="65" y="344" font-size="10" fill="#0f172a" font-family="ui-monospace, monospace">2. Fix mean(): divide by len(xs).</text>
+  <text x="65" y="358" font-size="10" fill="#0f172a" font-family="ui-monospace, monospace">3. Add median() (even n: average).</text>
+  <text x="65" y="372" font-size="10" fill="#0f172a" font-family="ui-monospace, monospace">4. Run the tests; stop when green.</text>
+  <text x="65" y="388" font-size="9.5" fill="#dc2626">hook: write_file("PLAN.md") → blocked</text>
+
+  <rect x="305" y="295" width="290" height="100" rx="8" fill="#ffffff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="315" y="312" font-size="10.5" font-weight="700" fill="#2563eb">PROGRESS.md   (appended by the harness after every session)</text>
+  <text x="315" y="330" font-size="10" fill="#0f172a" font-family="ui-monospace, monospace">## Session 1 (done, 3 turns, 2 tool calls)</text>
+  <text x="315" y="344" font-size="10" fill="#64748b" font-family="ui-monospace, monospace">Done. mean() fixed, median() added…</text>
+  <text x="315" y="358" font-size="10" fill="#dc2626" font-family="ui-monospace, monospace">Verification: FAIL  test_median_even 3 == 2.5</text>
+  <text x="315" y="372" font-size="10" fill="#0f172a" font-family="ui-monospace, monospace">## Session 2 (done, 4 turns, 3 tool calls)</text>
+  <text x="315" y="386" font-size="10" fill="#16a34a" font-family="ui-monospace, monospace">Verification: PASS  3 passed</text>
+
+  <rect x="615" y="295" width="210" height="100" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1.2"/>
+  <text x="625" y="312" font-size="10.5" font-weight="700" fill="#64748b">harness.log   (post-tool hook)</text>
+  <text x="625" y="330" font-size="9.5" fill="#0f172a" font-family="ui-monospace, monospace">{"tool":"write_file","args":{…}}</text>
+  <text x="625" y="344" font-size="9.5" fill="#0f172a" font-family="ui-monospace, monospace">{"tool":"write_file","args":{…}}</text>
+  <text x="625" y="358" font-size="9.5" fill="#0f172a" font-family="ui-monospace, monospace">{"tool":"read_file", …}</text>
+  <text x="625" y="372" font-size="9.5" fill="#0f172a" font-family="ui-monospace, monospace">{"tool":"run_tests","result":"PASS…"}</text>
+  <text x="625" y="388" font-size="9.5" fill="#64748b">one JSON line per tool call: cost + audit</text>
+
+  <!-- arrows sessions <-> files -->
+  <line x1="115" y1="210" x2="115" y2="293" stroke="#7c3aed" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <text x="122" y="240" font-size="9.5" fill="#7c3aed">writes</text>
+  <path d="M 290 210 L 290 258" fill="none" stroke="#2563eb" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+  <text x="240" y="240" font-size="9.5" fill="#2563eb">reads both</text>
+  <path d="M 475 195 L 475 293" fill="none" stroke="#dc2626" stroke-width="1.4" marker-end="url(#arrowred)"/>
+  <text x="482" y="240" font-size="9.5" fill="#dc2626">appends FAIL</text>
+  <path d="M 610 258 L 610 210" fill="none" stroke="#2563eb" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+  <text x="617" y="240" font-size="9.5" fill="#2563eb">reads both</text>
+  <path d="M 795 195 L 795 293" fill="none" stroke="#16a34a" stroke-width="1.4" marker-end="url(#arrowgreen)"/>
+  <text x="802" y="240" font-size="9.5" fill="#16a34a">appends PASS</text>
+
+  <text x="40" y="440" font-size="10.5" fill="#64748b">Nothing in a session's context survives it. What survives is what the harness wrote to disk — which is why resume() is the same function as run_session().</text>
+  <text x="40" y="456" font-size="10.5" fill="#64748b">The model's summary is one line in PROGRESS.md; the verifier's PASS/FAIL is the line the next session is told to act on.</text>
+</svg>

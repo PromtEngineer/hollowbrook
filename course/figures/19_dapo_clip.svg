@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420" font-family="system-ui, sans-serif">
+  <rect width="900" height="420" fill="#ffffff"/>
+  <text x="450" y="26" text-anchor="middle" font-size="17" font-weight="600" fill="#0f172a">Two DAPO fixes: clip-higher gives rare tokens room to grow; dynamic sampling drops groups with no signal</text>
+
+  <!-- ===== left: clip-higher ===== -->
+  <text x="230" y="60" text-anchor="middle" font-size="13" font-weight="600" fill="#2563eb">1. clip-higher: ε_high = 0.28 &gt; ε_low = 0.20</text>
+  <text x="230" y="80" text-anchor="middle" font-size="11" fill="#64748b">how far can one gradient step move a token's probability?</text>
+
+  <!-- bars: probability axis 0..1 mapped to px x 60..400 -->
+  <g font-size="11">
+    <!-- common token p_old = 0.90 -->
+    <text x="60" y="118" fill="#0f172a" font-weight="600">common token, π_old = 0.90</text>
+    <line x1="60" y1="138" x2="400" y2="138" stroke="#64748b"/>
+    <rect x="60" y="126" width="306" height="10" fill="#64748b" fill-opacity="0.35"/>
+    <!-- symmetric cap 1.2*0.9 = 1.0 (capped at 1) -->
+    <line x1="366" y1="120" x2="366" y2="142" stroke="#0f172a"/>
+    <text x="366" y="154" text-anchor="middle" font-size="9" fill="#64748b">0.90</text>
+    <text x="400" y="154" text-anchor="end" font-size="9" fill="#64748b">1.0</text>
+    <text x="60" y="170" fill="#64748b">may fall to 0.72 (×0.8) or rise to 1.0 — either clip is generous here</text>
+
+    <!-- rare token p_old = 0.02 (zoomed axis 0..0.05 -> 60..400) -->
+    <text x="60" y="205" fill="#0f172a" font-weight="600">rare token, π_old = 0.02   (axis zoomed to 0…0.05)</text>
+    <line x1="60" y1="225" x2="400" y2="225" stroke="#64748b"/>
+    <rect x="60" y="213" width="136" height="10" fill="#64748b" fill-opacity="0.35"/>
+    <!-- symmetric: 1.2*0.02 = 0.024 -> x = 60 + 0.024/0.05*340 = 223 -->
+    <rect x="196" y="213" width="27" height="10" fill="#dc2626" fill-opacity="0.35"/>
+    <!-- clip-higher: 1.28*0.02 = 0.0256 -> x = 234 -->
+    <rect x="223" y="213" width="11" height="10" fill="#16a34a" fill-opacity="0.5"/>
+    <line x1="196" y1="207" x2="196" y2="229" stroke="#0f172a"/>
+    <text x="196" y="241" text-anchor="middle" font-size="9" fill="#64748b">0.020</text>
+    <text x="223" y="241" text-anchor="middle" font-size="9" fill="#dc2626">0.024</text>
+    <text x="248" y="241" text-anchor="middle" font-size="9" fill="#16a34a">0.0256</text>
+    <text x="400" y="241" text-anchor="end" font-size="9" fill="#64748b">0.05</text>
+    <text x="60" y="262" fill="#dc2626">ε = 0.20: a good rare token may gain at most +0.004 per update</text>
+    <text x="60" y="278" fill="#16a34a">ε_high = 0.28: +0.0056 — 40 % more room; it stays clipped less often</text>
+    <text x="60" y="300" fill="#0f172a">The symmetric clip can shrink a token's share by 20 % of a large number but grow it by 20 % of a tiny one:</text>
+    <text x="60" y="316" fill="#0f172a">common tokens win, rare tokens never catch up, entropy collapses. Clip-higher loosens only the upper bound.</text>
+  </g>
+
+  <!-- ===== right: dynamic sampling ===== -->
+  <text x="670" y="60" text-anchor="middle" font-size="13" font-weight="600" fill="#f59e0b">2. dynamic sampling: skip all-equal groups</text>
+  <text x="670" y="80" text-anchor="middle" font-size="11" fill="#64748b">four prompts, G = 4 rewards each</text>
+
+  <g font-size="11">
+    <!-- group A: mixed -->
+    <rect x="480" y="100" width="380" height="40" rx="6" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/>
+    <text x="495" y="118" fill="#0f172a" font-weight="600">prompt A</text>
+    <text x="580" y="118" fill="#0f172a">r = [1, 0, 1, 0]</text>
+    <text x="700" y="118" fill="#0f172a">σ = 0.5</text>
+    <text x="760" y="118" fill="#16a34a" font-weight="600">kept ✓</text>
+    <text x="495" y="134" fill="#64748b">A = [+1, −1, +1, −1]: the group says which answers were better</text>
+
+    <!-- group B: all correct -->
+    <rect x="480" y="150" width="380" height="40" rx="6" fill="#dc2626" fill-opacity="0.10" stroke="#dc2626" stroke-dasharray="5 3"/>
+    <text x="495" y="168" fill="#0f172a" font-weight="600">prompt B</text>
+    <text x="580" y="168" fill="#0f172a">r = [1, 1, 1, 1]</text>
+    <text x="700" y="168" fill="#0f172a">σ = 0</text>
+    <text x="760" y="168" fill="#dc2626" font-weight="600">skipped ✗</text>
+    <text x="495" y="184" fill="#64748b">A = [0, 0, 0, 0]: too easy — nothing beat its siblings</text>
+
+    <!-- group C: all wrong -->
+    <rect x="480" y="200" width="380" height="40" rx="6" fill="#dc2626" fill-opacity="0.10" stroke="#dc2626" stroke-dasharray="5 3"/>
+    <text x="495" y="218" fill="#0f172a" font-weight="600">prompt C</text>
+    <text x="580" y="218" fill="#0f172a">r = [0, 0, 0, 0]</text>
+    <text x="700" y="218" fill="#0f172a">σ = 0</text>
+    <text x="760" y="218" fill="#dc2626" font-weight="600">skipped ✗</text>
+    <text x="495" y="234" fill="#64748b">A = [0, 0, 0, 0]: too hard — no correct sample to learn from</text>
+
+    <!-- group D: mixed -->
+    <rect x="480" y="250" width="380" height="40" rx="6" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/>
+    <text x="495" y="268" fill="#0f172a" font-weight="600">prompt D</text>
+    <text x="580" y="268" fill="#0f172a">r = [0, 0, 0, 1]</text>
+    <text x="700" y="268" fill="#0f172a">σ = 0.43</text>
+    <text x="760" y="268" fill="#16a34a" font-weight="600">kept ✓</text>
+    <text x="495" y="284" fill="#64748b">A = [−0.58, −0.58, −0.58, +1.73]: one lucky answer, strongly rewarded</text>
+
+    <text x="480" y="312" fill="#0f172a">Skipped groups cost rollout compute but contribute zero gradient; the batch of</text>
+    <text x="480" y="328" fill="#0f172a">kept groups is what the loss averages over. DAPO re-samples until the batch is full,</text>
+    <text x="480" y="344" fill="#0f172a">so the effective batch keeps its size as the model gets better and more groups go all-correct.</text>
+  </g>
+
+  <!-- footer -->
+  <rect x="30" y="365" width="840" height="42" rx="8" fill="#7c3aed" fill-opacity="0.10" stroke="#7c3aed"/>
+  <text x="450" y="383" text-anchor="middle" font-size="12" fill="#0f172a">GRPOConfig(clip_eps_low=0.2, clip_eps_high=0.28, dynamic_sampling=True, token_level_loss=True) — llm/rl.py; the lab logs clip fraction and skipped fraction every step</text>
+  <text x="450" y="400" text-anchor="middle" font-size="10" fill="#64748b">DAPO's other two changes, token-level loss averaging and overlong-answer shaping, are in the text (masked_mean and tasks.length_penalty)</text>
+</svg>

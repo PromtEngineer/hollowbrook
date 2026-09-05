@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="460" viewBox="0 0 900 460" font-family="system-ui, sans-serif">
+  <rect width="900" height="460" fill="#ffffff"/>
+  <text x="450" y="26" text-anchor="middle" font-size="17" font-weight="600" fill="#0f172a">On-policy distillation: the student writes, the teacher grades every token</text>
+
+  <!-- step 1: student samples -->
+  <rect x="20" y="50" width="270" height="110" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+  <text x="155" y="72" text-anchor="middle" font-size="13" font-weight="600" fill="#2563eb">1. student π_s samples an answer</text>
+  <text x="155" y="94" text-anchor="middle" font-size="11" fill="#0f172a">prompt: "What is 7 + 5?"</text>
+  <text x="155" y="118" text-anchor="middle" font-size="12" font-family="ui-monospace, monospace" fill="#0f172a">7 + 5 = 13 &lt;|end|&gt;</text>
+  <text x="155" y="140" text-anchor="middle" font-size="10" fill="#64748b">sampled at temperature 1 (its own mistakes included)</text>
+
+  <!-- arrow -->
+  <path d="M290 105 L330 105" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- step 2: both models score the same tokens -->
+  <rect x="335" y="50" width="545" height="110" rx="8" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b"/>
+  <text x="607" y="72" text-anchor="middle" font-size="13" font-weight="600" fill="#b45309">2. the same token sequence is scored by both models (one forward pass each)</text>
+  <text x="440" y="100" text-anchor="middle" font-size="11" fill="#0f172a">student: log π_s(y_t | prefix)</text>
+  <text x="440" y="118" text-anchor="middle" font-size="10" fill="#64748b">with gradient</text>
+  <text x="760" y="100" text-anchor="middle" font-size="11" fill="#0f172a">teacher: log π_t(y_t | prefix)</text>
+  <text x="760" y="118" text-anchor="middle" font-size="10" fill="#64748b">frozen, no gradient</text>
+  <text x="607" y="145" text-anchor="middle" font-size="10" fill="#64748b">the teacher never generates: it only reads what the student wrote</text>
+
+  <!-- step 3: per-token table -->
+  <text x="450" y="192" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">3. per-token advantage  A_t = log π_t(y_t) − log π_s(y_t)   (positive = the teacher liked this token more than the student did)</text>
+
+  <g font-size="12" font-family="ui-monospace, monospace">
+    <!-- header column -->
+    <text x="30" y="225" fill="#64748b" font-family="system-ui, sans-serif" font-size="11">token y_t</text>
+    <text x="30" y="255" fill="#64748b" font-family="system-ui, sans-serif" font-size="11">log π_s</text>
+    <text x="30" y="285" fill="#64748b" font-family="system-ui, sans-serif" font-size="11">log π_t</text>
+    <text x="30" y="315" fill="#64748b" font-family="system-ui, sans-serif" font-size="11">A_t</text>
+    <text x="30" y="345" fill="#64748b" font-family="system-ui, sans-serif" font-size="11">push</text>
+
+    <!-- columns: 7, +, 5, =, 13, end -->
+    <g text-anchor="middle">
+      <rect x="130" y="208" width="90" height="24" rx="4" fill="#16a34a" fill-opacity="0.12"/>
+      <text x="175" y="225" fill="#0f172a">7</text>
+      <text x="175" y="255" fill="#0f172a">−0.40</text>
+      <text x="175" y="285" fill="#0f172a">−0.05</text>
+      <text x="175" y="315" fill="#16a34a" font-weight="600">+0.35</text>
+      <text x="175" y="345" fill="#16a34a">↑ a little</text>
+
+      <rect x="230" y="208" width="90" height="24" rx="4" fill="#16a34a" fill-opacity="0.12"/>
+      <text x="275" y="225" fill="#0f172a">+</text>
+      <text x="275" y="255" fill="#0f172a">−0.10</text>
+      <text x="275" y="285" fill="#0f172a">−0.02</text>
+      <text x="275" y="315" fill="#16a34a" font-weight="600">+0.08</text>
+      <text x="275" y="345" fill="#64748b">≈ leave</text>
+
+      <rect x="330" y="208" width="90" height="24" rx="4" fill="#16a34a" fill-opacity="0.12"/>
+      <text x="375" y="225" fill="#0f172a">5</text>
+      <text x="375" y="255" fill="#0f172a">−0.30</text>
+      <text x="375" y="285" fill="#0f172a">−0.04</text>
+      <text x="375" y="315" fill="#16a34a" font-weight="600">+0.26</text>
+      <text x="375" y="345" fill="#16a34a">↑ a little</text>
+
+      <rect x="430" y="208" width="90" height="24" rx="4" fill="#16a34a" fill-opacity="0.12"/>
+      <text x="475" y="225" fill="#0f172a">=</text>
+      <text x="475" y="255" fill="#0f172a">−0.05</text>
+      <text x="475" y="285" fill="#0f172a">−0.01</text>
+      <text x="475" y="315" fill="#16a34a" font-weight="600">+0.04</text>
+      <text x="475" y="345" fill="#64748b">≈ leave</text>
+
+      <rect x="530" y="208" width="90" height="24" rx="4" fill="#dc2626" fill-opacity="0.15" stroke="#dc2626"/>
+      <text x="575" y="225" fill="#0f172a" font-weight="600">13</text>
+      <text x="575" y="255" fill="#0f172a">−1.20</text>
+      <text x="575" y="285" fill="#0f172a">−5.90</text>
+      <text x="575" y="315" fill="#dc2626" font-weight="600">−4.70</text>
+      <text x="575" y="345" fill="#dc2626">↓ hard</text>
+
+      <rect x="630" y="208" width="110" height="24" rx="4" fill="#16a34a" fill-opacity="0.12"/>
+      <text x="685" y="225" fill="#0f172a">&lt;|end|&gt;</text>
+      <text x="685" y="255" fill="#0f172a">−0.20</text>
+      <text x="685" y="285" fill="#0f172a">−0.03</text>
+      <text x="685" y="315" fill="#16a34a" font-weight="600">+0.17</text>
+      <text x="685" y="345" fill="#16a34a">↑ a little</text>
+    </g>
+  </g>
+  <text x="575" y="372" text-anchor="middle" font-size="10" fill="#dc2626">the one wrong token gets the one large signal — exactly where the student went wrong</text>
+  <text x="810" y="260" font-size="10" fill="#64748b">(illustrative</text>
+  <text x="810" y="274" font-size="10" fill="#64748b">numbers)</text>
+
+  <!-- step 4: loss -->
+  <rect x="20" y="392" width="860" height="56" rx="8" fill="#7c3aed" fill-opacity="0.10" stroke="#7c3aed"/>
+  <text x="450" y="414" text-anchor="middle" font-size="13" font-weight="600" fill="#7c3aed">4. update:  L = − mean_t [ A_t · log π_s(y_t) ]   with A_t detached  (REINFORCE with a per-token reward)</text>
+  <text x="450" y="436" text-anchor="middle" font-size="11" fill="#0f172a">mean_t of (log π_s − log π_t) is the reverse KL the run reports; it falls as the student's own answers start to look like the teacher's</text>
+
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#64748b"/>
+    </marker>
+  </defs>
+</svg>

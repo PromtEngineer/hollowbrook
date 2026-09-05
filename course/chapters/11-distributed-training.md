@@ -181,7 +181,65 @@ Finally, **fault tolerance**. With 16,000 GPUs a hardware failure somewhere is a
 
 Run `python3 labs/lab11_data_parallel.py` (quick, two processes, 8 steps) and then `--full` (40 steps). The lab launches two Python processes with `torch.multiprocessing`, connects them with a `gloo` process group (the CPU backend) through a file-based rendezvous, and trains a nano TinyLM in each using the `train_shard` loop above. It then trains the same model in one process on the whole batch and compares.
 
-<!-- LAB11_OUTPUT -->
+**Quick mode (measured on a shared 4-core machine at load ≈ 20 with `OMP_NUM_THREADS=2`; a quiet laptop is several times faster):**
+
+```text
+model: nano TinyLM, 379,200 params -> 1.52 MB of float32 gradients
+world=2 workers, 8 steps, global batch 16 x 64 tokens (8 rows per worker)
+
+--- 1. 2 processes, gradients averaged with all-reduce (gloo backend) ---
+   platform Linux, torch 2.14.0+cu130, gloo available: True
+   rank 0: first loss 6.8016 -> last loss 5.8780 | train wall 25.7s | time inside all-reduce 3.09s
+   rank 1: first loss 6.8036 -> last loss 5.8996 | train wall 25.7s | time inside all-reduce 1.11s
+   whole launch incl. process start-up: 61.6s  (torch.distributed)
+   (time inside all-reduce includes WAITING for the other rank: the slower rank shows less,
+    the faster rank shows more. That waiting is the straggler cost of synchronous training.)
+✅ both workers hold identical weights after training (max |diff| = 0.00e+00)
+
+--- 2. reference: ONE process, the whole global batch every step ---
+   first loss 6.8026 -> last loss 5.8888 | wall 64.7s
+   step | rank0 loss | rank1 loss | mean(ranks) | single-process
+      0 |     6.8016 |     6.8036 |      6.8026 |         6.8026
+      2 |     6.4307 |     6.3708 |      6.4008 |         6.4008
+      4 |     6.2120 |     6.2073 |      6.2097 |         6.2097
+      6 |     6.0172 |     6.0139 |      6.0155 |         6.0155
+✅ mean of the ranks' losses == single-process loss at every step (max gap 7.2e-07)
+   max |w_dp - w_single| = 1.53e-05
+
+--- 3. control: rank 0 alone on its half of the data, NO all-reduce ---
+   max |w_solo - w_single| = 1.51e-02  (this is how different a *different* run looks)
+✅ data-parallel weights match the single-process weights (1.5e-05 < 1e-4)
+✅ ...and are >100x closer than the no-all-reduce control (1.5e-02)
+```
+
+Three numbers to look at. First, the two ranks end with **bit-identical** weights (`max |diff| = 0.00e+00`): they never exchanged weights, only gradients, and identical deterministic updates keep them in lock-step. Second, the mean of the two ranks' losses equals the single-process loss at every step to 7 × 10⁻⁷, the equal-shard argument from the code section made concrete. Third, the data-parallel weights are within 1.5 × 10⁻⁵ of the single-process weights, while the control run (rank 0 alone on half the data, no all-reduce) is 1.5 × 10⁻² away, a thousand times further. The residual 10⁻⁵ is floating-point reordering: summing two half-batch gradients and dividing is not bit-identical to averaging over sixteen rows at once, and AdamW's normalisation amplifies tiny differences slightly. Note also the asymmetric all-reduce times (3.09 s on rank 0, 1.11 s on rank 1): a collective cannot finish until the slowest participant arrives, so the faster rank spends its time waiting, the **straggler** cost of synchronous training.
+
+```text
+--- 4. what went over the wire ---
+   gradient vector: 379,200 floats = 1.52 MB
+   ring all-reduce sends+receives 2(N-1)/N x that per device per step = 1.52 MB (N=2)
+   over 8 steps: 12.1 MB per device
+                           7B:       14 GB of bf16 gradients per step ->     24 GB per device on an 8-GPU ring
+                          70B:      140 GB of bf16 gradients per step ->    245 GB per device on an 8-GPU ring
+     1.6T (DeepSeek-V4-class):     3200 GB of bf16 gradients per step ->   5600 GB per device on an 8-GPU ring
+   this run: 12.0% of worker wall-clock was spent inside all-reduce
+   speed: single-process 64.7s (127 tok/s) vs data-parallel 25.7s (319 tok/s) -> 2.52x with 2 workers
+   (on a quiet machine expect between 1x and 2x: the two workers share the same cores and memory bus;
+    on a busy machine this number is noise)
+
+--- 5. memory per GPU for a 70B model under AdamW mixed precision (weights+grads+optimizer only) ---
+    GPUs |  ZeRO-0 (DDP) |    ZeRO-1 |    ZeRO-2 |  ZeRO-3/FSDP
+       1 |        1120 GB |   1120 GB |   1120 GB |    1120.0 GB
+       8 |        1120 GB |    385 GB |    262 GB |     140.0 GB
+      64 |        1120 GB |    293 GB |    155 GB |      17.5 GB
+     512 |        1120 GB |    282 GB |    142 GB |       2.2 GB
+   (an H100 has 80 GB; activations come on top of these numbers)
+✅ 16 bytes/param: 70B params need 1120 GB without sharding
+```
+
+The gradient vector is 1.52 MB, and with N = 2 the ring formula gives exactly that per device per step. Scale the same arithmetic to a 70B model and each device moves 245 GB per step; at 1.6T parameters it is 5.6 TB, which is why ZeRO-3 sharding, overlapped communication and multi-hundred-GB/s links are not optional. The speed-up line is printed for honesty rather than as evidence: on a busy shared machine it is noise (2.5× from two workers is not possible in a clean measurement; the single-process reference happened to run during a busier moment).
+
+<!-- LAB11_FULL -->
 
 ## Try it yourself ✍️
 

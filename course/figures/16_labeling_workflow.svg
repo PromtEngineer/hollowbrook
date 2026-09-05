@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="500" viewBox="0 0 900 500" font-family="system-ui, sans-serif">
+  <rect width="900" height="500" fill="#ffffff"/>
+  <text x="450" y="28" text-anchor="middle" font-size="17" font-weight="700" fill="#0f172a">A labeling and curation workflow for post-training data</text>
+  <text x="450" y="48" text-anchor="middle" font-size="12" fill="#64748b">left to right: design → pilot and measure agreement → label at scale with quality control → filter, dedup, mix → training set</text>
+  <defs><marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#0f172a"/></marker>
+        <marker id="r" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#dc2626"/></marker></defs>
+
+  <!-- 1 design -->
+  <rect x="20" y="80" width="150" height="120" rx="10" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="2"/>
+  <text x="95" y="102" text-anchor="middle" font-size="13" font-weight="700" fill="#0f172a">1. Design the task</text>
+  <g font-size="11" fill="#0f172a">
+    <text x="30" y="122">• guidelines (what wins)</text>
+    <text x="30" y="138">• rubric (checkable)</text>
+    <text x="30" y="154">• format: pairwise /</text>
+    <text x="30" y="168">   Likert / ranking</text>
+    <text x="30" y="186" fill="#64748b">• 12 worked examples</text>
+  </g>
+  <line x1="170" y1="140" x2="196" y2="140" stroke="#0f172a" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- 2 pilot -->
+  <rect x="198" y="80" width="160" height="120" rx="10" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="2"/>
+  <text x="278" y="102" text-anchor="middle" font-size="13" font-weight="700" fill="#0f172a">2. Pilot and measure</text>
+  <g font-size="11" fill="#0f172a">
+    <text x="208" y="122">• 2+ annotators label the</text>
+    <text x="208" y="136">   same 50–200 items</text>
+    <text x="208" y="154">• Cohen's κ per pair</text>
+    <text x="208" y="170">• read every disagreement</text>
+    <text x="208" y="188" fill="#64748b">κ &lt; 0.6 → back to step 1</text>
+  </g>
+  <path d="M 278 200 L 278 222 L 95 222 L 95 200" stroke="#dc2626" stroke-width="1.5" fill="none" stroke-dasharray="5,4" marker-end="url(#r)"/>
+  <text x="186" y="236" text-anchor="middle" font-size="10" fill="#dc2626">revise guidelines until κ is substantial</text>
+  <line x1="358" y1="140" x2="384" y2="140" stroke="#0f172a" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- 3 label at scale -->
+  <rect x="386" y="80" width="170" height="120" rx="10" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="2"/>
+  <text x="471" y="102" text-anchor="middle" font-size="13" font-weight="700" fill="#0f172a">3. Label at scale</text>
+  <g font-size="11" fill="#0f172a">
+    <text x="396" y="122">• humans, LLM judges, or</text>
+    <text x="396" y="136">   a verifier (rejection</text>
+    <text x="396" y="150">   sampling)</text>
+    <text x="396" y="168">• gold items + attention</text>
+    <text x="396" y="182">   checks mixed in blind</text>
+    <text x="396" y="196" fill="#64748b">• time per item logged</text>
+  </g>
+  <line x1="556" y1="140" x2="582" y2="140" stroke="#0f172a" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- 4 curate -->
+  <rect x="584" y="80" width="150" height="120" rx="10" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="2"/>
+  <text x="659" y="102" text-anchor="middle" font-size="13" font-weight="700" fill="#0f172a">4. Curate</text>
+  <g font-size="11" fill="#0f172a">
+    <text x="594" y="122">• drop low-agreement</text>
+    <text x="594" y="136">   and failed-gold labels</text>
+    <text x="594" y="152">• exact + MinHash</text>
+    <text x="594" y="166">   dedup (Ch. 8 code)</text>
+    <text x="594" y="182">• decontaminate</text>
+    <text x="594" y="196" fill="#64748b">• mix by task / source</text>
+  </g>
+  <line x1="734" y1="140" x2="760" y2="140" stroke="#0f172a" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- 5 output -->
+  <rect x="762" y="80" width="118" height="120" rx="10" fill="#0f172a" fill-opacity="0.08" stroke="#0f172a" stroke-width="2"/>
+  <text x="821" y="102" text-anchor="middle" font-size="13" font-weight="700" fill="#0f172a">5. Dataset</text>
+  <g font-size="11" fill="#0f172a">
+    <text x="772" y="124">preferences.jsonl</text>
+    <text x="772" y="140">one JSON object</text>
+    <text x="772" y="154">per line, with the</text>
+    <text x="772" y="168">label, rubric ticks,</text>
+    <text x="772" y="182">note, seconds,</text>
+    <text x="772" y="196">annotator id</text>
+  </g>
+
+  <!-- LLM labeler biases panel -->
+  <g font-size="11" fill="#0f172a">
+    <rect x="20" y="256" width="420" height="120" rx="8" fill="#dc2626" fill-opacity="0.06" stroke="#dc2626" stroke-opacity="0.5"/>
+    <text x="34" y="276" font-weight="700">If the labeler is an LLM, check for its three known biases</text>
+    <text x="34" y="296" font-size="10"><tspan font-weight="700">position:</tspan> prefers the answer shown first → judge (A,B) and (B,A)</text>
+    <text x="34" y="312" font-size="10"><tspan font-weight="700">verbosity:</tspan> prefers the longer answer → win-rate vs length gap</text>
+    <text x="34" y="328" font-size="10"><tspan font-weight="700">self-preference:</tspan> prefers its own style → use another judge family</text>
+    <text x="34" y="348" fill="#64748b" font-size="10">evals.position_bias_check runs the swap test; the lab shows a judge failing it.</text>
+    <text x="34" y="364" fill="#64748b" font-size="10">A rubric-graded judge (2025–26 practice) is less biased than "which is better?".</text>
+  </g>
+
+  <!-- kappa panel -->
+  <g font-size="11" fill="#0f172a">
+    <rect x="460" y="256" width="420" height="120" rx="8" fill="#7c3aed" fill-opacity="0.06" stroke="#7c3aed" stroke-opacity="0.5"/>
+    <text x="474" y="276" font-weight="700">Cohen's κ in one line</text>
+    <text x="474" y="298" font-family="ui-monospace, monospace" font-size="12">κ = (p_o − p_e) / (1 − p_e)</text>
+    <text x="474" y="318" font-size="10">p_o: fraction of items on which the two annotators agree (raw agreement)</text>
+    <text x="474" y="334" font-size="10">p_e: agreement expected by chance from each annotator's label frequencies</text>
+    <text x="474" y="350" font-size="10">κ = 1 perfect · 0 no better than chance · &lt; 0 worse than chance</text>
+    <text x="474" y="366" fill="#64748b" font-size="10">Two annotators who both say "A" 70% of the time agree 58% of the time by luck.</text>
+  </g>
+
+  <!-- data sources for preference pairs -->
+  <g font-size="11" fill="#0f172a">
+    <rect x="20" y="392" width="860" height="94" rx="8" fill="#16a34a" fill-opacity="0.06" stroke="#16a34a" stroke-opacity="0.5"/>
+    <text x="34" y="412" font-weight="700">Where the (chosen, rejected) pairs come from in 2026, cheapest first</text>
+    <text x="34" y="432" font-size="10"><tspan font-weight="700">verifier + rejection sampling:</tspan> sample n answers, a checker grades them, pair a right one with a wrong one (make_preference_pairs_from_model)</text>
+    <text x="34" y="448" font-size="10"><tspan font-weight="700">synthetic corruption:</tspan> the reference answer vs a plausible failure — wrong, verbose, empty, junk (make_preference_pairs; the lab uses this)</text>
+    <text x="34" y="464" font-size="10"><tspan font-weight="700">LLM judge with a rubric:</tspan> for tasks with no checker; OpenRubrics / "Many Voices, One Reward" generate the rubric itself (2026)</text>
+    <text x="34" y="480" font-size="10"><tspan font-weight="700">human raters:</tspan> the most expensive, and still the ground truth for taste, safety and anything the other three cannot see</text>
+  </g>
+</svg>

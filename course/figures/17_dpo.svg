@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420" font-family="system-ui, sans-serif">
+  <rect width="900" height="420" fill="#ffffff"/>
+  <text x="450" y="26" text-anchor="middle" font-size="17" font-weight="600" fill="#0f172a">DPO: the reward model is the policy's own log-probabilities, measured against a frozen reference</text>
+
+  <!-- column headers -->
+  <text x="110" y="62" text-anchor="middle" font-size="12" font-weight="600" fill="#64748b">preference pair</text>
+  <text x="330" y="62" text-anchor="middle" font-size="12" font-weight="600" fill="#64748b">two forward passes each</text>
+  <text x="590" y="62" text-anchor="middle" font-size="12" font-weight="600" fill="#64748b">implicit reward r̂ = β·(log π_θ − log π_ref)</text>
+  <text x="820" y="62" text-anchor="middle" font-size="12" font-weight="600" fill="#64748b">loss</text>
+
+  <!-- chosen row -->
+  <rect x="30" y="85" width="160" height="60" rx="8" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/>
+  <text x="110" y="108" text-anchor="middle" font-size="12" font-weight="600" fill="#16a34a">chosen y_c</text>
+  <text x="110" y="128" text-anchor="middle" font-size="11" fill="#0f172a">"7 + 5 = 12&lt;|end|&gt;"</text>
+
+  <rect x="230" y="78" width="95" height="32" rx="6" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+  <text x="277" y="98" text-anchor="middle" font-size="11" fill="#2563eb">π_θ (trained)</text>
+  <rect x="230" y="118" width="95" height="32" rx="6" fill="#64748b" fill-opacity="0.12" stroke="#64748b"/>
+  <text x="277" y="138" text-anchor="middle" font-size="11" fill="#64748b">π_ref (frozen)</text>
+  <text x="385" y="98" text-anchor="middle" font-size="11" fill="#0f172a">log π_θ(y_c|x) = −9</text>
+  <text x="385" y="138" text-anchor="middle" font-size="11" fill="#0f172a">log π_ref(y_c|x) = −10</text>
+  <line x1="190" y1="115" x2="230" y2="94" stroke="#64748b" stroke-width="1.2"/>
+  <line x1="190" y1="115" x2="230" y2="134" stroke="#64748b" stroke-width="1.2"/>
+
+  <rect x="480" y="90" width="220" height="40" rx="8" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/>
+  <text x="590" y="115" text-anchor="middle" font-size="12" fill="#0f172a">r̂_c = 0.1·(−9 − (−10)) = <tspan font-weight="600">+0.10</tspan></text>
+  <line x1="445" y1="115" x2="480" y2="110" stroke="#64748b" stroke-width="1.2" marker-end="url(#arr)"/>
+
+  <!-- rejected row -->
+  <rect x="30" y="215" width="160" height="60" rx="8" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/>
+  <text x="110" y="238" text-anchor="middle" font-size="12" font-weight="600" fill="#dc2626">rejected y_r</text>
+  <text x="110" y="258" text-anchor="middle" font-size="11" fill="#0f172a">"7 + 5 = 13&lt;|end|&gt;"</text>
+
+  <rect x="230" y="208" width="95" height="32" rx="6" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+  <text x="277" y="228" text-anchor="middle" font-size="11" fill="#2563eb">π_θ (trained)</text>
+  <rect x="230" y="248" width="95" height="32" rx="6" fill="#64748b" fill-opacity="0.12" stroke="#64748b"/>
+  <text x="277" y="268" text-anchor="middle" font-size="11" fill="#64748b">π_ref (frozen)</text>
+  <text x="385" y="228" text-anchor="middle" font-size="11" fill="#0f172a">log π_θ(y_r|x) = −13</text>
+  <text x="385" y="268" text-anchor="middle" font-size="11" fill="#0f172a">log π_ref(y_r|x) = −10</text>
+  <line x1="190" y1="245" x2="230" y2="224" stroke="#64748b" stroke-width="1.2"/>
+  <line x1="190" y1="245" x2="230" y2="264" stroke="#64748b" stroke-width="1.2"/>
+
+  <rect x="480" y="220" width="220" height="40" rx="8" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/>
+  <text x="590" y="245" text-anchor="middle" font-size="12" fill="#0f172a">r̂_r = 0.1·(−13 − (−10)) = <tspan font-weight="600">−0.30</tspan></text>
+  <line x1="445" y1="245" x2="480" y2="240" stroke="#64748b" stroke-width="1.2" marker-end="url(#arr)"/>
+
+  <!-- margin & loss -->
+  <rect x="740" y="140" width="140" height="80" rx="8" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed"/>
+  <text x="810" y="163" text-anchor="middle" font-size="11" fill="#0f172a">margin r̂_c − r̂_r = 0.40</text>
+  <text x="810" y="183" text-anchor="middle" font-size="11" fill="#0f172a">P(c ≻ r) = σ(0.40) = 0.60</text>
+  <text x="810" y="205" text-anchor="middle" font-size="12" font-weight="600" fill="#7c3aed">loss = −log 0.60 = 0.51</text>
+  <line x1="700" y1="110" x2="740" y2="160" stroke="#64748b" stroke-width="1.2" marker-end="url(#arr)"/>
+  <line x1="700" y1="240" x2="740" y2="200" stroke="#64748b" stroke-width="1.2" marker-end="url(#arr)"/>
+
+  <!-- gradient row -->
+  <rect x="30" y="310" width="850" height="92" rx="8" fill="#f59e0b" fill-opacity="0.10" stroke="#f59e0b"/>
+  <text x="45" y="332" font-size="12" font-weight="600" fill="#b45309">What the gradient does (β = 0.1, weight σ(−0.40) = 0.40)</text>
+  <text x="45" y="352" font-size="11" fill="#0f172a">▲ raise log π_θ(y_c | x) by ∝ β·0.40    ▼ lower log π_θ(y_r | x) by ∝ β·0.40    — the weight shrinks as the margin grows, so well-separated pairs stop mattering.</text>
+  <text x="45" y="372" font-size="11" fill="#0f172a">Only the <tspan font-weight="600">difference</tspan> is constrained: a step that lowers both log-probs while widening the gap also lowers the loss. That is why</text>
+  <text x="45" y="390" font-size="11" fill="#0f172a">"likelihood displacement" can happen: pair accuracy 1.0 while the chosen answer itself became <tspan font-style="italic">less</tspan> likely than under π_ref (Worked example).</text>
+
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#64748b"/>
+    </marker>
+  </defs>
+</svg>

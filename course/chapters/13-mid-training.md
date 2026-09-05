@@ -143,7 +143,51 @@ The checkpoint at the end of mid-training is what gets a name and a licence. It 
 
 `python3 labs/lab13_midtrain.py` loads your base model (nano in quick mode, small with `--full`), reports the held-out math and story losses, anneals for 60 (quick) or 250 (full) steps on the 4:1 mix with a linear decay, reports again, then extends the context to 512 with θ = 50,000, fine-tunes for 20 (quick) or 60 (full) steps at sequence length 512, and plots loss per position for three states: tables extended with the old θ, the new θ before fine-tuning, and after. The final model is saved as `runs/lab13_annealed.pt`, the course's mid-trained checkpoint.
 
-<!-- LAB13_OUTPUT -->
+**Quick mode (nano base; 402 s on a shared machine at load ≈ 20, well under a minute on a quiet laptop):**
+
+```text
+base model: 295,584 params, max_seq_len 128, rope_theta 10000
+
+--- data: the anneal mix and two held-out streams ---
+   pretraining corpus: 1491 math / 4509 story docs
+   anneal mix (weights stories:1, math:4): 3230/4000 docs are math = 81% of docs but 40% of tokens (math docs are short)
+   held-out streams: math 7,057 tokens, stories 118,666 tokens
+
+--- (a) anneal: 60 steps on the math-heavy mix, LR decaying linearly to 0 ---
+   BEFORE: math loss 1.766 (ppl 5.8) | stories loss 1.045 (ppl 2.8)
+   step    0 | mix loss 1.3940 | lr x1.00
+   step   12 | mix loss 1.3289 | lr x0.80
+   step   24 | mix loss 1.2681 | lr x0.60
+   step   36 | mix loss 1.4194 | lr x0.40
+   step   48 | mix loss 1.3406 | lr x0.20
+   step   59 | mix loss 1.2656 | lr x0.02
+   AFTER:  math loss 1.639 (ppl 5.1) | stories loss 1.050 (ppl 2.9)   [155s]
+   change: math -0.128 | stories +0.005
+✅ annealing on a math-heavy mix lowers the held-out MATH loss
+✅ ...without a large regression on stories (change +0.005; replay keeps it small)
+```
+
+Two things to notice in part (a). The mix line is the token-versus-document point from the code section: 81% of documents but 40% of tokens are math. And the anneal does what mid-training is for: held-out math loss falls by 0.128 nats (perplexity 5.8 → 5.1) while held-out story loss moves by +0.005, within noise, because 60% of the tokens were story replay and the learning rate decayed to zero. This is the honest shape of the trade-off at this scale; with a narrower mix or a higher LR the story loss climbs (exercise 1).
+
+```text
+--- (b) long context: 128 -> 512 positions with RoPE theta 50000 ---
+   tables extended, theta=10000       pos 0-128: 1.074 | pos 128-512: 1.202 | per-64 bins ['1.06', '1.09', '1.04', '1.08', '1.21', '1.28', '1.30', '1.30']
+   theta=50000, before fine-tune      pos 0-128: 1.088 | pos 128-512: 1.161 | per-64 bins ['1.07', '1.11', '1.03', '1.05', '1.11', '1.24', '1.29', '1.24']
+✅ before extension training, positions the model never saw are worse (RoPE is relative and Storyland docs are short, so expect a small gap)
+   step    0 | loss at seq_len 512: 1.4755
+   step    5 | loss at seq_len 512: 1.3520
+   step   10 | loss at seq_len 512: 1.2181
+   step   15 | loss at seq_len 512: 1.2778
+   step   19 | loss at seq_len 512: 1.3591
+   theta=50000, after 20 steps        pos 0-128: 1.083 | pos 128-512: 1.095 | per-64 bins ['1.07', '1.10', '1.02', '1.03', '1.10', '1.15', '1.17', '1.11']
+   long-position loss: 1.202 (naive) -> 1.161 (ABF) -> 1.095 (ABF + fine-tune)   [116s]
+✅ fine-tuning at 512 improves the loss on positions 128-512
+✅ the gap between short and long positions shrinks
+```
+
+Part (b) reads top to bottom as three states of the same model. With the RoPE tables merely lengthened (θ = 10,000), positions 128–512 are 0.13 nats worse than positions 0–128, and the per-64 bins show the loss rising steadily past the trained length. Raising θ to 50,000 *without any training* already helps the far positions (1.202 → 1.161) and, as predicted, slightly hurts the near ones (1.074 → 1.088), because every pair's angles shifted. Twenty steps at sequence length 512 then bring the far positions to 1.095 and the near ones back to 1.083: the short-versus-long gap shrinks from 0.13 to 0.01 nats. The gap is small in absolute terms because RoPE is *relative* and Storyland documents are ~80 tokens long, so a query rarely needs a key more than 128 positions back; on real long documents the untrained-position penalty is far larger.
+
+<!-- LAB13_FULL -->
 
 ## Try it yourself ✍️
 

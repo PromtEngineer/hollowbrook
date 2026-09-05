@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="430" viewBox="0 0 900 430" font-family="system-ui, sans-serif">
+  <rect width="900" height="430" fill="#ffffff"/>
+  <text x="450" y="26" text-anchor="middle" font-size="17" font-weight="600" fill="#0f172a">REINFORCE on a language model: sample, score, then push whole answers up or down</text>
+
+  <!-- prompt -->
+  <rect x="20" y="120" width="120" height="70" rx="8" fill="#64748b" fill-opacity="0.12" stroke="#64748b"/>
+  <text x="80" y="145" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">state s₀ = prompt</text>
+  <text x="80" y="165" text-anchor="middle" font-size="11" fill="#0f172a">"What is 7 + 5?"</text>
+  <text x="80" y="181" text-anchor="middle" font-size="10" fill="#64748b">one bandit per prompt</text>
+
+  <!-- policy -->
+  <rect x="170" y="130" width="90" height="50" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+  <text x="215" y="151" text-anchor="middle" font-size="12" font-weight="600" fill="#2563eb">policy π_θ</text>
+  <text x="215" y="168" text-anchor="middle" font-size="10" fill="#0f172a">sample at T = 1</text>
+  <line x1="140" y1="155" x2="170" y2="155" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- three sampled answers: token boxes -->
+  <g font-size="11">
+    <!-- answer 1 -->
+    <text x="300" y="78" font-size="11" fill="#64748b">y⁽¹⁾  actions = tokens</text>
+    <g transform="translate(300,85)">
+      <rect x="0" y="0" width="34" height="24" rx="4" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/><text x="17" y="16" text-anchor="middle">7</text>
+      <rect x="38" y="0" width="34" height="24" rx="4" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/><text x="57" y="16" text-anchor="middle">+</text>
+      <rect x="76" y="0" width="34" height="24" rx="4" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/><text x="95" y="16" text-anchor="middle">5</text>
+      <rect x="114" y="0" width="34" height="24" rx="4" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/><text x="133" y="16" text-anchor="middle">=</text>
+      <rect x="152" y="0" width="34" height="24" rx="4" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/><text x="171" y="16" text-anchor="middle">12</text>
+      <rect x="190" y="0" width="50" height="24" rx="4" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/><text x="215" y="16" text-anchor="middle" font-size="9">&lt;|end|&gt;</text>
+    </g>
+    <text x="560" y="102" font-size="11" fill="#0f172a">R = 1</text>
+    <text x="620" y="102" font-size="11" fill="#0f172a">A = R − b = <tspan fill="#16a34a" font-weight="600">+0.33</tspan></text>
+    <text x="760" y="102" font-size="11" fill="#16a34a">▲ every token pushed up</text>
+
+    <!-- answer 2 -->
+    <text x="300" y="148" font-size="11" fill="#64748b">y⁽²⁾</text>
+    <g transform="translate(300,155)">
+      <rect x="0" y="0" width="34" height="24" rx="4" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/><text x="17" y="16" text-anchor="middle">7</text>
+      <rect x="38" y="0" width="34" height="24" rx="4" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/><text x="57" y="16" text-anchor="middle">+</text>
+      <rect x="76" y="0" width="34" height="24" rx="4" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/><text x="95" y="16" text-anchor="middle">5</text>
+      <rect x="114" y="0" width="34" height="24" rx="4" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/><text x="133" y="16" text-anchor="middle">=</text>
+      <rect x="152" y="0" width="34" height="24" rx="4" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/><text x="171" y="16" text-anchor="middle">13</text>
+      <rect x="190" y="0" width="50" height="24" rx="4" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/><text x="215" y="16" text-anchor="middle" font-size="9">&lt;|end|&gt;</text>
+    </g>
+    <text x="560" y="172" font-size="11" fill="#0f172a">R = 0</text>
+    <text x="620" y="172" font-size="11" fill="#0f172a">A = R − b = <tspan fill="#dc2626" font-weight="600">−0.67</tspan></text>
+    <text x="760" y="172" font-size="11" fill="#dc2626">▼ every token pushed down</text>
+
+    <!-- answer 3 -->
+    <text x="300" y="218" font-size="11" fill="#64748b">y⁽³⁾</text>
+    <g transform="translate(300,225)">
+      <rect x="0" y="0" width="34" height="24" rx="4" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/><text x="17" y="16" text-anchor="middle">7</text>
+      <rect x="38" y="0" width="34" height="24" rx="4" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/><text x="57" y="16" text-anchor="middle">+</text>
+      <rect x="76" y="0" width="34" height="24" rx="4" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/><text x="95" y="16" text-anchor="middle">5</text>
+      <rect x="114" y="0" width="34" height="24" rx="4" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/><text x="133" y="16" text-anchor="middle">=</text>
+      <rect x="152" y="0" width="34" height="24" rx="4" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/><text x="171" y="16" text-anchor="middle">12</text>
+      <rect x="190" y="0" width="50" height="24" rx="4" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/><text x="215" y="16" text-anchor="middle" font-size="9">&lt;|end|&gt;</text>
+    </g>
+    <text x="560" y="242" font-size="11" fill="#0f172a">R = 1</text>
+    <text x="620" y="242" font-size="11" fill="#0f172a">A = R − b = <tspan fill="#16a34a" font-weight="600">+0.33</tspan></text>
+    <text x="760" y="242" font-size="11" fill="#16a34a">▲ every token pushed up</text>
+  </g>
+  <line x1="260" y1="150" x2="296" y2="97" stroke="#64748b" stroke-width="1.2" marker-end="url(#arr)"/>
+  <line x1="260" y1="155" x2="296" y2="167" stroke="#64748b" stroke-width="1.2" marker-end="url(#arr)"/>
+  <line x1="260" y1="160" x2="296" y2="237" stroke="#64748b" stroke-width="1.2" marker-end="url(#arr)"/>
+
+  <!-- verifier -->
+  <rect x="545" y="60" width="60" height="22" rx="6" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b"/>
+  <text x="575" y="75" text-anchor="middle" font-size="10" fill="#b45309">verifier</text>
+  <text x="640" y="75" font-size="10" fill="#64748b">reward only at the end</text>
+  <text x="640" y="60" font-size="10" fill="#64748b">baseline b = mean R = 0.67</text>
+
+  <!-- the update -->
+  <rect x="30" y="290" width="840" height="60" rx="8" fill="#7c3aed" fill-opacity="0.10" stroke="#7c3aed"/>
+  <text x="450" y="314" text-anchor="middle" font-size="13" fill="#0f172a">θ ← θ + α · Σ_samples  (R⁽ⁱ⁾ − b) · ∇_θ Σ_t log π_θ(y_t⁽ⁱ⁾ | x, y_&lt;t⁽ⁱ⁾)</text>
+  <text x="450" y="337" text-anchor="middle" font-size="11" fill="#64748b">reinforce_loss: L = −mean_b[(R_b − b) · Σ_t mask_bt · log π_θ(token_bt)] — its gradient is the line above with the sign flipped</text>
+
+  <!-- notes -->
+  <text x="30" y="380" font-size="11" fill="#0f172a">• The environment is trivial: appending a token is deterministic, and the reward waits until <tspan font-style="italic">&lt;|end|&gt;</tspan>. That makes each prompt a bandit whose arms are whole answers.</text>
+  <text x="30" y="400" font-size="11" fill="#0f172a">• Without the baseline (b = 0), answer y⁽²⁾ would get no update at all and correct answers would all be pushed up equally — same expected direction, far noisier steps.</text>
+  <text x="30" y="420" font-size="11" fill="#0f172a">• Every token of an answer gets the <tspan font-weight="600">same</tspan> credit; nothing says which token made the answer right. That is the credit-assignment problem Chapter 19's group baseline does not solve either.</text>
+
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#64748b"/>
+    </marker>
+  </defs>
+</svg>

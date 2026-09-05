@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="540" viewBox="0 0 900 540" font-family="system-ui, sans-serif">
+  <rect width="900" height="540" fill="#ffffff"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#64748b"/></marker></defs>
+  <text x="450" y="26" text-anchor="middle" font-size="17" font-weight="600" fill="#0f172a">The context window is a budget: what fills it, what compaction removes, what lives outside it</text>
+
+  <!-- window 1: before compaction -->
+  <text x="20" y="62" font-size="12" font-weight="600" fill="#0f172a">Turn 21 of the lab's 30-turn episode (compaction off): 6,671 of 8,000 tokens</text>
+  <rect x="20" y="70" width="860" height="44" rx="6" fill="#ffffff" stroke="#0f172a"/>
+  <!-- segments scaled: 860px = 8000 tok -->
+  <rect x="20" y="70" width="10" height="44" fill="#94a3b8"/>
+  <rect x="30" y="70" width="46" height="44" fill="#64748b"/>
+  <rect x="76" y="70" width="4" height="44" fill="#cbd5e1"/>
+  <!-- 20 tool turns: assistant(2px) + result(~32px) alternating -->
+  <g>
+    <rect x="80" y="70" width="3" height="44" fill="#2563eb"/><rect x="83" y="70" width="8" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="91" y="70" width="3" height="44" fill="#2563eb"/><rect x="94" y="70" width="55" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="149" y="70" width="3" height="44" fill="#2563eb"/><rect x="152" y="70" width="14" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="166" y="70" width="3" height="44" fill="#2563eb"/><rect x="169" y="70" width="6" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="175" y="70" width="3" height="44" fill="#2563eb"/><rect x="178" y="70" width="55" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="233" y="70" width="3" height="44" fill="#2563eb"/><rect x="236" y="70" width="27" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="263" y="70" width="3" height="44" fill="#2563eb"/><rect x="266" y="70" width="55" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="321" y="70" width="3" height="44" fill="#2563eb"/><rect x="324" y="70" width="14" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="338" y="70" width="3" height="44" fill="#2563eb"/><rect x="341" y="70" width="6" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="347" y="70" width="3" height="44" fill="#2563eb"/><rect x="350" y="70" width="55" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="405" y="70" width="3" height="44" fill="#2563eb"/><rect x="408" y="70" width="27" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="435" y="70" width="3" height="44" fill="#2563eb"/><rect x="438" y="70" width="55" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="493" y="70" width="3" height="44" fill="#2563eb"/><rect x="496" y="70" width="14" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="510" y="70" width="3" height="44" fill="#2563eb"/><rect x="513" y="70" width="6" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="519" y="70" width="3" height="44" fill="#2563eb"/><rect x="522" y="70" width="55" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="577" y="70" width="3" height="44" fill="#2563eb"/><rect x="580" y="70" width="27" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="607" y="70" width="3" height="44" fill="#2563eb"/><rect x="610" y="70" width="55" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="665" y="70" width="3" height="44" fill="#2563eb"/><rect x="668" y="70" width="14" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="682" y="70" width="3" height="44" fill="#2563eb"/><rect x="685" y="70" width="6" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="691" y="70" width="3" height="44" fill="#2563eb"/><rect x="694" y="70" width="43" height="44" fill="#16a34a" fill-opacity="0.85"/>
+  </g>
+  <line x1="708" y1="62" x2="708" y2="122" stroke="#dc2626" stroke-width="2" stroke-dasharray="5 3"/>
+  <text x="712" y="132" font-size="11" fill="#dc2626">80 % threshold → needs_compaction()</text>
+  <text x="880" y="132" text-anchor="end" font-size="11" fill="#0f172a">8,000 = window</text>
+  <!-- labels -->
+  <text x="25" y="150" font-size="11" fill="#0f172a">system</text>
+  <text x="25" y="164" font-size="11" fill="#0f172a">(90 tok)</text>
+  <line x1="25" y1="114" x2="30" y2="140" stroke="#94a3b8"/>
+  <text x="53" y="150" text-anchor="middle" font-size="11" fill="#0f172a">7 schemas</text>
+  <text x="53" y="164" text-anchor="middle" font-size="11" fill="#0f172a">(430 tok)</text>
+  <text x="120" y="150" font-size="11" fill="#0f172a">task (9 tok) ← first message: never compacted</text>
+  <text x="400" y="150" font-size="11" fill="#0f172a">thin blue = assistant turn with a tool call (~20 tok)   green = tool result (up to 508 tok after truncation)</text>
+  <text x="400" y="166" font-size="11" fill="#0f172a">the fact "db_port=4242" is inside the 3rd green block</text>
+
+  <!-- window 2: after compaction -->
+  <text x="20" y="200" font-size="12" font-weight="600" fill="#0f172a">Turn 22 after compact(keep_last=6): 2,216 tokens — 19 old tool results became 12-token stubs</text>
+  <rect x="20" y="208" width="860" height="44" rx="6" fill="#ffffff" stroke="#0f172a"/>
+  <rect x="20" y="208" width="10" height="44" fill="#94a3b8"/>
+  <rect x="30" y="208" width="46" height="44" fill="#64748b"/>
+  <rect x="76" y="208" width="4" height="44" fill="#cbd5e1"/>
+  <g>
+    <rect x="80" y="208" width="3" height="44" fill="#2563eb"/><rect x="83" y="208" width="2" height="44" fill="#86efac"/>
+    <rect x="85" y="208" width="3" height="44" fill="#2563eb"/><rect x="88" y="208" width="2" height="44" fill="#86efac"/>
+    <rect x="90" y="208" width="3" height="44" fill="#2563eb"/><rect x="93" y="208" width="2" height="44" fill="#86efac"/>
+    <rect x="95" y="208" width="3" height="44" fill="#2563eb"/><rect x="98" y="208" width="2" height="44" fill="#86efac"/>
+    <rect x="100" y="208" width="3" height="44" fill="#2563eb"/><rect x="103" y="208" width="2" height="44" fill="#86efac"/>
+    <rect x="105" y="208" width="3" height="44" fill="#2563eb"/><rect x="108" y="208" width="2" height="44" fill="#86efac"/>
+    <rect x="110" y="208" width="3" height="44" fill="#2563eb"/><rect x="113" y="208" width="2" height="44" fill="#86efac"/>
+    <rect x="115" y="208" width="3" height="44" fill="#2563eb"/><rect x="118" y="208" width="2" height="44" fill="#86efac"/>
+    <rect x="120" y="208" width="3" height="44" fill="#2563eb"/><rect x="123" y="208" width="2" height="44" fill="#86efac"/>
+    <rect x="125" y="208" width="3" height="44" fill="#2563eb"/><rect x="128" y="208" width="2" height="44" fill="#86efac"/>
+    <rect x="130" y="208" width="3" height="44" fill="#2563eb"/><rect x="133" y="208" width="2" height="44" fill="#86efac"/>
+    <rect x="135" y="208" width="3" height="44" fill="#2563eb"/><rect x="138" y="208" width="2" height="44" fill="#86efac"/>
+    <rect x="140" y="208" width="3" height="44" fill="#2563eb"/><rect x="143" y="208" width="2" height="44" fill="#86efac"/>
+    <rect x="145" y="208" width="3" height="44" fill="#2563eb"/><rect x="148" y="208" width="2" height="44" fill="#86efac"/>
+    <rect x="150" y="208" width="3" height="44" fill="#2563eb"/><rect x="153" y="208" width="2" height="44" fill="#86efac"/>
+    <rect x="155" y="208" width="3" height="44" fill="#2563eb"/><rect x="158" y="208" width="2" height="44" fill="#86efac"/>
+    <rect x="160" y="208" width="3" height="44" fill="#2563eb"/><rect x="163" y="208" width="2" height="44" fill="#86efac"/>
+    <rect x="165" y="208" width="3" height="44" fill="#2563eb"/><rect x="168" y="208" width="2" height="44" fill="#86efac"/>
+    <!-- tail kept verbatim: last 6 messages -->
+    <rect x="170" y="208" width="3" height="44" fill="#2563eb"/><rect x="173" y="208" width="6" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="179" y="208" width="3" height="44" fill="#2563eb"/><rect x="182" y="208" width="55" height="44" fill="#16a34a" fill-opacity="0.85"/>
+    <rect x="237" y="208" width="3" height="44" fill="#2563eb"/><rect x="240" y="208" width="14" height="44" fill="#16a34a" fill-opacity="0.85"/>
+  </g>
+  <rect x="80" y="256" width="90" height="4" fill="#7c3aed"/>
+  <text x="80" y="276" font-size="11" fill="#7c3aed">stubs: "[tool result truncated: 2032 chars]" — the fact 4242 is gone</text>
+  <rect x="170" y="256" width="84" height="4" fill="#16a34a"/>
+  <text x="170" y="292" font-size="11" fill="#16a34a">keep_last = 6 messages verbatim</text>
+  <text x="560" y="276" font-size="11" fill="#0f172a">with a summariser: middle → one purple message</text>
+  <rect x="560" y="284" width="60" height="12" fill="#7c3aed" fill-opacity="0.6"/>
+  <text x="628" y="294" font-size="11" fill="#0f172a">"[Summary of earlier work] … Facts: db_port=4242 …"</text>
+
+  <!-- stable prefix / cache -->
+  <rect x="20" y="318" width="860" height="70" rx="10" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b"/>
+  <text x="30" y="338" font-size="12" font-weight="600" fill="#0f172a">Prompt cache: a provider re-uses the KV cache of the longest byte-identical prefix of the previous request</text>
+  <text x="30" y="358" font-size="11" fill="#0f172a">append-only history → every previous request is a prefix of the next (lab: 100 % reuse, ~85 % of each new request cacheable)</text>
+  <text x="30" y="376" font-size="11" fill="#0f172a">a timestamp at byte 28 of the system prompt → 0.4 % cacheable;  a compaction → 8.5 % reuse on that turn.  Put stable material first.</text>
+
+  <!-- outside the window -->
+  <text x="20" y="418" font-size="12" font-weight="600" fill="#0f172a">Outside the window (survives compaction and process restarts)</text>
+  <rect x="20" y="428" width="270" height="96" rx="10" fill="#7c3aed" fill-opacity="0.10" stroke="#7c3aed"/>
+  <text x="155" y="448" text-anchor="middle" font-size="12" font-weight="600" fill="#7c3aed">MemoryFile (MEMORY.md)</text>
+  <text x="30" y="468" font-size="11" fill="#0f172a">agent appends notes; the next run's</text>
+  <text x="30" y="484" font-size="11" fill="#0f172a">system prompt starts with the tail of it</text>
+  <text x="30" y="500" font-size="11" fill="#64748b">"notes to my future self"</text>
+  <text x="30" y="516" font-size="11" fill="#64748b">(CLAUDE.md / NOTES.md in real harnesses)</text>
+  <rect x="315" y="428" width="270" height="96" rx="10" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/>
+  <text x="450" y="448" text-anchor="middle" font-size="12" font-weight="600" fill="#16a34a">Sub-agent window (run_subagent)</text>
+  <text x="325" y="468" font-size="11" fill="#0f172a">child: 4 calls, window grows to 894 tok</text>
+  <text x="325" y="484" font-size="11" fill="#0f172a">parent receives one 66-token paragraph</text>
+  <text x="325" y="500" font-size="11" fill="#64748b">isolation = the noisy reads never enter</text>
+  <text x="325" y="516" font-size="11" fill="#64748b">the parent's context at all</text>
+  <rect x="610" y="428" width="270" height="96" rx="10" fill="#2563eb" fill-opacity="0.10" stroke="#2563eb"/>
+  <text x="745" y="448" text-anchor="middle" font-size="12" font-weight="600" fill="#2563eb">Retrieval / just-in-time</text>
+  <text x="620" y="468" font-size="11" fill="#0f172a">files, docs and tool schemas stay on disk;</text>
+  <text x="620" y="484" font-size="11" fill="#0f172a">the agent pulls them with search / read /</text>
+  <text x="620" y="500" font-size="11" fill="#0f172a">search_tools when needed (Ch. 26)</text>
+  <text x="620" y="516" font-size="11" fill="#64748b">identifiers in context, content on demand</text>
+</svg>

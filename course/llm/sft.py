@@ -38,9 +38,9 @@ from .train import History
 # ------------------------------------------------------------------- config
 @dataclass
 class SFTConfig:
-    steps: int = 300                  # optimizer steps (ignored when ``epochs`` is set)
+    steps: int = 800                  # optimizer steps (ignored when ``epochs`` is set)
     batch_size: int = 16              # conversations per step
-    lr: float = 3e-4                  # AdamW peak LR; SFT uses a lower LR than pretraining
+    lr: float = 1e-3                  # AdamW peak LR (tuned for nano/small; see note below)
     weight_decay: float = 0.0         # usually off for fine-tuning
     warmup_steps: int = 20
     schedule: str = "cosine"          # "cosine" | "wsd" | "constant" (see optim.lr_at)
@@ -52,6 +52,10 @@ class SFTConfig:
     device: str = "cpu"
     max_len: int = 192                # truncate conversations longer than this many tokens
     lora_rank: int = 0                # 0 = full fine-tuning; > 0 = LoRA with this rank
+    # Why these numbers: on the nano base model with 2000 examples of upper/reverse/add,
+    # 300 steps at lr 1e-3 only learns the *format* (all-caps words, "a + b = c"), while
+    # 800 steps reaches 100% on upper and reverse (add stays at 0 — carrying is too hard
+    # for nano). Halving lr to 3e-4 learns nothing usable in 300 steps. Lab 15 measures this.
 
 
 @dataclass
@@ -281,6 +285,7 @@ def respond(model: TinyLM, tok: BPETokenizer, user_text: str, system: Optional[s
     """
     messages = [{"role": "system", "content": system}] if system else []
     messages.append({"role": "user", "content": user_text})
-    prompt = render(messages, add_generation_prompt=True)
-    return generate(model, tok, prompt, max_new_tokens=max_new_tokens, temperature=temperature,
-                    stop=(END, "<|eos|>")).strip()
+    from .chat import encode_chat
+    ids = encode_chat(tok, messages, add_generation_prompt=True)   # safe: no special-token injection
+    return generate(model, tok, "", max_new_tokens=max_new_tokens, temperature=temperature,
+                    stop=(END, "<|eos|>"), prompt_ids=ids).strip()

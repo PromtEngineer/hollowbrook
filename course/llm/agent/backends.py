@@ -148,12 +148,14 @@ class TinyLMBackend:
         return out
 
     def complete(self, messages: list[dict], tools: list[dict], system: str) -> AssistantMessage:
-        from ..chat import render, parse_tool_call
+        from ..chat import encode_chat, parse_tool_call
         from ..generate import generate
-        prompt = render(self.to_chat_messages(messages, tools, system), add_generation_prompt=True)
+        # encode_chat tokenises content with allowed_special=False: tool results or user
+        # text containing "<|user|>" can never be mistaken for a real role tag.
+        ids = encode_chat(self.tok, self.to_chat_messages(messages, tools, system), add_generation_prompt=True)
         # Keep <|end|> in the text so parse_tool_call can find "<|tool_call|>...<|end|>".
-        raw = generate(self.model, self.tok, prompt, max_new_tokens=self.max_new_tokens,
-                       temperature=self.temperature, stop=("<|eos|>",))
+        raw = generate(self.model, self.tok, "", max_new_tokens=self.max_new_tokens,
+                       temperature=self.temperature, stop=("<|eos|>",), prompt_ids=ids)
         # A small model may keep going after its turn and hallucinate a <|user|> turn;
         # only the part before any foreign role tag counts as *its* reply.
         own = re.split(r"<\|(?:user|system|tool_result)\|>", raw)[0]

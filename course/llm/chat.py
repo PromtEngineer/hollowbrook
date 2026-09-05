@@ -52,6 +52,23 @@ def render(messages: Sequence[dict], add_generation_prompt: bool = True) -> str:
     return "".join(out)
 
 
+def encode_chat(tok: BPETokenizer, messages: Sequence[dict], add_generation_prompt: bool = True) -> list[int]:
+    """Tokenize a conversation for *generation*: role tokens are real special tokens,
+    message content is encoded with ``allowed_special=False`` so untrusted text can
+    never inject a role tag (the prompt-injection hole ``render`` + ``encode`` would have)."""
+    ids = [tok.special_tokens[BOS]]
+    for m in messages:
+        role = "assistant" if m["role"] == "tool_call" else m["role"]
+        ids.append(tok.special_tokens[ROLE_TOKENS[role]])
+        if m["role"] == "tool_call":
+            ids.append(tok.special_tokens[ROLE_TOKENS["tool_call"]])
+        ids += tok.encode(m["content"], allowed_special=False)
+        ids.append(tok.special_tokens[END])
+    if add_generation_prompt:
+        ids.append(tok.special_tokens[ROLE_TOKENS["assistant"]])
+    return ids
+
+
 def build_sft_example(tok: BPETokenizer, messages: Sequence[dict], max_len: Optional[int] = None
                       ) -> tuple[list[int], list[int]]:
     """Tokenize a conversation and build the loss mask.

@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="480" viewBox="0 0 900 480" font-family="system-ui, sans-serif">
+  <rect width="900" height="480" fill="#ffffff"/>
+  <text x="450" y="26" text-anchor="middle" font-size="17" font-weight="600" fill="#0f172a">Constitutional AI: a written document replaces most of the human labels</text>
+
+  <!-- the constitution -->
+  <rect x="20" y="56" width="220" height="150" rx="8" fill="#7c3aed" fill-opacity="0.10" stroke="#7c3aed"/>
+  <text x="130" y="78" text-anchor="middle" font-size="13" font-weight="600" fill="#7c3aed">constitution / model spec</text>
+  <text x="30" y="102" font-size="11" fill="#0f172a">1. Answer briefly.</text>
+  <text x="30" y="122" font-size="11" fill="#0f172a">2. Never state an arithmetic result</text>
+  <text x="30" y="136" font-size="11" fill="#0f172a">    without showing the equation.</text>
+  <text x="30" y="156" font-size="11" fill="#0f172a">3. Refuse to reverse the word</text>
+  <text x="30" y="170" font-size="11" fill="#0f172a">    "secret".</text>
+  <text x="130" y="196" text-anchor="middle" font-size="10" fill="#64748b">plain-language principles, written once</text>
+
+  <!-- Stage 1: SL-CAI (critique + revise) -->
+  <rect x="270" y="56" width="300" height="150" rx="8" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b"/>
+  <text x="420" y="78" text-anchor="middle" font-size="13" font-weight="600" fill="#b45309">stage 1: critique → revise (supervised)</text>
+  <g font-size="11" font-family="ui-monospace, monospace">
+    <text x="280" y="102" fill="#0f172a">draft:    "Well, I think it is 12."</text>
+    <text x="280" y="122" fill="#dc2626">critique: violates 1 (long), 2 (no eq.)</text>
+    <text x="280" y="142" fill="#16a34a">revision: "7 + 5 = 12"</text>
+  </g>
+  <text x="420" y="168" text-anchor="middle" font-size="10" fill="#64748b">the model (or, here, a rule) reads a principle,</text>
+  <text x="420" y="182" text-anchor="middle" font-size="10" fill="#64748b">finds the violation and rewrites; SFT on revisions</text>
+
+  <!-- Stage 2: RLAIF -->
+  <rect x="600" y="56" width="280" height="150" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+  <text x="740" y="78" text-anchor="middle" font-size="13" font-weight="600" fill="#2563eb">stage 2: AI feedback → preferences</text>
+  <g font-size="11" font-family="ui-monospace, monospace">
+    <text x="610" y="102" fill="#0f172a">A: "7 + 5 = 12"        score 1.00</text>
+    <text x="610" y="122" fill="#0f172a">B: "The answer is 12." score 0.67</text>
+    <text x="610" y="142" fill="#0f172a">→ pair (chosen = A, rejected = B)</text>
+  </g>
+  <text x="740" y="168" text-anchor="middle" font-size="10" fill="#64748b">an AI judge scores each sample against the</text>
+  <text x="740" y="182" text-anchor="middle" font-size="10" fill="#64748b">principles; pairs feed DPO or a reward model</text>
+
+  <!-- arrows from constitution -->
+  <path d="M240 130 L268 130" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrp)"/>
+  <path d="M130 206 L130 240 L740 240 L740 208" fill="none" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arrp)"/>
+  <text x="435" y="235" text-anchor="middle" font-size="10" fill="#7c3aed">the same document drives both stages</text>
+
+  <!-- the loop at the bottom -->
+  <g font-size="12" text-anchor="middle">
+    <rect x="40" y="290" width="150" height="50" rx="8" fill="#64748b" fill-opacity="0.12" stroke="#64748b"/>
+    <text x="115" y="311" fill="#0f172a">SFT policy π_0</text>
+    <text x="115" y="328" fill="#64748b" font-size="10">helpful, sloppy</text>
+
+    <rect x="240" y="290" width="150" height="50" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+    <text x="315" y="311" fill="#0f172a">sample K answers</text>
+    <text x="315" y="328" fill="#64748b" font-size="10">per prompt, T = 1</text>
+
+    <rect x="440" y="290" width="150" height="50" rx="8" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed"/>
+    <text x="515" y="311" fill="#0f172a">judge vs principles</text>
+    <text x="515" y="328" fill="#64748b" font-size="10">score ∈ [0, 1] each</text>
+
+    <rect x="640" y="290" width="150" height="50" rx="8" fill="#f59e0b" fill-opacity="0.15" stroke="#f59e0b"/>
+    <text x="715" y="311" fill="#0f172a">best vs worst → pair</text>
+    <text x="715" y="328" fill="#64748b" font-size="10">skip if all equal</text>
+
+    <rect x="340" y="380" width="220" height="50" rx="8" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/>
+    <text x="450" y="401" fill="#0f172a">DPO against frozen π_ref = π_0</text>
+    <text x="450" y="418" fill="#64748b" font-size="10">β keeps the policy near where it started</text>
+  </g>
+  <path d="M190 315 L238 315" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <path d="M390 315 L438 315" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <path d="M590 315 L638 315" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <path d="M715 340 L715 405 L562 405" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <path d="M340 405 L115 405 L115 342" fill="none" stroke="#16a34a" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#arrg)"/>
+  <text x="225" y="398" text-anchor="middle" font-size="10" fill="#16a34a">π_1: re-sample and repeat (iterated RLAIF)</text>
+
+  <text x="450" y="462" text-anchor="middle" font-size="11" fill="#64748b">Measured on both sides: principle adherence (should rise) and task accuracy (should not fall — the "alignment tax").</text>
+
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#64748b"/></marker>
+    <marker id="arrp" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7c3aed"/></marker>
+    <marker id="arrg" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#16a34a"/></marker>
+  </defs>
+</svg>

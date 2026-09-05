@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600" viewBox="0 0 900 600" font-family="system-ui, sans-serif">
+  <rect width="900" height="600" fill="#ffffff"/>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+  <text x="450" y="28" text-anchor="middle" font-size="17" font-weight="700" fill="#0f172a">The scale-up map: what changes from TinyLM to a frontier run (September 2026)</text>
+  <text x="450" y="46" text-anchor="middle" font-size="12" fill="#64748b">the same pipeline at every column; each row is one thing that stops being simple as you move right</text>
+
+  <!-- column headers -->
+  <line x1="150" y1="70" x2="880" y2="70" stroke="#64748b" stroke-width="1.2" marker-end="url(#arrow)"/>
+  <text x="870" y="63" text-anchor="end" font-size="10" fill="#64748b">parameters · tokens · dollars</text>
+
+  <g font-size="11.5" font-weight="700" fill="#0f172a" text-anchor="middle">
+    <rect x="150" y="78" width="140" height="44" rx="8" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="220" y="96">TinyLM (this course)</text>
+    <text x="220" y="112" font-weight="400" font-size="10" fill="#64748b">2.5M · 1M tokens · $0, CPU</text>
+    <rect x="300" y="78" width="140" height="44" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+    <text x="370" y="96">nanochat</text>
+    <text x="370" y="112" font-weight="400" font-size="10" fill="#64748b">~560M · ~11B tok · $100, 8×H100 4h</text>
+    <rect x="450" y="78" width="140" height="44" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+    <text x="520" y="96">1B</text>
+    <text x="520" y="112" font-weight="400" font-size="10" fill="#64748b">~20–100B tok · $10k · 1 node</text>
+    <rect x="600" y="78" width="140" height="44" rx="8" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+    <text x="670" y="96">10B</text>
+    <text x="670" y="112" font-weight="400" font-size="10" fill="#64748b">~1T tok · $1M · 100s of GPUs</text>
+    <rect x="750" y="78" width="140" height="44" rx="8" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626" stroke-width="1.5"/>
+    <text x="820" y="96">100B+ (MoE, 1T+)</text>
+    <text x="820" y="112" font-weight="400" font-size="10" fill="#64748b">10–30T tok · $10M+ · 1000s</text>
+  </g>
+
+  <!-- rows -->
+  <g font-size="10" fill="#0f172a">
+    <!-- row labels -->
+    <g font-size="11" font-weight="700">
+      <text x="20" y="152">data</text>
+      <text x="20" y="207">tokenizer</text>
+      <text x="20" y="262">optimizer · precision</text>
+      <text x="20" y="317">parallelism</text>
+      <text x="20" y="372">post-training · RL</text>
+      <text x="20" y="427">evals</text>
+      <text x="20" y="482">safety · serving</text>
+    </g>
+    <!-- separators -->
+    <g stroke="#64748b" stroke-width="0.6" stroke-dasharray="3 3">
+      <line x1="20" y1="170" x2="880" y2="170"/><line x1="20" y1="225" x2="880" y2="225"/><line x1="20" y1="280" x2="880" y2="280"/>
+      <line x1="20" y1="335" x2="880" y2="335"/><line x1="20" y1="390" x2="880" y2="390"/><line x1="20" y1="445" x2="880" y2="445"/><line x1="20" y1="500" x2="880" y2="500"/>
+    </g>
+
+    <!-- data -->
+    <text x="155" y="146">synthetic Storyland,</text><text x="155" y="160">10-stage pipeline in RAM</text>
+    <text x="305" y="146">FineWeb-Edu shards,</text><text x="305" y="160">download + shuffle</text>
+    <text x="455" y="146">dedup + classifier over</text><text x="455" y="160">100B tok: a cluster job</text>
+    <text x="605" y="146">multi-source mix, decontam,</text><text x="605" y="160">curriculum, synthetic rephrase</text>
+    <text x="755" y="146">10T+: diversity &gt; filtering,</text><text x="755" y="160">AI-evolved curation pipelines</text>
+
+    <!-- tokenizer -->
+    <text x="155" y="201">byte BPE, 871 ids</text><text x="155" y="215">(saturates!)</text>
+    <text x="305" y="201">own BPE, 65,536 ids</text>
+    <text x="455" y="201">32k–128k, multilingual</text><text x="455" y="215">+ code whitespace</text>
+    <text x="605" y="201">128k–256k, mix designed</text><text x="605" y="215">with the tokenizer</text>
+    <text x="755" y="201">same; byte-level models</text><text x="755" y="215">still research (BLT)</text>
+
+    <!-- optimizer / precision -->
+    <text x="155" y="256">AdamW or Muon, fp32</text>
+    <text x="305" y="256">Muon + AdamW, bf16,</text><text x="305" y="270">FP8 head (speedrun)</text>
+    <text x="455" y="256">Muon mainstream, bf16/FP8,</text><text x="455" y="270">muP for LR transfer</text>
+    <text x="605" y="256">FP8 default, NVFP4/MXFP4</text><text x="605" y="270">emerging; loss-spike care</text>
+    <text x="755" y="256">MoE (1.6T/…B active), MTP,</text><text x="755" y="270">Muon Split, mHC residuals</text>
+
+    <!-- parallelism -->
+    <text x="155" y="311">none (2-process DDP</text><text x="155" y="325">demo in Lab 11)</text>
+    <text x="305" y="311">DDP over 8 GPUs,</text><text x="305" y="325">FlashAttention</text>
+    <text x="455" y="311">FSDP/ZeRO on one node;</text><text x="455" y="325">MFU 40–50 %</text>
+    <text x="605" y="311">TP + PP + DP across</text><text x="605" y="325">nodes; checkpoint restarts</text>
+    <text x="755" y="311">4-D (TP·PP·EP·DP) +</text><text x="755" y="325">context parallel; fault tolerance</text>
+
+    <!-- post-training -->
+    <text x="155" y="366">SFT · DPO · GRPO · OPD</text><text x="155" y="380">on 7 toy tasks, minutes</text>
+    <text x="305" y="366">SFT + a little GRPO</text><text x="305" y="380">on GSM8K</text>
+    <text x="455" y="366">RLVR on math/code;</text><text x="455" y="380">DAPO/Dr.GRPO/GSPO fixes</text>
+    <text x="605" y="366">async rollouts, containerised</text><text x="605" y="380">envs, rubric + judge rewards</text>
+    <text x="755" y="366">agentic RL at scale (verl,</text><text x="755" y="380">SkyRL), OPD from a big teacher</text>
+
+    <!-- evals -->
+    <text x="155" y="421">exact match + ppl,</text><text x="155" y="435">bootstrap CI (Lab 23)</text>
+    <text x="305" y="421">CORE score, ARC, GSM8K,</text><text x="305" y="435">HumanEval, MMLU</text>
+    <text x="455" y="421">+ contamination checks,</text><text x="455" y="435">held-out internal evals</text>
+    <text x="605" y="421">agentic: SWE-bench Verified,</text><text x="605" y="435">Terminal-Bench, tool use</text>
+    <text x="755" y="421">HLE, ARC-AGI-3, BenchJack</text><text x="755" y="435">audits; evals as the product</text>
+
+    <!-- safety / serving -->
+    <text x="155" y="476">a permission gate and</text><text x="155" y="490">a verifier (Lab 27)</text>
+    <text x="305" y="476">a chat UI; no safety</text><text x="305" y="490">training</text>
+    <text x="455" y="476">refusal SFT, red-team set,</text><text x="455" y="490">quantised serving</text>
+    <text x="605" y="476">constitution / model spec,</text><text x="605" y="490">RLAIF, KV-cache paging</text>
+    <text x="755" y="476">agentic-autonomy evals,</text><text x="755" y="490">MCP/A2A threat models, interp audits</text>
+  </g>
+
+  <!-- what stays the same -->
+  <rect x="20" y="515" width="860" height="70" rx="10" fill="#16a34a" fill-opacity="0.08" stroke="#16a34a" stroke-width="1.2"/>
+  <text x="35" y="536" font-size="12" font-weight="700" fill="#0f172a">what does not change</text>
+  <text x="35" y="553" font-size="10.5" fill="#0f172a">the next-token loss · byte BPE · a pre-norm Transformer block with RoPE, GQA and SwiGLU · a KV cache at inference · loss-masked SFT · a KL-anchored preference loss · group-relative advantages · a verifier as the reward</text>
+  <text x="35" y="570" font-size="10.5" fill="#64748b">Every function you ran in Lab 29 has a name in a frontier codebase. What scales is the data volume, the infrastructure around each function, and the number of people whose job is one row of this table.</text>
+</svg>

@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560" viewBox="0 0 900 560" font-family="system-ui, sans-serif">
+  <rect width="900" height="560" fill="#ffffff"/>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrowred" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#dc2626"/>
+    </marker>
+  </defs>
+  <text x="450" y="28" text-anchor="middle" font-size="17" font-weight="700" fill="#0f172a">Five multi-agent patterns — what each agent sees, and how outputs combine</text>
+  <text x="450" y="46" text-anchor="middle" font-size="12" fill="#64748b">every box is an ordinary Agent.run with its own empty context; the arrows are text handed from one context to another</text>
+
+  <!-- ===== 1. orchestrator–workers (fan-out) ===== -->
+  <text x="20" y="80" font-size="13" font-weight="700" fill="#0f172a">1 · orchestrator–workers (parallel fan-out)</text>
+  <text x="20" y="96" font-size="10" fill="#64748b">orchestrate(): split → workers in threads → merge</text>
+  <rect x="20" y="150" width="90" height="44" rx="8" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="65" y="169" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">orchestrator</text>
+  <text x="65" y="184" text-anchor="middle" font-size="9.5" fill="#64748b">split task</text>
+  <rect x="150" y="108" width="90" height="34" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="195" y="129" text-anchor="middle" font-size="11" fill="#0f172a">worker A</text>
+  <rect x="150" y="155" width="90" height="34" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="195" y="176" text-anchor="middle" font-size="11" fill="#0f172a">worker B</text>
+  <rect x="150" y="202" width="90" height="34" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="195" y="223" text-anchor="middle" font-size="11" fill="#0f172a">worker C</text>
+  <rect x="280" y="150" width="90" height="44" rx="8" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="325" y="169" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">orchestrator</text>
+  <text x="325" y="184" text-anchor="middle" font-size="9.5" fill="#64748b">merge reports</text>
+  <line x1="110" y1="165" x2="148" y2="128" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="110" y1="172" x2="148" y2="172" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="110" y1="180" x2="148" y2="216" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="240" y1="128" x2="278" y2="165" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="240" y1="172" x2="278" y2="172" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="240" y1="216" x2="278" y2="180" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <text x="195" y="256" text-anchor="middle" font-size="9.5" fill="#2563eb">each worker sees only its subtask</text>
+  <text x="195" y="270" text-anchor="middle" font-size="9.5" fill="#16a34a">wall-clock ÷ 3 · calls × 2 (lab: 1.96× faster, 1.42× tokens)</text>
+  <text x="195" y="284" text-anchor="middle" font-size="9.5" fill="#dc2626">risk: duplicated work, a bad split</text>
+
+  <!-- ===== 2. pipeline ===== -->
+  <text x="480" y="80" font-size="13" font-weight="700" fill="#0f172a">2 · pipeline (sequential hand-offs)</text>
+  <text x="480" y="96" font-size="10" fill="#64748b">each stage's output is the next stage's whole input</text>
+  <rect x="480" y="150" width="90" height="44" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="525" y="169" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">planner</text>
+  <text x="525" y="184" text-anchor="middle" font-size="9.5" fill="#64748b">plan text</text>
+  <rect x="610" y="150" width="90" height="44" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="655" y="169" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">coder</text>
+  <text x="655" y="184" text-anchor="middle" font-size="9.5" fill="#64748b">diff</text>
+  <rect x="740" y="150" width="90" height="44" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="785" y="169" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">reviewer</text>
+  <text x="785" y="184" text-anchor="middle" font-size="9.5" fill="#64748b">verdict</text>
+  <line x1="570" y1="172" x2="608" y2="172" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="700" y1="172" x2="738" y2="172" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <text x="655" y="220" text-anchor="middle" font-size="9.5" fill="#2563eb">Chapter 27's initializer → coder → verifier is this shape</text>
+  <text x="655" y="234" text-anchor="middle" font-size="9.5" fill="#dc2626">risk: lost context — whatever stage 1 did not write down is gone</text>
+
+  <!-- ===== 3. generator / evaluator ===== -->
+  <text x="20" y="325" font-size="13" font-weight="700" fill="#0f172a">3 · generator / evaluator (a loop)</text>
+  <text x="20" y="341" font-size="10" fill="#64748b">generator_evaluator_loop(): propose → judge → revise until ACCEPT</text>
+  <rect x="20" y="380" width="110" height="50" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="75" y="401" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">generator</text>
+  <text x="75" y="417" text-anchor="middle" font-size="9.5" fill="#64748b">task + last critique</text>
+  <rect x="220" y="380" width="110" height="50" rx="8" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="275" y="401" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">evaluator</text>
+  <text x="275" y="417" text-anchor="middle" font-size="9.5" fill="#64748b">task + candidate only</text>
+  <line x1="130" y1="395" x2="218" y2="395" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <text x="174" y="390" text-anchor="middle" font-size="9.5" fill="#64748b">candidate</text>
+  <line x1="220" y1="418" x2="132" y2="418" stroke="#dc2626" stroke-width="1.4" marker-end="url(#arrowred)"/>
+  <text x="174" y="432" text-anchor="middle" font-size="9.5" fill="#dc2626">critique (or ACCEPT → stop)</text>
+  <rect x="220" y="450" width="110" height="40" rx="8" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="275" y="467" text-anchor="middle" font-size="10.5" font-weight="700" fill="#0f172a">accept_fn</text>
+  <text x="275" y="482" text-anchor="middle" font-size="9.5" fill="#16a34a">a program (tests) as judge</text>
+  <text x="175" y="515" text-anchor="middle" font-size="9.5" fill="#2563eb">the evaluator never sees the generator's reasoning: fresh eyes</text>
+  <text x="175" y="529" text-anchor="middle" font-size="9.5" fill="#dc2626">risk: a sycophantic evaluator accepts round 1 (lab: the wrong median)</text>
+
+  <!-- ===== 4. debate ===== -->
+  <text x="380" y="325" font-size="13" font-weight="700" fill="#0f172a">4 · debate</text>
+  <text x="380" y="341" font-size="10" fill="#64748b">debate(): answer, then see the others' answers, then revise</text>
+  <rect x="380" y="370" width="70" height="34" rx="8" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="415" y="391" text-anchor="middle" font-size="11" fill="#0f172a">agent 0</text>
+  <rect x="380" y="415" width="70" height="34" rx="8" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="415" y="436" text-anchor="middle" font-size="11" fill="#0f172a">agent 1</text>
+  <rect x="380" y="460" width="70" height="34" rx="8" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="415" y="481" text-anchor="middle" font-size="11" fill="#0f172a">agent 2</text>
+  <text x="490" y="392" font-size="10.5" fill="#dc2626" font-family="ui-monospace, monospace">41</text>
+  <text x="490" y="437" font-size="10.5" fill="#dc2626" font-family="ui-monospace, monospace">41</text>
+  <text x="490" y="482" font-size="10.5" fill="#16a34a" font-family="ui-monospace, monospace">42 ✓</text>
+  <text x="480" y="360" font-size="9.5" fill="#64748b">round 1</text>
+  <line x1="520" y1="432" x2="560" y2="432" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <text x="540" y="425" text-anchor="middle" font-size="9" fill="#64748b">see peers</text>
+  <text x="575" y="360" font-size="9.5" fill="#64748b">round 2</text>
+  <text x="575" y="392" font-size="10.5" fill="#dc2626" font-family="ui-monospace, monospace">41</text>
+  <text x="575" y="437" font-size="10.5" fill="#dc2626" font-family="ui-monospace, monospace">41</text>
+  <text x="575" y="482" font-size="10.5" fill="#dc2626" font-family="ui-monospace, monospace">41  (conformed)</text>
+  <text x="520" y="515" text-anchor="middle" font-size="9.5" fill="#dc2626">majority vote: 41 — unanimous and wrong</text>
+  <text x="520" y="529" text-anchor="middle" font-size="9.5" fill="#16a34a">a verifier over round 1 picks 42</text>
+
+  <!-- ===== 5. shared state / handoff ===== -->
+  <text x="690" y="325" font-size="13" font-weight="700" fill="#0f172a">5 · shared state (hand-off)</text>
+  <text x="690" y="341" font-size="10" fill="#64748b">agents never share a context; they share files</text>
+  <rect x="690" y="370" width="80" height="34" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="730" y="391" text-anchor="middle" font-size="11" fill="#0f172a">agent A</text>
+  <rect x="800" y="370" width="80" height="34" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="840" y="391" text-anchor="middle" font-size="11" fill="#0f172a">agent B</text>
+  <rect x="705" y="440" width="160" height="50" rx="8" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="785" y="460" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">PROGRESS.md · a git branch</text>
+  <text x="785" y="476" text-anchor="middle" font-size="9.5" fill="#64748b">or an A2A task object (2026)</text>
+  <line x1="730" y1="404" x2="745" y2="438" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="825" y1="438" x2="840" y2="404" stroke="#64748b" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <text x="723" y="425" font-size="9" fill="#64748b">writes</text>
+  <text x="835" y="425" font-size="9" fill="#64748b">reads</text>
+  <text x="785" y="515" text-anchor="middle" font-size="9.5" fill="#2563eb">the hand-off is a document, so it can be checked</text>
+  <text x="785" y="529" text-anchor="middle" font-size="9.5" fill="#dc2626">risk: runaway cost — every reader re-reads everything</text>
+
+  <text x="20" y="552" font-size="10.5" fill="#64748b">purple = decides/combines · blue = does work · orange = judges · green = programs and files (ground truth, shared state) · red = a way it fails</text>
+</svg>

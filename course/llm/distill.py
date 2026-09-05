@@ -56,7 +56,7 @@ def kd_logit_loss(student_logits: Tensor, teacher_logits: Tensor, mask: Tensor,
 # ---------------------------------------------------- on-policy distillation
 @dataclass
 class OPDConfig:
-    steps: int = 30
+    steps: int = 40                 # reverse KL falls from ~1.0 to ~0.02 in ~30 steps on the nano model
     group_size: int = 4             # student samples per prompt
     prompts_per_step: int = 4
     max_new_tokens: int = 24

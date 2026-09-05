@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520" font-family="system-ui, sans-serif">
+  <rect width="900" height="520" fill="#ffffff"/>
+  <text x="450" y="28" text-anchor="middle" font-size="17" font-weight="700" fill="#0f172a">The 2026 post-training pipeline: what flows in at each stage</text>
+  <text x="450" y="48" text-anchor="middle" font-size="12" fill="#64748b">top row: the data each stage consumes · middle row: the stages · bottom row: what changes in the model</text>
+
+  <!-- data sources (top row) -->
+  <g font-size="11" fill="#0f172a">
+    <rect x="20" y="70" width="120" height="70" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+    <text x="80" y="90" text-anchor="middle" font-weight="700">demonstrations</text>
+    <text x="80" y="106" text-anchor="middle">human-written,</text>
+    <text x="80" y="120" text-anchor="middle">synthetic, distilled</text>
+    <text x="80" y="134" text-anchor="middle" fill="#64748b">off-policy</text>
+
+    <rect x="160" y="70" width="120" height="70" rx="8" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed"/>
+    <text x="220" y="90" text-anchor="middle" font-weight="700">preference pairs</text>
+    <text x="220" y="106" text-anchor="middle">(prompt, chosen,</text>
+    <text x="220" y="120" text-anchor="middle">rejected) · Ch. 16</text>
+    <text x="220" y="134" text-anchor="middle" fill="#64748b">off-policy (static)</text>
+
+    <rect x="300" y="70" width="120" height="70" rx="8" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/>
+    <text x="360" y="90" text-anchor="middle" font-weight="700">prompts + verifier</text>
+    <text x="360" y="106" text-anchor="middle">math checker, unit</text>
+    <text x="360" y="120" text-anchor="middle">tests, rubric grader</text>
+    <text x="360" y="134" text-anchor="middle" fill="#64748b">on-policy samples</text>
+
+    <rect x="440" y="70" width="120" height="70" rx="8" fill="#0891b2" fill-opacity="0.12" stroke="#0891b2"/>
+    <text x="500" y="90" text-anchor="middle" font-weight="700">prompts + teacher</text>
+    <text x="500" y="106" text-anchor="middle">a stronger model</text>
+    <text x="500" y="120" text-anchor="middle">grades every token</text>
+    <text x="500" y="134" text-anchor="middle" fill="#64748b">on-policy samples</text>
+
+    <rect x="580" y="70" width="120" height="70" rx="8" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/>
+    <text x="640" y="90" text-anchor="middle" font-weight="700">spec + red-team</text>
+    <text x="640" y="106" text-anchor="middle">constitution, refusal</text>
+    <text x="640" y="120" text-anchor="middle">pairs, jailbreaks</text>
+    <text x="640" y="134" text-anchor="middle" fill="#64748b">both</text>
+
+    <rect x="720" y="70" width="160" height="70" rx="8" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b"/>
+    <text x="800" y="90" text-anchor="middle" font-weight="700">held-out benchmarks</text>
+    <text x="800" y="106" text-anchor="middle">SWE-bench Verified,</text>
+    <text x="800" y="120" text-anchor="middle">Terminal-Bench, HLE</text>
+    <text x="800" y="134" text-anchor="middle" fill="#64748b">measurement only</text>
+  </g>
+
+  <!-- arrows down from data to stages -->
+  <g stroke="#64748b" stroke-width="1.5" fill="none" marker-end="url(#arr)">
+    <line x1="80" y1="140" x2="80" y2="196"/>
+    <line x1="220" y1="140" x2="220" y2="196"/>
+    <line x1="360" y1="140" x2="360" y2="196"/>
+    <line x1="500" y1="140" x2="500" y2="196"/>
+    <line x1="640" y1="140" x2="640" y2="196"/>
+    <line x1="800" y1="140" x2="800" y2="196"/>
+  </g>
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#64748b"/></marker>
+    <marker id="arrb" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#0f172a"/></marker>
+  </defs>
+
+  <!-- stages (middle row) -->
+  <g font-size="12" fill="#0f172a">
+    <rect x="20" y="200" width="120" height="64" rx="10" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="2"/>
+    <text x="80" y="224" text-anchor="middle" font-weight="700">SFT</text>
+    <text x="80" y="242" text-anchor="middle" font-size="10">masked next-token CE</text>
+    <text x="80" y="256" text-anchor="middle" font-size="11" fill="#64748b">Chapter 15</text>
+
+    <rect x="160" y="200" width="120" height="64" rx="10" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="2"/>
+    <text x="220" y="224" text-anchor="middle" font-weight="700">RM + PPO / DPO</text>
+    <text x="220" y="242" text-anchor="middle" font-size="10">Bradley–Terry / DPO</text>
+    <text x="220" y="256" text-anchor="middle" font-size="11" fill="#64748b">Chapters 17–18</text>
+
+    <rect x="300" y="200" width="120" height="64" rx="10" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="2"/>
+    <text x="360" y="224" text-anchor="middle" font-weight="700">RLVR (GRPO)</text>
+    <text x="360" y="242" text-anchor="middle" font-size="10">group-relative adv.</text>
+    <text x="360" y="256" text-anchor="middle" font-size="11" fill="#64748b">Chapter 19</text>
+
+    <rect x="440" y="200" width="120" height="64" rx="10" fill="#0891b2" fill-opacity="0.12" stroke="#0891b2" stroke-width="2"/>
+    <text x="500" y="224" text-anchor="middle" font-weight="700">on-policy distill.</text>
+    <text x="500" y="242" text-anchor="middle" font-size="10">per-token reverse KL</text>
+    <text x="500" y="256" text-anchor="middle" font-size="11" fill="#64748b">Chapter 20</text>
+
+    <rect x="580" y="200" width="120" height="64" rx="10" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626" stroke-width="2"/>
+    <text x="640" y="224" text-anchor="middle" font-weight="700">safety</text>
+    <text x="640" y="242" text-anchor="middle" font-size="10">same losses, new data</text>
+    <text x="640" y="256" text-anchor="middle" font-size="11" fill="#64748b">Chapter 22</text>
+
+    <rect x="720" y="200" width="160" height="64" rx="10" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="2"/>
+    <text x="800" y="224" text-anchor="middle" font-weight="700">evals → release</text>
+    <text x="800" y="242" text-anchor="middle" font-size="11">no loss: decide if it ships</text>
+    <text x="800" y="256" text-anchor="middle" font-size="11" fill="#64748b">Chapter 23</text>
+  </g>
+  <!-- horizontal arrows between stages -->
+  <g stroke="#0f172a" stroke-width="2" fill="none" marker-end="url(#arrb)">
+    <line x1="140" y1="232" x2="158" y2="232"/>
+    <line x1="280" y1="232" x2="298" y2="232"/>
+    <line x1="420" y1="232" x2="438" y2="232"/>
+    <line x1="560" y1="232" x2="578" y2="232"/>
+    <line x1="700" y1="232" x2="718" y2="232"/>
+  </g>
+  <!-- base model entering -->
+  <rect x="20" y="152" width="0" height="0"/>
+  <text x="14" y="188" font-size="11" fill="#64748b">base checkpoint (Ch. 13) enters here ↓</text>
+
+  <!-- what changes (bottom row) -->
+  <g font-size="11" fill="#0f172a">
+    <text x="80" y="292" text-anchor="middle" font-weight="700">learns the format</text>
+    <text x="80" y="307" text-anchor="middle">chat template, turn</text>
+    <text x="80" y="321" text-anchor="middle">structure, answer style</text>
+    <text x="80" y="335" text-anchor="middle" fill="#64748b">base → instruct</text>
+
+    <text x="220" y="292" text-anchor="middle" font-weight="700">learns taste</text>
+    <text x="220" y="307" text-anchor="middle">helpfulness, tone,</text>
+    <text x="220" y="321" text-anchor="middle">when to refuse</text>
+    <text x="220" y="335" text-anchor="middle" fill="#64748b">instruct</text>
+
+    <text x="360" y="292" text-anchor="middle" font-weight="700">learns to be right</text>
+    <text x="360" y="307" text-anchor="middle">long chains of thought</text>
+    <text x="360" y="321" text-anchor="middle">self-checking</text>
+    <text x="360" y="335" text-anchor="middle" fill="#64748b">instruct → reasoning</text>
+
+    <text x="500" y="292" text-anchor="middle" font-weight="700">recovers / shrinks</text>
+    <text x="500" y="307" text-anchor="middle">teacher grades tokens;</text>
+    <text x="500" y="321" text-anchor="middle">cheaper than RL</text>
+    <text x="500" y="335" text-anchor="middle" fill="#64748b">reasoning (smaller)</text>
+
+    <text x="640" y="292" text-anchor="middle" font-weight="700">learns limits</text>
+    <text x="640" y="307" text-anchor="middle">decline the harmful part</text>
+    <text x="640" y="321" text-anchor="middle">stay helpful otherwise</text>
+    <text x="640" y="335" text-anchor="middle" fill="#64748b">interleaved, not last</text>
+
+    <text x="800" y="292" text-anchor="middle" font-weight="700">nothing changes</text>
+    <text x="800" y="307" text-anchor="middle">failures become the</text>
+    <text x="800" y="321" text-anchor="middle">next round's data</text>
+    <text x="800" y="335" text-anchor="middle" fill="#64748b">agentic evals too</text>
+  </g>
+
+  <!-- feedback loop -->
+  <path d="M 800 350 L 800 372 L 80 372 L 80 350" stroke="#f59e0b" stroke-width="1.5" fill="none" stroke-dasharray="5,4" marker-end="url(#arr)"/>
+  <text x="440" y="386" text-anchor="middle" font-size="10" fill="#64748b">feedback: eval failures and red-team findings become new SFT / preference / RL data; the released model becomes the next teacher and labeler</text>
+
+  <!-- legend -->
+  <g font-size="11">
+    <rect x="20" y="410" width="860" height="94" rx="8" fill="#64748b" fill-opacity="0.06" stroke="#64748b" stroke-opacity="0.4"/>
+    <text x="34" y="430" font-weight="700" fill="#0f172a">Off-policy vs on-policy.</text>
+    <text x="34" y="447" fill="#0f172a">Off-policy stages (SFT, DPO on a fixed set) train on text someone else wrote: cheap, stable, and the model only imitates.</text>
+    <text x="34" y="463" fill="#0f172a">On-policy stages (RLVR, on-policy distillation) train on the model's own samples: the model learns from its own mistakes but needs a policy</text>
+    <text x="34" y="479" fill="#0f172a">that already sometimes succeeds (a GRPO group where every sample scores 0 gives no gradient). That is why off-policy stages come first.</text>
+    <text x="34" y="496" fill="#64748b" font-size="10">Sequencing follows public 2025–26 reports (DeepSeek-R1, Qwen3, Kimi K2); labs differ in details and repeat the loop several times per release.</text>
+  </g>
+</svg>

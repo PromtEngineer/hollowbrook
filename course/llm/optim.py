@@ -105,8 +105,9 @@ def build_optimizer(model: torch.nn.Module, kind: str = "adamw", lr: float = 3e-
                     weight_decay: float = 0.1, betas=(0.9, 0.95), muon_lr: float = 0.02):
     """Create an optimizer (or a list of two, for Muon + AdamW)."""
     if kind == "adamw":
-        decay = [p for n, p in model.named_parameters() if p.ndim >= 2]
-        no_decay = [p for n, p in model.named_parameters() if p.ndim < 2]
+        params = [p for p in model.parameters() if p.requires_grad]    # skip frozen weights (LoRA)
+        decay = [p for p in params if p.ndim >= 2]
+        no_decay = [p for p in params if p.ndim < 2]
         return [torch.optim.AdamW([
             {"params": decay, "weight_decay": weight_decay},
             {"params": no_decay, "weight_decay": 0.0},

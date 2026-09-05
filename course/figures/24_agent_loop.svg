@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520" font-family="system-ui, sans-serif">
+  <rect width="900" height="520" fill="#ffffff"/>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#64748b"/></marker>
+    <marker id="arrb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2563eb"/></marker>
+    <marker id="arrg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#16a34a"/></marker>
+  </defs>
+  <text x="450" y="26" text-anchor="middle" font-size="17" font-weight="600" fill="#0f172a">The agent loop: Agent.run in llm/agent/harness.py, one turn = think → act → observe</text>
+
+  <!-- context / messages column -->
+  <rect x="20" y="50" width="200" height="440" rx="10" fill="#64748b" fill-opacity="0.12" stroke="#64748b"/>
+  <text x="120" y="72" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">t.messages (the context)</text>
+  <rect x="34" y="84" width="172" height="26" rx="5" fill="#ffffff" stroke="#94a3b8"/><text x="40" y="101" font-size="11" fill="#0f172a">user: the task</text>
+  <rect x="34" y="116" width="172" height="26" rx="5" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/><text x="40" y="133" font-size="11" fill="#0f172a">assistant + tool_calls[…]</text>
+  <rect x="34" y="148" width="172" height="26" rx="5" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/><text x="40" y="165" font-size="11" fill="#0f172a">tool_result (id → text)</text>
+  <rect x="34" y="180" width="172" height="26" rx="5" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/><text x="40" y="197" font-size="11" fill="#0f172a">assistant + tool_calls[…]</text>
+  <rect x="34" y="212" width="172" height="26" rx="5" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/><text x="40" y="229" font-size="11" fill="#0f172a">tool_result ("Error: …")</text>
+  <rect x="34" y="244" width="172" height="26" rx="5" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/><text x="40" y="261" font-size="11" fill="#0f172a">assistant (no tool calls)</text>
+  <text x="120" y="292" text-anchor="middle" font-size="11" fill="#64748b">grows every turn;</text>
+  <text x="120" y="306" text-anchor="middle" font-size="11" fill="#64748b">compact() shrinks it (Ch. 25)</text>
+  <line x1="34" y1="322" x2="206" y2="322" stroke="#94a3b8" stroke-dasharray="4 3"/>
+  <text x="120" y="342" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">fixed every call</text>
+  <rect x="34" y="352" width="172" height="26" rx="5" fill="#ffffff" stroke="#94a3b8"/><text x="40" y="369" font-size="11" fill="#0f172a">system prompt (+ memory)</text>
+  <rect x="34" y="384" width="172" height="26" rx="5" fill="#ffffff" stroke="#94a3b8"/><text x="40" y="401" font-size="11" fill="#0f172a">tool schemas (JSON Schema)</text>
+  <text x="120" y="438" text-anchor="middle" font-size="11" fill="#64748b">ContextBudget counts</text>
+  <text x="120" y="452" text-anchor="middle" font-size="11" fill="#64748b">all of this (~chars/4)</text>
+
+  <!-- THINK -->
+  <rect x="290" y="60" width="300" height="86" rx="10" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="440" y="84" text-anchor="middle" font-size="15" font-weight="700" fill="#2563eb">THINK</text>
+  <text x="440" y="104" text-anchor="middle" font-size="12" fill="#0f172a">reply = backend.complete(messages, schemas, system)</text>
+  <text x="440" y="122" text-anchor="middle" font-size="11" fill="#64748b">→ AssistantMessage(text, tool_calls[ToolCall(name, arguments, id)])</text>
+  <text x="440" y="138" text-anchor="middle" font-size="11" fill="#64748b">exception here → stop_reason = "error"</text>
+
+  <!-- backends -->
+  <rect x="640" y="52" width="240" height="100" rx="10" fill="#7c3aed" fill-opacity="0.10" stroke="#7c3aed"/>
+  <text x="760" y="72" text-anchor="middle" font-size="12" font-weight="600" fill="#7c3aed">any object with .complete()</text>
+  <text x="652" y="92" font-size="11" fill="#0f172a">• ScriptedBackend — replays a list (tests, labs)</text>
+  <text x="652" y="110" font-size="11" fill="#0f172a">• TinyLMBackend — chat template, &lt;|tool_call|&gt;</text>
+  <text x="652" y="128" font-size="11" fill="#0f172a">• AnthropicBackend — tool_use content blocks</text>
+  <text x="652" y="144" font-size="10" fill="#64748b">same loop, different wire format</text>
+  <line x1="640" y1="102" x2="592" y2="102" stroke="#7c3aed" marker-end="url(#arr)"/>
+
+  <!-- stop decision -->
+  <path d="M440 146 L440 176" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <polygon points="440,178 540,213 440,248 340,213" fill="#f59e0b" fill-opacity="0.15" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="440" y="209" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">any tool_calls?</text>
+  <text x="440" y="226" text-anchor="middle" font-size="10" fill="#64748b">(the stop condition)</text>
+  <path d="M540 213 L640 213" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arrg)"/>
+  <text x="590" y="205" text-anchor="middle" font-size="11" fill="#16a34a">no</text>
+  <rect x="642" y="190" width="238" height="48" rx="10" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/>
+  <text x="761" y="210" text-anchor="middle" font-size="12" font-weight="600" fill="#16a34a">STOP: stop_reason = "done"</text>
+  <text x="761" y="228" text-anchor="middle" font-size="11" fill="#0f172a">final_text = reply.text (a claim, not a proof)</text>
+
+  <!-- ACT -->
+  <path d="M440 248 L440 276" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="458" y="268" font-size="11" fill="#dc2626">yes: for each call</text>
+  <rect x="290" y="278" width="300" height="130" rx="10" fill="#dc2626" fill-opacity="0.08" stroke="#dc2626" stroke-width="1.5"/>
+  <text x="440" y="300" text-anchor="middle" font-size="15" font-weight="700" fill="#dc2626">ACT  —  Agent._execute(call)</text>
+  <text x="304" y="322" font-size="11" fill="#0f172a">1. pre_tool hooks      → may block ("Blocked by hook: …")</text>
+  <text x="304" y="340" font-size="11" fill="#0f172a">2. permission gate     → may deny ("Permission denied: …")</text>
+  <text x="304" y="358" font-size="11" fill="#0f172a">3. registry.call()     → text, never raises ("Error calling …")</text>
+  <text x="304" y="376" font-size="11" fill="#0f172a">4. truncate_tool_result → head + tail, ≤ 2000 chars</text>
+  <text x="304" y="394" font-size="11" fill="#0f172a">5. post_tool hooks     → may rewrite (redact, annotate)</text>
+
+  <!-- OBSERVE -->
+  <path d="M440 408 L440 436" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <rect x="290" y="438" width="300" height="50" rx="10" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="440" y="458" text-anchor="middle" font-size="15" font-weight="700" fill="#16a34a">OBSERVE</text>
+  <text x="440" y="476" text-anchor="middle" font-size="11" fill="#0f172a">messages.append({role: "tool_result", tool_call_id, content: text})</text>
+
+  <!-- loop back -->
+  <path d="M290 463 L250 463 L250 100 L288 100" fill="none" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrb)"/>
+  <text x="262" y="290" font-size="10" fill="#2563eb" transform="rotate(-90 262 290)">next turn (until max_turns)</text>
+
+  <!-- housekeeping + events -->
+  <rect x="640" y="278" width="240" height="90" rx="10" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b"/>
+  <text x="760" y="298" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">housekeeping (end of turn)</text>
+  <text x="652" y="318" font-size="11" fill="#0f172a">if budget.needs_compaction(messages):</text>
+  <text x="652" y="334" font-size="11" fill="#0f172a">    messages = compact(messages, keep_last)</text>
+  <text x="652" y="352" font-size="11" fill="#64748b">turn == max_turns → stop_reason "max_turns"</text>
+  <rect x="640" y="390" width="240" height="98" rx="10" fill="#64748b" fill-opacity="0.12" stroke="#64748b"/>
+  <text x="760" y="410" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">Transcript.events (observability)</text>
+  <text x="652" y="430" font-size="11" fill="#0f172a">assistant · tool_call · hook · permission_denied</text>
+  <text x="652" y="446" font-size="11" fill="#0f172a">tool_result · compaction · done · max_turns · error</text>
+  <text x="652" y="464" font-size="11" fill="#64748b">every _emit() also calls hooks.on_event</text>
+  <text x="652" y="480" font-size="11" fill="#64748b">(what interactive/24_agent_loop_tracer.html shows)</text>
+  <line x1="590" y1="343" x2="640" y2="323" stroke="#94a3b8" stroke-dasharray="3 3"/>
+  <line x1="590" y1="463" x2="640" y2="440" stroke="#94a3b8" stroke-dasharray="3 3"/>
+</svg>

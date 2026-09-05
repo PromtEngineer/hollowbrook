@@ -24,7 +24,7 @@ from llm.pipeline import get_tokenizer, get_tokens, get_base_model
 
 args = setup("Lab 12: dense vs MoE, MTP, sliding windows, KV-cache sizes")
 
-STEPS = 120 if args.quick else 400
+STEPS = 120 if args.quick else 250
 B = 16 if args.quick else 32
 T = 64 if args.quick else 128
 MOE = dict(use_moe=True, n_experts=4, n_experts_active=1, n_shared_experts=1)

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="470" viewBox="0 0 900 470" font-family="system-ui, sans-serif">
+  <rect width="900" height="470" fill="#ffffff"/>
+  <text x="450" y="26" text-anchor="middle" font-size="17" font-weight="600" fill="#0f172a">The evaluation pyramid: cheaper and more reliable at the bottom, closer to what you care about at the top</text>
+
+  <!-- pyramid layers (trapezoids), widest at the bottom -->
+  <polygon points="80,400 820,400 760,330 140,330" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+  <polygon points="140,325 760,325 690,255 210,255" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/>
+  <polygon points="210,250 690,250 610,180 290,180" fill="#f59e0b" fill-opacity="0.15" stroke="#f59e0b"/>
+  <polygon points="290,175 610,175 520,105 380,105" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed"/>
+
+  <!-- layer labels -->
+  <g text-anchor="middle">
+    <text x="450" y="355" font-size="14" font-weight="600" fill="#2563eb">1. perplexity on held-out text</text>
+    <text x="450" y="374" font-size="11" fill="#0f172a">every token scores · no generation · exact · comparable only within one tokenizer</text>
+    <text x="450" y="390" font-size="10" fill="#64748b">llm.evals.perplexity — a training signal, not a capability measure</text>
+
+    <text x="450" y="280" font-size="14" font-weight="600" fill="#16a34a">2. exact-match / unit-test accuracy</text>
+    <text x="450" y="299" font-size="11" fill="#0f172a">one generation per item · a program grades it · needs a verifiable answer</text>
+    <text x="450" y="315" font-size="10" fill="#64748b">llm.evals.eval_tasks + bootstrap_ci — the RLVR reward, reused as a metric</text>
+
+    <text x="450" y="205" font-size="14" font-weight="600" fill="#b45309">3. LLM-as-judge</text>
+    <text x="450" y="224" font-size="11" fill="#0f172a">works for open-ended answers · inherits the judge's biases (position, length, self-preference)</text>
+    <text x="450" y="240" font-size="10" fill="#64748b">llm.evals.judge_pairwise + position_bias_check</text>
+
+    <text x="450" y="130" font-size="14" font-weight="600" fill="#7c3aed">4. agentic evals</text>
+    <text x="450" y="149" font-size="11" fill="#0f172a">whole trajectories in a sandbox · slow, expensive, high variance</text>
+    <text x="450" y="165" font-size="10" fill="#64748b">SWE-bench Verified, Terminal-Bench, Lab 21's CalculatorEnv</text>
+  </g>
+
+  <!-- side axes -->
+  <path d="M40 400 L40 110" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="40" y="95" text-anchor="middle" font-size="10" fill="#64748b">closer to the</text>
+  <text x="40" y="107" text-anchor="middle" font-size="10" fill="#64748b" transform="translate(0,-2)"> </text>
+  <text x="14" y="255" font-size="10" fill="#64748b" transform="rotate(-90 14 255)">cost per item · variance · gaming risk</text>
+
+  <path d="M860 110 L860 400" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="886" y="255" font-size="10" fill="#64748b" transform="rotate(90 886 255)">items you can afford · reliability of the number</text>
+
+  <!-- annotations -->
+  <rect x="20" y="418" width="860" height="40" rx="6" fill="#dc2626" fill-opacity="0.08" stroke="#dc2626"/>
+  <text x="450" y="435" text-anchor="middle" font-size="11" fill="#dc2626" font-weight="600">Three things that break any layer: contamination (the eval leaked into training), too few items (the CI is wider than the gap), and a metric that can be gamed.</text>
+  <text x="450" y="451" text-anchor="middle" font-size="10" fill="#0f172a">contamination_check · bootstrap_ci · BenchJack-style audits (2026)</text>
+
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#64748b"/></marker>
+  </defs>
+</svg>

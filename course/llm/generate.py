@@ -77,6 +77,7 @@ def generate_ids(model: TinyLM, idx: Tensor, max_new_tokens: int, temperature: f
     Rows that emit a stop token are frozen (padded with ``pad_id``, or the stop token
     itself) while the rest of the batch continues. Returns (B, T0 + n_generated).
     """
+    was_training = model.training
     model.eval()
     gen = torch.Generator(device=idx.device).manual_seed(seed) if seed is not None else None
     B = idx.shape[0]
@@ -102,6 +103,8 @@ def generate_ids(model: TinyLM, idx: Tensor, max_new_tokens: int, temperature: f
             finished |= torch.isin(nxt, stop)
             if bool(finished.all()):
                 break
+    if was_training:
+        model.train()
     return idx
 
 
@@ -109,10 +112,15 @@ def generate(model: TinyLM, tok: BPETokenizer, prompt: str, max_new_tokens: int 
              temperature: float = 1.0, top_k: Optional[int] = None, top_p: Optional[float] = None,
              min_p: Optional[float] = None, repetition_penalty: float = 1.0,
              stop: Sequence[str] = ("<|eos|>", "<|end|>"), use_cache: bool = True,
-             seed: Optional[int] = None, strip_prompt: bool = True) -> str:
-    """String prompt -> string completion."""
+             seed: Optional[int] = None, strip_prompt: bool = True,
+             prompt_ids: Optional[Sequence[int]] = None) -> str:
+    """String prompt -> string completion.
+
+    Pass ``prompt_ids`` (e.g. from ``chat.encode_chat``) to bypass text encoding; chat
+    code does this so user text can never smuggle in special tokens.
+    """
     device = next(model.parameters()).device
-    ids = torch.tensor([tok.encode(prompt)], device=device)
+    ids = torch.tensor([list(prompt_ids) if prompt_ids is not None else tok.encode(prompt)], device=device)
     stop_ids = [tok.special_tokens[s] for s in stop if s in tok.special_tokens]
     out = generate_ids(model, ids, max_new_tokens, temperature, top_k, top_p, min_p,
                        repetition_penalty, stop_ids=stop_ids, use_cache=use_cache, seed=seed)

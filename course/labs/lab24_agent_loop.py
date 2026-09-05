@@ -1,0 +1,300 @@
+"""Lab 24: the agent loop, with a scripted model, a tiny real model, and an API dialect.
+
+(1) A two-tool task (calculator + write_file) driven by a ScriptedBackend: the transcript,
+    the event list, and what the model saw on each call. Then every other way a run can end:
+    an unknown tool, max_turns, a backend exception, and two tool calls in one turn.
+(2) The permission gate: allow_read_only denies write_file and the (scripted) model adapts;
+    the "ask" policy defers to a permission function.
+(3) Hooks: a pre_tool hook that blocks a path, a post_tool hook that redacts a secret, and an
+    on_event hook that prints a live trace.
+(4) TinyLMBackend: the base model from Part II (probably) fails to produce a valid tool call;
+    a model fine-tuned on tool traces succeeds. Tool use is trained, not parsed into existence.
+    --full trains that model here (~3-5 min on a laptop CPU) and saves runs/lab24_toolsft_nano.pt.
+(5) AnthropicBackend.to_api_messages: the same conversation in the Messages API format, and
+    how to enable the real backend (no network is used in this lab).
+
+Run:  python3 labs/lab24_agent_loop.py            (quick, ~20 s)
+      python3 labs/lab24_agent_loop.py --full     (adds the tool-call SFT, ~5 min)
+"""
+from _common import setup, check, banner, section, savefig, done, plt
+
+import glob
+import json
+import os
+import shutil
+import tempfile
+import time
+from types import SimpleNamespace
+
+from llm.agent import (Agent, AgentConfig, AnthropicBackend, AssistantMessage, Hooks, ScriptedBackend, Tool,
+                       ToolCall, ToolRegistry, make_builtin_tools)
+from llm.agent.context import estimate_tokens
+from llm.chat import parse_tool_call
+from llm.pipeline import run_path
+
+args = setup("Lab 24: the agent loop")
+BOX = tempfile.mkdtemp(prefix="lab24_")
+tools = make_builtin_tools(BOX)
+TASK = "Compute (17 + 25) * 3 and save the result to result.txt."
+
+
+def call(name, **arguments):
+    """One scripted assistant turn that calls one tool."""
+    return {"text": "", "tool_calls": [{"name": name, "arguments": arguments}]}
+
+
+# =============================================================== (1) the loop
+section("(1) a two-tool task: think -> act -> observe, twice, then a final answer")
+print(f"   {len(tools)} tools: {tools.names()}; their schemas cost ~{estimate_tokens(json.dumps(tools.schemas()))} tokens per call")
+script = [
+    {"text": "I'll compute the expression first.",
+     "tool_calls": [{"id": "call_1", "name": "calculator", "arguments": {"expression": "(17 + 25) * 3"}}]},
+    {"text": "126. Now I'll save it.",
+     "tool_calls": [{"id": "call_2", "name": "write_file", "arguments": {"path": "result.txt", "content": "126\n"}}]},
+    "Done: (17 + 25) * 3 = 126, saved to result.txt.",
+]
+backend = ScriptedBackend(script)
+t = Agent(backend, tools, AgentConfig(permission_policy="allow_all")).run(TASK)
+print("\n" + t.pretty() + "\n")
+print("   events:")
+for e in t.events:
+    print("   ", e)
+print(f"\n   stop_reason={t.stop_reason!r} turns={t.turns} tool_calls_made={t.tool_calls_made}")
+check(t.stop_reason == "done" and t.turns == 3 and t.tool_calls_made == 2, "3 turns, 2 tool calls, stopped because the last reply had no tool calls")
+check(open(os.path.join(BOX, "result.txt")).read() == "126\n", "result.txt contains 126")
+check([e.kind for e in t.events] == ["assistant", "tool_call", "tool_result"] * 2 + ["assistant", "done"], "event kinds: (assistant, tool_call, tool_result) x2, assistant, done")
+check(t.messages[2] == {"role": "tool_result", "tool_call_id": "call_1", "content": "126"}, "the tool result is paired with call_1 and its content is the calculator's text")
+print("   what the model saw on each call (roles):")
+for i, c in enumerate(backend.calls):
+    print(f"      call {i}: {[m['role'] for m in c['messages']]}  ~{estimate_tokens(c['system']) + estimate_tokens(json.dumps(c['tools'])) + sum(estimate_tokens(json.dumps(m)) for m in c['messages'])} tokens")
+check(backend.calls[1]["messages"][2]["content"] == "126", "the second model call saw the first tool result in its messages")
+
+section("(1b) the other ways a run ends, and errors as observations")
+# an unknown tool name is an observation, not a crash
+b = ScriptedBackend([call("calc", expression="2 ** 10"), call("calculator", expression="2 ** 10"), "1024."])
+t2 = Agent(b, tools, AgentConfig(permission_policy="allow_all")).run("What is 2 ** 10?")
+print("   unknown tool ->", t2.messages[2]["content"][:95])
+check(t2.messages[2]["content"].startswith("Error: unknown tool 'calc'") and t2.final_text == "1024.", "unknown tool: an error text, then the (scripted) model corrected the name and finished")
+# schema validation, no tool run
+print("   bad arguments ->", tools.call("calculator", {"expr": "1"}))
+print("   extra argument ->", tools.call("calculator", {"expression": "1", "expr": "1"}))
+check("missing required argument 'expression'" in tools.call("calculator", {"expr": "1"})
+      and "unknown argument 'expr'" in tools.call("calculator", {"expression": "1", "expr": "1"}),
+      "validation errors name the argument and list the expected ones; no tool code ran")
+# max_turns: a model that never stops calling tools
+t3 = Agent(ScriptedBackend([call("list_dir")] * 10), tools, AgentConfig(permission_policy="allow_all", max_turns=3)).run("loop")
+check(t3.stop_reason == "max_turns" and t3.turns == 3, f"a model that always calls a tool is cut off: stop_reason={t3.stop_reason!r} after {t3.turns} turns")
+
+
+class FlakyBackend:                                  # any object with .complete() is a backend
+    def complete(self, messages, tools, system):
+        raise TimeoutError("upstream API timed out")
+
+
+t4 = Agent(FlakyBackend(), tools, AgentConfig()).run("anything")
+check(t4.stop_reason == "error" and t4.events[-1].kind == "error", f"a backend exception ends the run with stop_reason={t4.stop_reason!r}: {t4.events[-1].data['error']}")
+# two tool calls in one assistant turn -> two tool_result messages, paired by id
+b = ScriptedBackend([{"text": "", "tool_calls": [{"id": "a", "name": "calculator", "arguments": {"expression": "2+2"}},
+                                                  {"id": "b", "name": "calculator", "arguments": {"expression": "3+3"}}]}, "4 and 6."])
+t5 = Agent(b, tools, AgentConfig(permission_policy="allow_all")).run("2+2 and 3+3?")
+check([m["tool_call_id"] for m in t5.messages if m["role"] == "tool_result"] == ["a", "b"] and t5.turns == 2,
+      "two calls in one turn -> two tool_result messages (ids a, b) in one turn")
+# parsing tool calls out of raw model text (the TinyLM dialect)
+raw_ok = '<|tool_call|>{"name": "calculator", "arguments": {"expression": "6*7"}}<|end|>'
+raw_bad = '<|tool_call|>{"name": "calculator", "arguments": {"expression": "6*7"}<|end|>'   # missing brace
+print(f"   parse_tool_call(valid)     -> {parse_tool_call(raw_ok)}")
+print(f"   parse_tool_call(malformed) -> {parse_tool_call(raw_bad)}")
+check(parse_tool_call(raw_ok)["name"] == "calculator" and parse_tool_call(raw_bad) is None, "malformed JSON parses to None: the reply is then treated as a final answer, not a crash")
+
+
+# =============================================================== (2) permissions
+section("(2) the permission gate: allow_read_only denies write_file; the model adapts")
+os.remove(os.path.join(BOX, "result.txt"))
+adaptive = [
+    call("calculator", expression="(17 + 25) * 3"),
+    call("write_file", path="result.txt", content="126\n"),
+    "I computed 126, but I am not allowed to write files under this policy. Please save it yourself or grant write access.",
+]
+b = ScriptedBackend(adaptive)
+t = Agent(b, tools, AgentConfig(permission_policy="allow_read_only")).run(TASK)
+print(t.pretty())
+check(t.messages[4]["content"].startswith("Permission denied: 'write_file'"), "the denial arrived as a tool_result the model can read")
+check(not os.path.exists(os.path.join(BOX, "result.txt")), "result.txt was NOT written")
+check("permission_denied" in [e.kind for e in t.events] and t.stop_reason == "done", "a permission_denied event was emitted and the run still ended cleanly")
+
+print("\n   policy 'ask': the harness asks a permission function (a real UI would prompt the user)")
+
+
+def ask_user(c: ToolCall, tool: Tool) -> bool:
+    decision = tool.read_only or c.arguments.get("path", "").endswith(".txt")
+    print(f"      [permission prompt] {c.name}({json.dumps(c.arguments)[:60]}) read_only={tool.read_only} -> {'allow' if decision else 'deny'}")
+    return decision
+
+
+t = Agent(ScriptedBackend(adaptive), tools, AgentConfig(permission_policy="ask")).run(TASK, permission_fn=ask_user)
+check(os.path.exists(os.path.join(BOX, "result.txt")), "under 'ask', the permission function allowed the .txt write and the file exists")
+t = Agent(ScriptedBackend(adaptive), tools, AgentConfig(permission_policy="ask")).run(TASK)   # no permission_fn at all
+check(t.messages[4]["content"].startswith("Permission denied"), "under 'ask' with no permission function, non-read-only tools are denied (safe default)")
+
+
+# =============================================================== (3) hooks
+section("(3) hooks: pre_tool blocks a path, post_tool redacts a secret, on_event traces")
+os.makedirs(os.path.join(BOX, "secrets"), exist_ok=True)
+with open(os.path.join(BOX, "secrets", ".env"), "w") as f:
+    f.write("API_KEY=sk-live-8f2a9c\nDEBUG=false\n")
+hooks = Hooks()
+hooks.pre_tool.append(lambda c: "secrets/ is read-only for the agent" if c.name == "write_file" and c.arguments.get("path", "").startswith("secrets/") else None)
+import re
+hooks.post_tool.append(lambda c, r: re.sub(r"(API_KEY=)\S+", r"\1[REDACTED]", r) if c.name == "read_file" else None)
+hooks.on_event.append(lambda e: print(f"      trace | turn {e.turn} | {e.kind:<17} | {json.dumps(e.data)[:70]}"))
+b = ScriptedBackend([call("read_file", path="secrets/.env"),
+                     call("write_file", path="secrets/.env", content="API_KEY=stolen\n"),
+                     "I read the config (the key is redacted) and was not allowed to change it."])
+t = Agent(b, tools, AgentConfig(permission_policy="allow_all"), hooks=hooks).run("Read secrets/.env and rotate the key.")
+print("   read result the model saw:", t.messages[2]["content"].replace("\n", " | "))
+print("   write result the model saw:", t.messages[4]["content"])
+check("[REDACTED]" in t.messages[2]["content"] and "sk-live" not in t.messages[2]["content"], "post_tool hook redacted the API key before the model saw it")
+check(t.messages[4]["content"] == "Blocked by hook: secrets/ is read-only for the agent", "pre_tool hook blocked the write even though the policy was allow_all")
+check(open(os.path.join(BOX, "secrets", ".env")).read().startswith("API_KEY=sk-live"), "the file on disk is untouched")
+check(any(e.kind == "hook" for e in t.events), "a 'hook' event recorded the block")
+
+
+# =============================================================== (4) TinyLM backend
+section("(4) a real (tiny) model on the other side: TinyLMBackend")
+import torch                                              # noqa: E402  (deferred: ~8 s import)
+from llm.pipeline import get_base_model                   # noqa: E402
+from llm.agent import TinyLMBackend                       # noqa: E402
+from llm.chat import render                               # noqa: E402
+
+base, tok = get_base_model(quick=True, verbose=False)     # the nano base model (Part II)
+calc_only = tools.subset(["calculator"])
+SYS = "Use the calculator tool, then answer."
+question = "What is 17 + 25?"
+
+# How long is the prompt the library backend would build?  Longer than the window.
+full_prompt = render(TinyLMBackend.to_chat_messages([{"role": "user", "content": question}], calc_only.schemas(), SYS))
+n_full = len(tok.encode(full_prompt))
+print(f"   nano model: {base.num_params():,} params, window {base.cfg.max_seq_len} tokens")
+print(f"   prompt with ONE tool schema pasted in: {n_full} tokens -> does not fit")
+probe = TinyLMBackend(base, tok, max_new_tokens=8).complete([{"role": "user", "content": question}], calc_only.schemas(), SYS)
+check(n_full > base.cfg.max_seq_len and probe.raw == "", "with the schema in the prompt the model returns an EMPTY reply (0 new tokens): a silent failure")
+
+
+class CompactTinyLMBackend(TinyLMBackend):
+    """Work-around for this lab: name the tool in the system prompt instead of pasting
+    the JSON schemas (which overflow TinyLM's 128-token window). See the chapter's note."""
+
+    @staticmethod
+    def to_chat_messages(messages, tools, system):
+        return TinyLMBackend.to_chat_messages(messages, [], system)
+
+
+def try_model(model, label: str, n: int = 4) -> tuple[int, str]:
+    be = CompactTinyLMBackend(model, tok, max_new_tokens=80)      # a full tool call is ~55 Storyland tokens
+    ok = 0
+    for a, b_ in [(3, 4), (60, 31), (88, 9), (45, 54)][:n]:
+        r = be.complete([{"role": "user", "content": f"What is {a} + {b_}?"}], [], SYS)
+        ok += bool(r.tool_calls)
+    r = be.complete([{"role": "user", "content": question}], [], SYS)
+    print(f"   {label}: raw reply to {question!r}: {r.raw[:90]!r}")
+    print(f"   {label}: parsed tool calls: {[c.to_dict() for c in r.tool_calls] or 'NONE'}; valid calls on {n} other prompts: {ok}/{n}")
+    return ok, r.raw
+
+
+t0 = time.perf_counter()
+ok_base, raw_base = try_model(base, "base model")
+t_base = Agent(CompactTinyLMBackend(base, tok, max_new_tokens=80), calc_only,
+               AgentConfig(permission_policy="allow_all", max_turns=3), system_prompt=SYS).run(question)
+print(f"   base model in the loop: stop_reason={t_base.stop_reason!r}, tool calls {t_base.tool_calls_made}, final {t_base.final_text[:60]!r}  ({time.perf_counter() - t0:.1f}s)")
+check(t_base.stop_reason in ("done", "max_turns"), "the loop terminated cleanly whatever the base model produced")
+print(f"   -> a pretrained-only model {'DID' if ok_base else 'did NOT'} emit a valid <|tool_call|>: tool use is a trained behaviour (Chapters 15, 21)")
+
+# A tool-trained model: reuse one from Lab 21 / a previous --full run, or train it now.
+candidates = sorted(glob.glob(run_path("lab21_toolsft*.pt")) + glob.glob(run_path("lab24_toolsft*.pt")))
+sft_model = None
+if candidates:
+    sft_model = base.__class__.load(candidates[-1])
+    print(f"   loaded a tool-trained model: {os.path.relpath(candidates[-1])}")
+elif args.full:
+    from llm.sft import sft_train, SFTConfig             # noqa: E402
+    import random
+
+    class Conv:                                          # duck-types TaskExample.messages() for sft_train
+        def __init__(self, m): self.m = m
+        def messages(self, with_answer=True, system=None): return self.m
+
+    def tool_traces(n, seed):
+        rng, out = random.Random(seed), []
+        for _ in range(n):
+            a, b_ = rng.randint(0, 99), rng.randint(0, 99)
+            out.append(Conv([{"role": "system", "content": SYS},
+                             {"role": "user", "content": f"What is {a} + {b_}?"},
+                             {"role": "tool_call", "content": json.dumps({"name": "calculator", "arguments": {"expression": f"{a} + {b_}"}})},
+                             {"role": "tool_result", "content": str(a + b_)},
+                             {"role": "assistant", "content": f"{a} + {b_} = {a + b_}"}]))
+        return out
+
+    print("   --full: fine-tuning the nano base on 600 tool-call traces (150 steps)...")
+    sft_model, _ = get_base_model(quick=True, verbose=False)         # a fresh copy of the base
+    t0 = time.perf_counter()
+    hist = sft_train(sft_model, tok, tool_traces(600, 1), SFTConfig(steps=150, batch_size=8, lr=1e-3, warmup_steps=10, max_len=128, log_every=50), verbose=True)
+    print(f"   SFT done in {time.perf_counter() - t0:.0f}s: loss {hist.train_loss[0]:.2f} -> {hist.train_loss[-1]:.2f}")
+    sft_model.save(run_path("lab24_toolsft_nano.pt"), extra={"stage": "toolsft"})
+    print(f"   saved runs/lab24_toolsft_nano.pt")
+else:
+    print("   no tool-trained checkpoint found (runs/lab21_toolsft*.pt or runs/lab24_toolsft*.pt); run with --full to train one")
+
+if sft_model is not None:
+    ok_sft, _ = try_model(sft_model, "tool-SFT model")
+    t_sft = Agent(CompactTinyLMBackend(sft_model, tok, max_new_tokens=80), calc_only,
+                  AgentConfig(permission_policy="allow_all", max_turns=3), system_prompt=SYS).run(question)
+    print(t_sft.pretty())
+    check(t_sft.tool_calls_made >= 1 and "42" in t_sft.messages[2]["content"], "the tool-SFT model called calculator and the harness returned 42")
+    check(ok_sft > ok_base, f"valid tool calls on 4 fresh prompts: tool-SFT {ok_sft}/4 vs base {ok_base}/4")
+    check("42" in t_sft.final_text, f"its final answer contains 42: {t_sft.final_text!r}")
+
+
+# =============================================================== (5) the API dialect
+section("(5) AnthropicBackend.to_api_messages: the same conversation, Messages-API shaped")
+convo = [{"role": "user", "content": TASK},
+         {"role": "assistant", "content": "I'll compute the expression first.",
+          "tool_calls": [{"id": "call_1", "name": "calculator", "arguments": {"expression": "(17 + 25) * 3"}}]},
+         {"role": "tool_result", "tool_call_id": "call_1", "content": "126"},
+         {"role": "assistant", "content": "", "tool_calls": [{"id": "call_2", "name": "write_file", "arguments": {"path": "result.txt", "content": "126\n"}},
+                                                             {"id": "call_3", "name": "list_dir", "arguments": {}}]},
+         {"role": "tool_result", "tool_call_id": "call_2", "content": "Wrote 4 chars to result.txt"},
+         {"role": "tool_result", "tool_call_id": "call_3", "content": "result.txt"}]
+api = AnthropicBackend.to_api_messages(convo)
+print(json.dumps(api, indent=1)[:1500])
+check([m["role"] for m in api] == ["user", "assistant", "user", "assistant", "user"], "roles alternate user/assistant: tool results travel inside USER messages")
+check(api[1]["content"][1]["type"] == "tool_use" and api[1]["content"][1]["input"] == {"expression": "(17 + 25) * 3"}, "a tool call is a tool_use content block with `input`")
+check(len(api[4]["content"]) == 2 and all(b["type"] == "tool_result" for b in api[4]["content"]), "two consecutive tool results share one user message (two tool_result blocks)")
+
+# the reverse direction, on a fake response object (what the SDK would return)
+fake = SimpleNamespace(content=[SimpleNamespace(type="text", text="Let me check."),
+                                SimpleNamespace(type="tool_use", id="toolu_01", name="calculator", input={"expression": "1+1"})],
+                       usage=SimpleNamespace(input_tokens=812, output_tokens=37), stop_reason="tool_use")
+msg = AnthropicBackend.from_api_response(fake)
+check(msg.tool_calls[0].id == "toolu_01" and msg.usage == {"input_tokens": 812, "output_tokens": 37}, "from_api_response keeps the provider's tool id and the token usage")
+try:
+    AnthropicBackend()
+except (ImportError, RuntimeError) as e:
+    print(f"   AnthropicBackend() without the package/key -> {type(e).__name__}: {e}")
+    check(True, "the real backend refuses to start without `pip install anthropic` and ANTHROPIC_API_KEY")
+print("   to enable it:  pip install anthropic && export ANTHROPIC_API_KEY=...  then")
+print("                  Agent(AnthropicBackend(model='claude-sonnet-4-5'), tools, AgentConfig(permission_policy='allow_read_only')).run(TASK)")
+
+# ------------------------------------------------------------------ figure: the event timeline of run (1)
+fig, ax = plt().subplots(figsize=(9, 2.6))
+colors = {"assistant": "#2563eb", "tool_call": "#7c3aed", "tool_result": "#16a34a", "done": "#16a34a",
+          "permission_denied": "#dc2626", "hook": "#f59e0b", "error": "#dc2626", "max_turns": "#dc2626", "compaction": "#64748b"}
+evs = Agent(ScriptedBackend(script), make_builtin_tools(BOX), AgentConfig(permission_policy="allow_all")).run(TASK).events
+for i, e in enumerate(evs):
+    ax.scatter(i, e.turn, s=160, color=colors.get(e.kind, "#64748b"), zorder=3)
+    ax.annotate(e.kind, (i, e.turn), textcoords="offset points", xytext=(0, 12), ha="center", fontsize=8, rotation=30)
+ax.set_yticks([1, 2, 3]); ax.set_ylabel("turn"); ax.set_xlabel("event index"); ax.set_ylim(0.5, 4.2)
+ax.set_title("Run (1): Transcript.events — think (blue), act (purple), observe (green)")
+savefig(fig, "lab24_events.png")
+
+shutil.rmtree(BOX, ignore_errors=True)
+done()

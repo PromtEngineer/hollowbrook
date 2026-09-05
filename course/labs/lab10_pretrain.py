@@ -1,7 +1,8 @@
 """Lab 10: the pretraining loop — AdamW vs Muon, schedules, throughput, resume.
 
     python3 labs/lab10_pretrain.py            # --quick (default): nano model, 150 steps each
-    python3 labs/lab10_pretrain.py --full     # small model, 700 steps each (the real run)
+    python3 labs/lab10_pretrain.py --full     # small model, 400 steps each (~10 min on a laptop)
+    python3 labs/lab10_pretrain.py --full --steps 700   # the same budget as runs/base_small.pt
 
 The shared base checkpoint runs/base_small.pt belongs to the other labs; this lab
 writes its own models to runs/lab10_*.pt and never touches it.
@@ -22,7 +23,9 @@ from llm.optim import lr_at
 from llm.pipeline import get_tokenizer, get_tokens, run_path
 from llm.train import TrainConfig, train, estimate_loss, get_batch, load_checkpoint
 
-args = setup("Lab 10: the pretraining loop (AdamW vs Muon)")
+args = setup("Lab 10: the pretraining loop (AdamW vs Muon)",
+             extra=lambda p: p.add_argument("--steps", type=int, default=None,
+                                            help="override the number of steps per optimizer (full default 400; 700 matches base_small.pt)"))
 
 # --------------------------------------------------------------- 1. the data
 section("1. the packed token stream and one batch")
@@ -32,7 +35,9 @@ V = tok.vocab_size
 if args.quick:
     PRESET, STEPS, BS, SL, WARMUP, EVAL_EVERY = "nano", 150, 16, 64, 15, 50
 else:
-    PRESET, STEPS, BS, SL, WARMUP, EVAL_EVERY = "small", 700, 32, 128, 50, 100
+    PRESET, STEPS, BS, SL, WARMUP, EVAL_EVERY = "small", 400, 32, 128, 50, 100
+if args.steps:
+    STEPS = args.steps
 print(f"train {len(train_tokens):,} tokens | val {len(val_tokens):,} tokens | vocab {V}")
 x, y = get_batch(train_tokens, BS, SL, torch.Generator().manual_seed(0))
 print(f"get_batch -> x {tuple(x.shape)}, y {tuple(y.shape)};  y[0,:6] = x[0,1:7]: {torch.equal(y[0, :6], x[0, 1:7])}")

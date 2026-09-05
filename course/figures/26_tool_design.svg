@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="500" viewBox="0 0 900 500" font-family="system-ui, sans-serif">
+  <rect width="900" height="500" fill="#ffffff"/>
+  <text x="450" y="26" text-anchor="middle" font-size="17" font-weight="600" fill="#0f172a">Anatomy of a tool the model can use well — and the same job done badly</text>
+
+  <!-- good tool -->
+  <rect x="20" y="46" width="540" height="330" rx="10" fill="#16a34a" fill-opacity="0.08" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="290" y="68" text-anchor="middle" font-size="13" font-weight="600" fill="#16a34a">Tool(...) as the model sees it (schema) and as the harness runs it (fn, read_only)</text>
+  <g font-family="ui-monospace, monospace" font-size="11.5" fill="#0f172a">
+    <text x="34" y="96">name        = "convert_temperature"</text>
+    <text x="34" y="118">description = "Convert a temperature between Celsius and Fahrenheit.</text>
+    <text x="34" y="134">               Returns e.g. '68.0 F'. Use this instead of computing the formula yourself."</text>
+    <text x="34" y="160">parameters  = {"type": "object",</text>
+    <text x="34" y="176">   "properties": {</text>
+    <text x="34" y="192">      "value":     {"type": "number", "description": "The temperature to convert, e.g. 20"},</text>
+    <text x="34" y="208">      "from_unit": {"type": "string", "description": "'C' or 'F': the unit of `value`"}},</text>
+    <text x="34" y="224">   "required": ["value", "from_unit"]}</text>
+    <text x="34" y="250">fn(value, from_unit) -> "68.0 F"</text>
+    <text x="34" y="266">              or -> "Error: from_unit must be 'C' or 'F' (got 'K'). Example: value=20, from_unit='C'."</text>
+    <text x="34" y="292">read_only   = True</text>
+  </g>
+  <!-- callouts -->
+  <g font-size="10.5" fill="#16a34a">
+    <text x="300" y="96">← verb_noun, unambiguous, searchable</text>
+    <text x="300" y="150">← says what it returns and WHEN to use it</text>
+    <text x="330" y="240">← every argument typed, described, with an example</text>
+    <text x="34" y="316">error = what went wrong + what to do instead + a valid example; the model reads it and retries (errors are observations)</text>
+    <text x="34" y="336">read_only lets the permission gate say "allow anything that only reads"; idempotent tools are safe to retry after a timeout</text>
+    <text x="34" y="356">keep results short and shaped (a number, a JSON line, PASS/FAIL + last lines): the model pays for every token twice (read + carry)</text>
+  </g>
+
+  <!-- bad tool -->
+  <rect x="580" y="46" width="300" height="330" rx="10" fill="#dc2626" fill-opacity="0.07" stroke="#dc2626" stroke-width="1.5"/>
+  <text x="730" y="68" text-anchor="middle" font-size="13" font-weight="600" fill="#dc2626">The same job, done badly</text>
+  <g font-family="ui-monospace, monospace" font-size="11.5" fill="#0f172a">
+    <text x="594" y="96">name        = "do"</text>
+    <text x="594" y="118">description = "does stuff"</text>
+    <text x="594" y="160">parameters  = {"type": "object",</text>
+    <text x="594" y="176">   "properties": {"x": {"type": "string"}},</text>
+    <text x="594" y="192">   "required": ["x"]}</text>
+    <text x="594" y="250">fn(x) -> "Error calling do: ValueError:</text>
+    <text x="594" y="266">   could not convert string to float: 'twenty'"</text>
+    <text x="594" y="292">read_only   = (default True — but is it?)</text>
+  </g>
+  <g font-size="10.5" fill="#dc2626">
+    <text x="594" y="140">the model must guess what "do" does</text>
+    <text x="594" y="212">what is x? a number? a unit? which way?</text>
+    <text x="594" y="316">a Python traceback tells the model nothing</text>
+    <text x="594" y="332">about the fix; it will retry the same call</text>
+    <text x="594" y="356">an unset flag is a lie to the gate</text>
+  </g>
+
+  <!-- bottom band: checklist -->
+  <rect x="20" y="392" width="860" height="94" rx="10" fill="#2563eb" fill-opacity="0.08" stroke="#2563eb"/>
+  <text x="30" y="412" font-size="12" font-weight="600" fill="#2563eb">Checklist (Ch. 26 §The idea in code)</text>
+  <text x="30" y="432" font-size="11" fill="#0f172a">1. Name = verb_noun.   2. Description says what, when, what comes back.   3. Few arguments, each typed + described + example; no overlapping tools.</text>
+  <text x="30" y="450" font-size="11" fill="#0f172a">4. Errors are text with the fix in them.   5. Declare read_only honestly; make writes idempotent.   6. Bound the output (truncate, paginate, summarise).</text>
+  <text x="30" y="468" font-size="11" fill="#0f172a">7. Sandbox every path and every subprocess.   8. Treat the result as data the model reads, never as instructions (prompt injection, §5).</text>
+</svg>

@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560" viewBox="0 0 900 560" font-family="system-ui, sans-serif">
+  <rect width="900" height="560" fill="#ffffff"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#64748b"/></marker></defs>
+  <text x="450" y="26" text-anchor="middle" font-size="17" font-weight="600" fill="#0f172a">One tool call, end to end: schema in, structured call out, text result back in</text>
+
+  <!-- 1. schema -->
+  <rect x="20" y="50" width="270" height="150" rx="10" fill="#64748b" fill-opacity="0.12" stroke="#64748b"/>
+  <text x="155" y="70" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">① Tool.schema() — what the model reads</text>
+  <text x="30" y="92" font-size="11" font-family="ui-monospace, monospace" fill="#0f172a">{"name": "calculator",</text>
+  <text x="30" y="108" font-size="11" font-family="ui-monospace, monospace" fill="#0f172a"> "description": "Evaluate an arithmetic</text>
+  <text x="30" y="124" font-size="11" font-family="ui-monospace, monospace" fill="#0f172a">   expression (+ - * / ** and parentheses).",</text>
+  <text x="30" y="140" font-size="11" font-family="ui-monospace, monospace" fill="#0f172a"> "input_schema": {"type": "object",</text>
+  <text x="30" y="156" font-size="11" font-family="ui-monospace, monospace" fill="#0f172a">   "properties": {"expression": {"type": "string",</text>
+  <text x="30" y="172" font-size="11" font-family="ui-monospace, monospace" fill="#0f172a">     "description": "e.g. '(2 + 3) * 4'"}},</text>
+  <text x="30" y="188" font-size="11" font-family="ui-monospace, monospace" fill="#0f172a">   "required": ["expression"]}}</text>
+
+  <!-- 2. model output in two dialects -->
+  <rect x="315" y="50" width="270" height="150" rx="10" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+  <text x="450" y="70" text-anchor="middle" font-size="13" font-weight="600" fill="#2563eb">② the model's raw output (two dialects)</text>
+  <text x="325" y="90" font-size="11" font-weight="600" fill="#0f172a">TinyLM (chat template, Ch. 14):</text>
+  <text x="325" y="106" font-size="10.5" font-family="ui-monospace, monospace" fill="#0f172a">&lt;|assistant|&gt;&lt;|tool_call|&gt;{"name": "calculator",</text>
+  <text x="325" y="121" font-size="10.5" font-family="ui-monospace, monospace" fill="#0f172a"> "arguments": {"expression": "17 + 25"}}&lt;|end|&gt;</text>
+  <text x="325" y="145" font-size="11" font-weight="600" fill="#0f172a">Anthropic API (content block):</text>
+  <text x="325" y="161" font-size="10.5" font-family="ui-monospace, monospace" fill="#0f172a">{"type": "tool_use", "id": "toolu_01…",</text>
+  <text x="325" y="176" font-size="10.5" font-family="ui-monospace, monospace" fill="#0f172a"> "name": "calculator", "input": {"expression": …}}</text>
+  <text x="450" y="194" text-anchor="middle" font-size="10" fill="#64748b">a trained behaviour, not a parser trick (Ch. 21)</text>
+
+  <!-- 3. ToolCall -->
+  <rect x="610" y="50" width="270" height="150" rx="10" fill="#7c3aed" fill-opacity="0.10" stroke="#7c3aed"/>
+  <text x="745" y="70" text-anchor="middle" font-size="13" font-weight="600" fill="#7c3aed">③ parsed: ToolCall (backend-neutral)</text>
+  <text x="620" y="92" font-size="11" font-family="ui-monospace, monospace" fill="#0f172a">ToolCall(name="calculator",</text>
+  <text x="620" y="108" font-size="11" font-family="ui-monospace, monospace" fill="#0f172a">         arguments={"expression": "17 + 25"},</text>
+  <text x="620" y="124" font-size="11" font-family="ui-monospace, monospace" fill="#0f172a">         id="call_3f9a…")</text>
+  <text x="620" y="148" font-size="11" fill="#0f172a">parse_tool_call(): regex + json.loads;</text>
+  <text x="620" y="164" font-size="11" fill="#0f172a">bad JSON → no call → treated as a final answer</text>
+  <text x="620" y="180" font-size="11" fill="#0f172a">id pairs the result with the request</text>
+
+  <path d="M290 125 L313 125" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M585 125 L608 125" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- 4. validate + run -->
+  <path d="M745 200 L745 230" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="470" y="232" width="410" height="120" rx="10" fill="#dc2626" fill-opacity="0.08" stroke="#dc2626"/>
+  <text x="675" y="252" text-anchor="middle" font-size="13" font-weight="600" fill="#dc2626">④ ToolRegistry.call(name, arguments) — never raises</text>
+  <text x="480" y="274" font-size="11" fill="#0f172a">unknown name      → "Error: unknown tool 'calc'. Available tools: […]"</text>
+  <text x="480" y="291" font-size="11" fill="#0f172a">validate(schema)  → "missing required argument 'expression'" / "unknown argument" / wrong type</text>
+  <text x="480" y="308" font-size="11" fill="#0f172a">fn(**arguments)   → "42"           (or "Error calling calculator: ValueError: …")</text>
+  <text x="480" y="325" font-size="11" fill="#0f172a">sandbox           → "path '../x' escapes the sandbox"</text>
+  <text x="480" y="342" font-size="11" fill="#64748b">every branch returns a string: the model reads it and adapts (errors are observations)</text>
+
+  <!-- 5. tool_result message -->
+  <path d="M470 292 L440 292" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="20" y="232" width="415" height="120" rx="10" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/>
+  <text x="227" y="252" text-anchor="middle" font-size="13" font-weight="600" fill="#16a34a">⑤ appended to the context (internal format)</text>
+  <text x="30" y="276" font-size="11" font-family="ui-monospace, monospace" fill="#0f172a">{"role": "tool_result",</text>
+  <text x="30" y="292" font-size="11" font-family="ui-monospace, monospace" fill="#0f172a"> "tool_call_id": "call_3f9a…",</text>
+  <text x="30" y="308" font-size="11" font-family="ui-monospace, monospace" fill="#0f172a"> "content": "42"}</text>
+  <text x="30" y="332" font-size="11" fill="#64748b">truncated to max_tool_result_chars first (head + tail)</text>
+  <text x="30" y="346" font-size="11" fill="#64748b">hooks may have rewritten it (redaction, warnings)</text>
+
+  <!-- 6. back to the model, two dialects -->
+  <path d="M227 352 L227 382" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="20" y="384" width="860" height="160" rx="10" fill="#2563eb" fill-opacity="0.08" stroke="#2563eb"/>
+  <text x="450" y="404" text-anchor="middle" font-size="13" font-weight="600" fill="#2563eb">⑥ the next backend.complete() renders the whole list in the model's dialect</text>
+  <text x="30" y="428" font-size="11" font-weight="600" fill="#0f172a">TinyLMBackend.to_chat_messages → llm.chat.render:</text>
+  <text x="30" y="446" font-size="10.5" font-family="ui-monospace, monospace" fill="#0f172a">&lt;|bos|&gt;&lt;|system|&gt;…&lt;|end|&gt;&lt;|user|&gt;What is 17 + 25?&lt;|end|&gt;&lt;|assistant|&gt;&lt;|tool_call|&gt;{…}&lt;|end|&gt;&lt;|tool_result|&gt;42&lt;|end|&gt;&lt;|assistant|&gt;</text>
+  <text x="30" y="476" font-size="11" font-weight="600" fill="#0f172a">AnthropicBackend.to_api_messages (tool results ride inside a *user* message):</text>
+  <text x="30" y="494" font-size="10.5" font-family="ui-monospace, monospace" fill="#0f172a">[{"role": "user", "content": "What is 17 + 25?"},</text>
+  <text x="30" y="509" font-size="10.5" font-family="ui-monospace, monospace" fill="#0f172a"> {"role": "assistant", "content": [{"type": "tool_use", "id": "call_3f9a…", "name": "calculator", "input": {…}}]},</text>
+  <text x="30" y="524" font-size="10.5" font-family="ui-monospace, monospace" fill="#0f172a"> {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "call_3f9a…", "content": "42"}]}]</text>
+  <text x="450" y="540" text-anchor="middle" font-size="10" fill="#64748b">the loop never changes; only ② and ⑥ know which model is on the other side</text>
+</svg>

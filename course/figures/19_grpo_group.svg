@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="440" viewBox="0 0 900 440" font-family="system-ui, sans-serif">
+  <rect width="900" height="440" fill="#ffffff"/>
+  <text x="450" y="26" text-anchor="middle" font-size="17" font-weight="600" fill="#0f172a">GRPO: one prompt, a group of G rollouts, rewards from a verifier, advantages relative to the group</text>
+
+  <!-- prompt -->
+  <rect x="20" y="170" width="120" height="70" rx="8" fill="#64748b" fill-opacity="0.12" stroke="#64748b"/>
+  <text x="80" y="195" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">prompt</text>
+  <text x="80" y="214" text-anchor="middle" font-size="11" fill="#0f172a">"What is 13 + 8?"</text>
+  <text x="80" y="230" text-anchor="middle" font-size="10" fill="#64748b">sample G = 6 at T = 1</text>
+
+  <!-- column headers -->
+  <g font-size="11" font-weight="600" fill="#64748b">
+    <text x="300" y="62" text-anchor="middle">rollout y_i (tokens)</text>
+    <text x="470" y="62" text-anchor="middle">verifier + format</text>
+    <text x="540" y="62" text-anchor="middle">r_i</text>
+    <text x="640" y="62" text-anchor="middle">A_i = (r_i − μ)/σ</text>
+    <text x="790" y="62" text-anchor="middle">what the update does</text>
+  </g>
+
+  <!-- rows: y positions 85,140,195,250,305,360 (row height 40) -->
+  <!-- row 1: correct -->
+  <g transform="translate(0,75)">
+    <rect x="180" y="0" width="240" height="34" rx="6" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/>
+    <text x="300" y="22" text-anchor="middle" font-size="12" fill="#0f172a">13 + 8 = 21 &lt;|end|&gt;</text>
+    <text x="470" y="22" text-anchor="middle" font-size="11" fill="#0f172a">✓ correct, ✓ format</text>
+    <text x="540" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">1.1</text>
+    <text x="640" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#16a34a">+1.00</text>
+    <text x="790" y="22" text-anchor="middle" font-size="11" fill="#16a34a">▲ push every token up</text>
+  </g>
+  <!-- row 2: wrong, formatted -->
+  <g transform="translate(0,125)">
+    <rect x="180" y="0" width="240" height="34" rx="6" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/>
+    <text x="300" y="22" text-anchor="middle" font-size="12" fill="#0f172a">13 + 8 = 20 &lt;|end|&gt;</text>
+    <text x="470" y="22" text-anchor="middle" font-size="11" fill="#0f172a">✗ wrong, ✓ format</text>
+    <text x="540" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">0.1</text>
+    <text x="640" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#dc2626">−0.93</text>
+    <text x="790" y="22" text-anchor="middle" font-size="11" fill="#dc2626">▼ push down</text>
+  </g>
+  <!-- row 3: correct -->
+  <g transform="translate(0,175)">
+    <rect x="180" y="0" width="240" height="34" rx="6" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/>
+    <text x="300" y="22" text-anchor="middle" font-size="12" fill="#0f172a">13 + 8 = 21 &lt;|end|&gt;</text>
+    <text x="470" y="22" text-anchor="middle" font-size="11" fill="#0f172a">✓ correct, ✓ format</text>
+    <text x="540" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">1.1</text>
+    <text x="640" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#16a34a">+1.00</text>
+    <text x="790" y="22" text-anchor="middle" font-size="11" fill="#16a34a">▲ push every token up</text>
+  </g>
+  <!-- row 4: junk -->
+  <g transform="translate(0,225)">
+    <rect x="180" y="0" width="240" height="34" rx="6" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/>
+    <text x="300" y="22" text-anchor="middle" font-size="12" fill="#0f172a">13 + 13 + 13 = 39 &lt;|end|&gt;</text>
+    <text x="470" y="22" text-anchor="middle" font-size="11" fill="#0f172a">✗ wrong, ✗ format</text>
+    <text x="540" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">0.0</text>
+    <text x="640" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#dc2626">−1.13</text>
+    <text x="790" y="22" text-anchor="middle" font-size="11" fill="#dc2626">▼ push down (most)</text>
+  </g>
+  <!-- row 5: wrong, formatted -->
+  <g transform="translate(0,275)">
+    <rect x="180" y="0" width="240" height="34" rx="6" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626"/>
+    <text x="300" y="22" text-anchor="middle" font-size="12" fill="#0f172a">13 + 8 = 22 &lt;|end|&gt;</text>
+    <text x="470" y="22" text-anchor="middle" font-size="11" fill="#0f172a">✗ wrong, ✓ format</text>
+    <text x="540" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">0.1</text>
+    <text x="640" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#dc2626">−0.93</text>
+    <text x="790" y="22" text-anchor="middle" font-size="11" fill="#dc2626">▼ push down</text>
+  </g>
+  <!-- row 6: correct -->
+  <g transform="translate(0,325)">
+    <rect x="180" y="0" width="240" height="34" rx="6" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a"/>
+    <text x="300" y="22" text-anchor="middle" font-size="12" fill="#0f172a">13 + 8 = 21 &lt;|end|&gt;</text>
+    <text x="470" y="22" text-anchor="middle" font-size="11" fill="#0f172a">✓ correct, ✓ format</text>
+    <text x="540" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">1.1</text>
+    <text x="640" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#16a34a">+1.00</text>
+    <text x="790" y="22" text-anchor="middle" font-size="11" fill="#16a34a">▲ push every token up</text>
+  </g>
+
+  <!-- fan-out lines from prompt -->
+  <line x1="140" y1="205" x2="180" y2="92" stroke="#64748b" stroke-width="1"/>
+  <line x1="140" y1="205" x2="180" y2="142" stroke="#64748b" stroke-width="1"/>
+  <line x1="140" y1="205" x2="180" y2="192" stroke="#64748b" stroke-width="1"/>
+  <line x1="140" y1="205" x2="180" y2="242" stroke="#64748b" stroke-width="1"/>
+  <line x1="140" y1="205" x2="180" y2="292" stroke="#64748b" stroke-width="1"/>
+  <line x1="140" y1="205" x2="180" y2="342" stroke="#64748b" stroke-width="1"/>
+
+  <!-- group statistics -->
+  <rect x="30" y="382" width="840" height="48" rx="8" fill="#f59e0b" fill-opacity="0.10" stroke="#f59e0b"/>
+  <text x="45" y="402" font-size="12" fill="#0f172a"><tspan font-weight="600" fill="#b45309">group statistics</tspan>  μ = mean(r) = 0.583   σ = std(r) = 0.518   →   A_i = (r_i − μ) / (σ + ε).  The mean is the baseline: no value network, the siblings define "expected".</text>
+  <text x="45" y="421" font-size="11" fill="#64748b">Dr. GRPO keeps r_i − μ without dividing by σ. If all six rewards were equal, σ = 0 and every A_i = 0: the group carries no signal, and DAPO's dynamic sampling drops it.</text>
+</svg>
