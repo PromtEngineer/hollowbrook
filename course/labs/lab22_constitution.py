@@ -42,7 +42,7 @@ args = setup("Lab 22: a toy constitution -> AI feedback -> DPO")
 SFT_STEPS = 200                            # one-time messy style SFT on top of a competent model (cached)
 N_PROMPTS = 24 if args.quick else 80       # prompts sampled for preference pairs
 K_SAMPLES = 4                              # samples per prompt
-SL_STEPS = 40 if args.quick else 80           # stage-1 SFT on revisions
+SL_STEPS = 80 if args.quick else 100          # stage-1 SFT on revisions (a fixed refusal needs ~80 steps to stick)
 DPO_STEPS = 40 if args.quick else 60
 N_EVAL = 30 if args.quick else 60
 MAX_NEW = 24
@@ -122,12 +122,12 @@ def make_prompts(n: int, seed: int) -> list[TaskExample]:
 
 
 def messy_answer(ex: TaskExample, rng: random.Random) -> str:
-    """What a sloppy SFT set looks like: correct, but in styles the constitution forbids."""
+    """What a sloppy SFT set looks like: correct, but 75% of the time in a style the constitution forbids."""
     if ex.task == "add":
         r = rng.random()
-        if r < 0.4:
+        if r < 0.25:
             return ex.answer                                            # "7 + 5 = 12"
-        if r < 0.7:
+        if r < 0.6:
             return str(ex.meta["answer"])                               # bare number: no equation
         return rng.choice([f"Well, I think the answer is {ex.meta['answer']}.",
                            f"Let me see. The answer is {ex.meta['answer']}, I believe."])
