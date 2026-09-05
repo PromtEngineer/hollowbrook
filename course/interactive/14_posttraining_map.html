@@ -22,7 +22,7 @@ footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:sy
 /* page-specific */
 .grid>*{min-width:0}
 .map{display:flex;flex-wrap:wrap;gap:6px;align-items:stretch}
-.st{flex:1 1 100px;min-width:100px;border:2px solid var(--line);border-radius:10px;background:#fff;padding:8px 6px;text-align:center;cursor:pointer;color:var(--ink);font:inherit;display:flex;flex-direction:column;gap:2px;position:relative}
+.st{flex:1 1 88px;min-width:88px;border:2px solid var(--line);border-radius:10px;background:#fff;padding:8px 6px;text-align:center;cursor:pointer;color:var(--ink);font:inherit;display:flex;flex-direction:column;gap:2px;position:relative}
 .st .k{font-size:11px;color:var(--muted)}.st .t{font-weight:700;font-size:13px;line-height:1.2}.st .s{font-size:11px;color:var(--muted)}
 .st:hover{border-color:var(--blue)}.st.active{border-color:var(--blue);box-shadow:0 0 0 3px #bfdbfe}
 .st .dot{width:10px;height:10px;border-radius:50%;margin:2px auto 0}
@@ -82,12 +82,12 @@ const STAGES=[
    loss:"Cross-entropy on response tokens only (prompt tokens masked out).",
    wrong:"Imitates surface style, not correctness; overfits after 2–3 epochs; learns to hallucinate confidently if demonstrations answer questions the model cannot know; format-following without capability.",
    note:"Gives the model the chat template, special tokens, and a starting policy that later stages can sample from."},
-  {key:"pref",title:"RM / DPO",short:"preference learning",col:"#7c3aed",chapter:"17",link:"../chapters/17-reward-models-dpo.md",
+  {key:"pref",title:"RM / DPO",short:"preference learning",col:"#7c3aed",chapter:"17",link:"../chapters/17-reward-models-and-dpo.md",
    data:"Pairs (prompt, chosen, rejected) from human raters or an LLM judge; in 2026 often rubric-graded. DPO uses them directly; a reward model (Bradley–Terry) learns a scalar from them for later RL.",
    loss:"DPO: −log σ(β·[Δlogp(chosen) − Δlogp(rejected)]) relative to a reference model. RM: −log σ(r(chosen) − r(rejected)).",
    wrong:"Reward hacking / Goodhart (length bias, sycophancy, markdown-itis); DPO drifts from the reference and forgets; preference data goes stale as the policy moves (off-policy problem).",
    note:"Shapes style, helpfulness, tone and refusals on tasks without a verifier."},
-  {key:"rlvr",title:"RLVR (GRPO)",short:"verifiable rewards",col:"#16a34a",chapter:"19",link:"../chapters/19-grpo-rlvr.md",
+  {key:"rlvr",title:"RLVR (GRPO)",short:"verifiable rewards",col:"#16a34a",chapter:"19",link:"../chapters/19-grpo-and-rlvr.md",
    data:"Prompts with a checker: math answers, unit tests, exact-match, rubric graders. The model samples a group of G rollouts per prompt; rewards come from the verifier. On-policy.",
    loss:"GRPO: clipped importance-weighted advantage, A = (r − mean(group))/std(group) (Dr. GRPO drops the std; DAPO uses clip-higher, dynamic sampling, token-level loss; GSPO sequence-level ratios).",
    wrong:"Entropy collapse; ever-longer outputs; reward hacking of the verifier (special-casing tests); learns nothing on prompts where all G samples fail; gradient dead zones.",

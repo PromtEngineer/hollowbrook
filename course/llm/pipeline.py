@@ -43,7 +43,10 @@ def get_corpus(n_docs: int = 6000, seed: int = 0) -> list[dict]:
 
 
 def get_tokenizer(docs: Optional[list[dict]] = None, force: bool = False) -> BPETokenizer:
-    """The course tokenizer: byte-level BPE, 1024 vocab, trained on Storyland."""
+    """The course tokenizer: byte-level BPE trained on Storyland with up to 1024 entries.
+
+    Storyland has only ~400 distinct words, so BPE runs out of pairs to merge after ~600
+    merges and the real vocabulary is ~870 (Chapter 2 calls this *saturation*)."""
     if os.path.exists(TOKENIZER_PATH) and not force:
         return BPETokenizer.load(TOKENIZER_PATH)
     docs = docs or get_corpus()

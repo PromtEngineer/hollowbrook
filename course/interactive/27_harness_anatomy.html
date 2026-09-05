@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Harness Anatomy</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page */
+select{width:auto}.grid>*{min-width:0}.note{font-size:13px;color:var(--muted)}
+svg.plot{width:100%;height:auto;display:block}
+.node{cursor:pointer}.node rect{fill:#f8fafc;stroke:#cbd5e1;stroke-width:1.5;transition:fill .15s}.node:hover rect,.node:focus rect{stroke:var(--blue);fill:#eff6ff}.node:focus{outline:none}.node.on rect{fill:var(--blue);stroke:var(--blue)}.node.on text{fill:#fff}
+.node text{pointer-events:none}
+.detail h3{margin:0 0 4px;font-size:16px}.detail .kv{display:grid;grid-template-columns:110px 1fr;gap:4px 10px;font-size:13px}.detail .kv b{color:var(--muted);font-weight:600}
+.tl{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.tl div{border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;background:#f8fafc;color:var(--muted)}.tl div.cur{background:var(--blue);color:#fff;border-color:var(--blue)}.tl div.past{color:var(--ink)}
+.files{display:grid;gap:8px}@media(min-width:800px){.files{grid-template-columns:1fr 1fr}}.files pre{margin:0;max-height:210px;font-size:12px}
+.badge{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}.badge.ok{background:#dcfce7;color:#166534}.badge.no{background:#fee2e2;color:#991b1b}.badge.dim{background:#f1f5f9;color:var(--muted)}
+.mcp pre{max-height:180px;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Harness Anatomy <a class="chip" href="../chapters/27-harness-engineering.md">Chapter 27</a></h1>
+  <p class="sub">The parts of a coding-agent harness, what each one prevents, and where it lives in <code>llm/agent/</code> — plus the long-running session pattern and the MCP handshake.</p>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Click (or tab to) each block in the diagram and read the failure it exists to prevent. Step through the session timeline and watch PLAN.md stay fixed while PROGRESS.md grows with verified results. Then play the MCP handshake and compare the two kinds of error at the end: a protocol error (no such tool) and a tool result flagged <code>isError</code>.</div>
+
+<div class="panel">
+  <svg id="anat" class="plot" viewBox="0 0 900 400" role="group" aria-label="harness anatomy diagram"></svg>
+  <div class="note">Solid arrows: the request path of one turn. Dashed: side channels (files, child agents, remote tool servers).</div>
+</div>
+<div class="panel detail" id="detail"></div>
+
+<div class="panel">
+  <div class="row" style="justify-content:space-between">
+    <div><strong>Session timeline</strong> <span class="note">— the long-running pattern</span></div>
+    <div class="row"><select id="pattern"><option value="A">initializer → coder sessions → verifier (MiniHarness)</option><option value="B">planner → generator → evaluator</option></select><button class="secondary" onclick="tlGo(-1)">◀</button><button onclick="tlGo(1)">Next ▶</button><button class="secondary" onclick="tlSet(0)">Restart</button></div>
+  </div>
+  <div class="tl" id="tl"></div>
+  <div id="tlText" style="margin:6px 0 10px"></div>
+  <div class="files"><div><div class="note" id="f1name"></div><pre id="f1"></pre></div><div><div class="note" id="f2name"></div><pre id="f2"></pre></div></div>
+</div>
+
+<div class="panel mcp">
+  <div class="row" style="justify-content:space-between">
+    <div><strong>MCP handshake</strong> <span class="note">— JSON-RPC 2.0 over stdio, bodies from <code>llm/agent/mcp_mini.py</code> (protocol 2025-11-25)</span></div>
+    <div class="row"><button class="secondary" onclick="mcpGo(-1)">◀</button><button id="mcpNext" onclick="mcpGo(1)">Next ▶</button><button class="secondary" id="mcpPlay" onclick="mcpPlay()">Play</button></div>
+  </div>
+  <svg id="mcp" class="plot" viewBox="0 0 900 300" role="img" aria-label="MCP message sequence"></svg>
+  <div class="grid two"><div><div class="note" id="mcpLabel"></div><pre id="mcpBody"></pre></div><div class="note" id="mcpNote"></div></div>
+</div>
+
+<div class="box challenge"><strong>Challenge.</strong> Which component stops the agent from marking a task "done" without evidence? Pick one: 
+  <select id="quiz"><option value="">— choose —</option><option value="model">the model</option><option value="loop">the loop's stop condition</option><option value="permissions">the permission gate</option><option value="hooks">hooks</option><option value="verifier">the verifier (tests)</option><option value="memory">PLAN.md / PROGRESS.md</option><option value="subagents">sub-agents</option><option value="mcp">MCP servers</option></select> <span id="quizOut" class="badge dim">no answer yet</span>
+<details><summary>Show answer</summary><p>The <b>verifier</b>. In <code>MiniHarness.run_session</code> the agent's run ends when the model replies without a tool call — <code>stop_reason = "done"</code> — but that is only a <em>claim</em>. The harness then calls <code>self.verify()</code>, which runs <code>run_tests</code> itself, and appends <code>Verification: PASS</code> or <code>FAIL</code> with the test output to PROGRESS.md; <code>loop()</code> starts another session unless the tests pass. The permission gate and hooks limit what the agent may <em>do</em>; the verifier decides whether what it did <em>worked</em>. Tests are the ground truth; the model's summary is not.</p></details></div>
+
+<footer><a href="index.html">← All interactive explainers</a> · Roles and code references come from <code>llm/agent/harness.py</code>, <code>miniharness.py</code>, <code>context.py</code>, <code>tools.py</code>, <code>mcp_mini.py</code> and <code>multiagent.py</code>; the session timeline is a schematic of <code>MiniHarness.loop</code> and <code>generator_evaluator_loop</code>.</footer>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const N = 'http://www.w3.org/2000/svg';
+const mk = (svg, t, a, tx) => { const e = document.createElementNS(N, t); for (const k in a) e.setAttribute(k, a[k]); if (tx !== undefined) e.textContent = tx; svg.appendChild(e); return e; };
+// ------------------------------------------------------------ anatomy
+const NODES = {
+  model: { x: 60, y: 160, w: 130, h: 60, label: 'Model', sub: 'Backend.complete', role: 'Proposes the next action: given the messages, the tool schemas and the system prompt it returns text plus zero or more tool calls (an AssistantMessage).', fail: 'Nothing on its own. Every other block exists because the model\'s output is a claim about the world, not a fact about it.', where: 'llm/agent/backends.py — Backend protocol; ScriptedBackend (tests), TinyLMBackend (your model), AnthropicBackend (API)', code: 'reply = self.backend.complete(t.messages, schemas, system)   # think' },
+  loop: { x: 250, y: 160, w: 150, h: 60, label: 'Loop', sub: 'Agent.run', role: 'think → act → observe, once per turn, until the model replies without tool calls or max_turns is hit. Every tool result — including errors and denials — is appended as a message.', fail: 'Runaway runs (max_turns) and lost observations (errors are appended, never swallowed).', where: 'llm/agent/harness.py — Agent.run, Agent._execute, Event, Transcript', code: 'if not reply.tool_calls: t.stop_reason = "done"; return t\nfor call in reply.tool_calls: result = self._execute(...)' },
+  permissions: { x: 450, y: 60, w: 150, h: 60, label: 'Permission gate', sub: 'Agent._permitted', role: 'Decides whether a tool call may run: policy allow_all / allow_read_only / ask, where ask defers to a permission_fn (a real prompt to the human). With nothing to ask, deny.', fail: 'Destructive actions without a human in the loop. Tools carry a read_only flag so reads can be auto-approved while writes are not.', where: 'llm/agent/harness.py — Agent._permitted; Tool.read_only in tools.py', code: 'if policy == "allow_read_only" and tool.read_only: return True\nif permission_fn is not None: return bool(permission_fn(call, tool))\nreturn False' },
+  hooks: { x: 450, y: 160, w: 150, h: 60, label: 'Hooks', sub: 'pre_tool / post_tool', role: 'The harness owner\'s code around every tool call: a pre-hook can block with a reason, a post-hook can rewrite the result, on_event feeds logs and UIs.', fail: 'The model rewriting its own contract (PLAN.md is read-only), writes outside the workdir, secrets in results, invisible actions (harness.log).', where: 'llm/agent/harness.py — Hooks; miniharness.py — guard_writes, log', code: 'if target == "PLAN.md": return "PLAN.md is read-only for the agent; append notes to PROGRESS.md instead"' },
+  tools: { x: 650, y: 160, w: 140, h: 60, label: 'Tools', sub: 'ToolRegistry', role: 'Named functions with JSON schemas. The registry validates argument types, sandboxes paths to the workdir, and never raises: failures come back as "Error: ..." text.', fail: 'Crashes on malformed arguments; path escapes (../, absolute paths); the model never learning why a call failed.', where: 'llm/agent/tools.py — Tool, ToolRegistry.call, _Sandbox.resolve, make_builtin_tools', code: 'reg.register(Tool("run_tests", "Run `python -m pytest -q` ...", _params({...}, []), run_tests))' },
+  mcp: { x: 650, y: 40, w: 140, h: 60, label: 'MCP servers', sub: 'MCPClient', role: 'Remote tool sets spoken to over JSON-RPC (initialize → tools/list → tools/call). mcp_tools_to_registry wraps them so the loop cannot tell them from local tools.', fail: 'A bespoke integration per tool. Note the conservative default: MCP tools arrive with read_only=False, so the gate treats them as writes until told otherwise.', where: 'llm/agent/mcp_mini.py — MCPClient, MCPServer, mcp_tools_to_registry', code: 'reg.register(Tool(t["name"], t.get("description", ""), t.get("inputSchema", ...), fn, read_only=read_only))' },
+  verifier: { x: 650, y: 280, w: 140, h: 60, label: 'Verifier', sub: 'MiniHarness.verify', role: 'After every session the harness — not the model — runs the test-suite and records PASS/FAIL with the output. loop() continues until it passes.', fail: '"I\'m done" without evidence. The model\'s stop_reason is a claim; the tests are the ground truth.', where: 'llm/agent/miniharness.py — verify, run_session, loop', code: 'ok, report = self.verify()\nself._append("PROGRESS.md", f"Verification: {\'PASS\' if ok else \'FAIL\'}\\n...")' },
+  memory: { x: 250, y: 280, w: 340, h: 60, label: 'Memory & progress files', sub: 'PLAN.md · PROGRESS.md · MEMORY.md · harness.log', role: 'State that lives outside the context window: the plan (written once, read every session), verified progress (appended by the harness), free-form notes the agent leaves itself, and a tool log for humans.', fail: 'Forgetting after compaction or a crash. resume() is identical to a new session on purpose: the files are the checkpoint.', where: 'llm/agent/miniharness.py — plan, run_session, resume; context.py — MemoryFile', code: 'prompt = "PLAN.md:\\n" + self._read("PLAN.md") + "\\n\\nPROGRESS.md:\\n" + self._read("PROGRESS.md") + "\\n\\nContinue the plan from where PROGRESS.md leaves off."' },
+  context: { x: 250, y: 40, w: 150, h: 60, label: 'Context budget', sub: 'compact / truncate', role: 'Measures how full the window is (chars ÷ 4), truncates long tool results head+tail, and at 80 % compacts the history: keep the task and the last keep_last messages, stub older tool results, optionally summarise.', fail: 'Overflowing the window mid-task; context rot from stale tool output.', where: 'llm/agent/context.py — ContextBudget, truncate_tool_result, compact', code: 'if budget.needs_compaction(t.messages, self.config.compaction_threshold):\n    t.messages = compact(t.messages, keep_last=self.config.compaction_keep_last)' },
+  subagents: { x: 40, y: 280, w: 150, h: 60, label: 'Sub-agents', sub: 'run_subagent', role: 'A fresh Agent with an empty context, a subset of tools and the same policy; only its final text returns to the parent. multiagent.py builds orchestrator–workers, generator–evaluator and debate from it.', fail: 'The parent\'s window flooded with fifty tool results; duplicated work and lost context when several agents share one history.', where: 'llm/agent/harness.py — run_subagent; multiagent.py — orchestrate, generator_evaluator_loop, debate', code: 'child = Agent(parent.backend, tools, cfg, hooks=parent.hooks, ...)\nreturn child.run(task).final_text' },
+};
+const EDGES = [['model', 'loop', 0], ['loop', 'hooks', 0], ['hooks', 'tools', 0], ['permissions', 'hooks', 0], ['mcp', 'tools', 1], ['loop', 'context', 1], ['loop', 'memory', 1], ['loop', 'subagents', 1], ['memory', 'verifier', 1], ['tools', 'verifier', 1]];
+let curNode = 'verifier';
+function drawAnat() {
+  const svg = $('anat'); svg.innerHTML = '';
+  mk(svg, 'defs', {}).innerHTML = '<marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#64748b"/></marker>';
+  const c = n => ({ x: NODES[n].x + NODES[n].w / 2, y: NODES[n].y + NODES[n].h / 2 });
+  EDGES.forEach(([a, b, dashed]) => {
+    const A = c(a), B = c(b); const dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy);
+    const cut = n => { const w = NODES[n].w / 2, h = NODES[n].h / 2; const ux = Math.abs(dx / L), uy = Math.abs(dy / L); return Math.min(ux ? w / ux : 1e9, uy ? h / uy : 1e9) + 4; };
+    const ca = cut(a), cb = cut(b);
+    mk(svg, 'line', { x1: A.x + dx / L * ca, y1: A.y + dy / L * ca, x2: B.x - dx / L * cb, y2: B.y - dy / L * cb, stroke: '#64748b', 'stroke-width': 1.6, 'stroke-dasharray': dashed ? '5 4' : 'none', 'marker-end': 'url(#ar)' });
+  });
+  mk(svg, 'text', { x: 330, y: 150, 'font-size': 10, fill: '#64748b', 'text-anchor': 'middle' }, 'think → act → observe');
+  mk(svg, 'text', { x: 625, y: 150, 'font-size': 10, fill: '#64748b', 'text-anchor': 'middle' }, 'call');
+  for (const id in NODES) {
+    const n = NODES[id]; const g = mk(svg, 'g', { class: 'node' + (id === curNode ? ' on' : ''), tabindex: 0, role: 'button', 'aria-label': n.label, 'data-id': id });
+    mk(g, 'rect', { x: n.x, y: n.y, width: n.w, height: n.h, rx: 10 });
+    mk(g, 'text', { x: n.x + n.w / 2, y: n.y + 26, 'text-anchor': 'middle', 'font-size': 14, 'font-weight': 700, fill: '#0f172a' }, n.label);
+    mk(g, 'text', { x: n.x + n.w / 2, y: n.y + 44, 'text-anchor': 'middle', 'font-size': 10.5, fill: '#64748b', 'font-family': 'ui-monospace, Menlo, monospace' }, n.sub);
+    const sel = () => { curNode = id; drawAnat(); };
+    g.addEventListener('click', sel); g.addEventListener('mouseenter', sel); g.addEventListener('focus', sel);
+    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sel(); } });
+  }
+  const n = NODES[curNode];
+  $('detail').innerHTML = `<h3>${n.label} <span class="note" style="font-weight:400">· <code>${n.sub}</code></span></h3><div class="kv"><b>role</b><span>${n.role}</span><b>failure it prevents</b><span>${n.fail}</span><b>where</b><span><code>${esc(n.where)}</code></span></div><pre style="margin:8px 0 0">${esc(n.code)}</pre>`;
+}
+// ------------------------------------------------------------ session timeline
+const PLAN = '# Plan\n\nTask: make tests/test_math.py pass\n\n1. Read mathlib.py and the failing test.\n2. Fix mean() (divides by len-1).\n3. Add median() with an even-length case.\n4. Run the tests; stop when green.\n';
+const TL = {
+  A: [
+    { name: 'initializer', text: '<b>Initializer (first run only).</b> <code>MiniHarness.plan()</code> runs a <em>read-only</em> planner agent (tools: list_dir, read_file, search; policy allow_read_only, 6 turns) and writes its numbered plan to PLAN.md; PROGRESS.md is started. From now on PLAN.md is the human\'s contract — a hook rejects any write to it.', f1: PLAN, f2: '# Progress\n\n(no sessions yet)\n' },
+    { name: 'session 1', text: '<b>Coder session 1.</b> A <em>fresh</em> Agent (empty context) is given PLAN.md + PROGRESS.md and told to continue. Its context budget is small on purpose; it edits with write_file and may call run_tests itself, but its "I\'m done" is only a summary.', f1: PLAN, f2: '# Progress\n\n(no sessions yet)\n\n(session 1 running: fixed mean(), started median()…)' },
+    { name: 'verify', text: '<b>Verifier.</b> The harness — not the model — runs <code>verify()</code> → <code>run_tests</code> and appends the result with the last lines of pytest output. FAIL: the loop schedules another session.', f1: PLAN, f2: '# Progress\n\n## Session 1 (done, 9 turns, 6 tool calls)\nFixed mean() divisor; added median() but the even-length case is wrong.\n\nVerification: FAIL\n```\nFAILED tests/test_math.py::test_median - assert 3 == 2.5\n1 failed, 1 passed\n```' },
+    { name: 'session 2', text: '<b>Coder session 2 (or a resume after a crash — identical code path).</b> Another fresh Agent reads PLAN.md and PROGRESS.md, sees exactly which test fails and why, and continues from there. Nothing from session 1\'s context survives except what the files say — which is the point.', f1: PLAN, f2: '# Progress\n\n## Session 1 (done, 9 turns, 6 tool calls)\nFixed mean() divisor; added median() but the even-length case is wrong.\n\nVerification: FAIL\n```\nFAILED tests/test_math.py::test_median - assert 3 == 2.5\n1 failed, 1 passed\n```\n\n(session 2 running: averaging the two middle values…)' },
+    { name: 'verify', text: '<b>Verifier again.</b> PASS — <code>loop()</code> returns True. Every session added a verified line to PROGRESS.md and a JSON line per tool call to harness.log (observability and cost).', f1: PLAN, f2: '# Progress\n\n## Session 1 (done, 9 turns, 6 tool calls)\nFixed mean() divisor; added median() but the even-length case is wrong.\n\nVerification: FAIL\n```\nFAILED tests/test_math.py::test_median - assert 3 == 2.5\n1 failed, 1 passed\n```\n\n## Session 2 (done, 4 turns, 3 tool calls)\nmedian() now averages the two middle values for even n.\n\nVerification: PASS\n```\n..\n2 passed in 0.03s\n```' },
+  ],
+  B: [
+    { name: 'planner', text: '<b>Planner.</b> Reads the task and the repository and writes the plan / acceptance criteria (the same role as the initializer above). In the three-agent variant reported for production harnesses (Anthropic, 2025–26) the planner runs once and is not the one doing the edits.', f1: PLAN, f2: '(no candidate yet)' },
+    { name: 'generator', text: '<b>Generator, round 1.</b> Produces a candidate: edits files, may run tests itself. In <code>generator_evaluator_loop</code> the generator sees the task, its previous attempt and the reviewer\'s critique — nothing else.', f1: PLAN, f2: 'candidate v1:\n\ndef median(xs):\n    s = sorted(xs)\n    return s[len(s) // 2]\n' },
+    { name: 'evaluator', text: '<b>Evaluator, round 1.</b> A separate agent with a <em>fresh</em> context sees only the task and the candidate, never the generator\'s reasoning — "a fresh pair of eyes is the point". It replies ACCEPT or a critique. An <code>accept_fn</code> (the tests) can be the judge instead of, or before, the model.', f1: PLAN, f2: 'evaluator verdict:\n\nNot accepted. median([1, 2, 3, 4]) returns 3; for even n the two middle values must be averaged (expected 2.5). Also missing: a test for the even case.' },
+    { name: 'generator', text: '<b>Generator, round 2.</b> Gets the critique appended to its prompt and produces an improved candidate.', f1: PLAN, f2: 'candidate v2:\n\ndef median(xs):\n    s = sorted(xs)\n    n = len(s)\n    mid = n // 2\n    return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2\n\n+ test_median with [1, 2, 3, 4] == 2.5' },
+    { name: 'evaluator', text: '<b>Evaluator, round 2.</b> accept_fn (the tests) passes → ACCEPT; the loop returns (candidate, rounds = 2). The pattern trades extra model calls for independence between the one who writes and the one who judges.', f1: PLAN, f2: 'accept_fn: PASS (2 passed)\nevaluator: ACCEPT\n\n→ generator_evaluator_loop returns (candidate v2, 2)' },
+  ],
+};
+let tlI = 0;
+function tlSet(i) { const steps = TL[$('pattern').value]; tlI = Math.max(0, Math.min(steps.length - 1, i)); drawTL(); }
+function tlGo(d) { tlSet(tlI + d); }
+function drawTL() {
+  const steps = TL[$('pattern').value], s = steps[tlI];
+  $('tl').innerHTML = steps.map((st, i) => `<div class="${i === tlI ? 'cur' : i < tlI ? 'past' : ''}">${i + 1}. ${st.name}</div>${i < steps.length - 1 ? '<span style="align-self:center;color:#94a3b8">→</span>' : ''}`).join('');
+  $('tlText').innerHTML = s.text; $('f1name').textContent = 'PLAN.md (read-only for the agent)'; $('f2name').textContent = $('pattern').value === 'A' ? 'PROGRESS.md (appended by the harness)' : 'candidate / verdict';
+  $('f1').textContent = s.f1; $('f2').textContent = s.f2;
+}
+// ------------------------------------------------------------ MCP handshake
+const MCP = [
+  { dir: '→', label: 'initialize (request, id 1)', body: { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'llm-agent-client', version: '0.1' } } }, note: 'The handshake every MCP session starts with: the client states the protocol version it speaks and what it can do (nothing yet — no sampling, no elicitation).' },
+  { dir: '←', label: 'initialize result', body: { jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'llm-agent-mini', version: '0.1' } } }, note: 'The server answers with its own version and capabilities. Ours only offers tools — no resources, prompts or sampling.' },
+  { dir: '→', label: 'notifications/initialized (notification: no id)', body: { jsonrpc: '2.0', method: 'notifications/initialized', params: {} }, note: 'A notification has no id, so it gets no reply. The server\'s handle() returns None for it.' },
+  { dir: '→', label: 'tools/list (id 2)', body: { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }, note: 'Ask what tools exist. Real servers may paginate with a cursor; we return everything.' },
+  { dir: '←', label: 'tools/list result (abridged)', body: { jsonrpc: '2.0', id: 2, result: { tools: [{ name: 'read_file', description: 'Read a UTF-8 text file inside the workdir.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path relative to the workdir' } }, required: ['path'] } }, { name: 'run_tests', description: 'Run `python -m pytest -q` in the workdir; returns PASS/FAIL and the last lines.', inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: [] } }, '… 5 more'] } }, note: 'Same shape as the Anthropic API tool schema, with inputSchema in camelCase. mcp_tools_to_registry turns each entry into a Tool the Agent can call.' },
+  { dir: '→', label: 'tools/call run_tests (id 3)', body: { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'run_tests', arguments: { path: 'tests' } } }, note: 'The Agent\'s tool call, forwarded verbatim. On the server: registry.call(name, args).' },
+  { dir: '←', label: 'tools/call result', body: { jsonrpc: '2.0', id: 3, result: { content: [{ type: 'text', text: 'PASS (exit code 0)\n..\n2 passed in 0.03s' }], isError: false } }, note: 'Tool output is a list of content blocks (ours are text only). A tool-level failure would come back the same way with isError: true — so the model sees it.' },
+  { dir: '→', label: 'tools/call rm_rf (id 4) — unknown tool', body: { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'rm_rf', arguments: { path: '/' } } }, note: 'A call to a tool the server never advertised.' },
+  { dir: '←', label: 'JSON-RPC error −32602', body: { jsonrpc: '2.0', id: 4, error: { code: -32602, message: 'Unknown tool: rm_rf' } }, note: 'Contrast with the previous result: a protocol-level error (no result field). The client raises RuntimeError; the Agent\'s registry would instead return "Error: unknown tool" text. Two error channels, two audiences: the harness and the model.' },
+];
+let mcpI = 0, mcpTimer = null, anim = null;
+function mcpGo(d) { mcpI = Math.max(0, Math.min(MCP.length - 1, mcpI + d)); drawMCP(true); }
+function mcpPlay() { if (mcpTimer) { clearInterval(mcpTimer); mcpTimer = null; $('mcpPlay').textContent = 'Play'; return; } mcpI = -1; $('mcpPlay').textContent = 'Stop'; mcpTimer = setInterval(() => { if (mcpI >= MCP.length - 1) { clearInterval(mcpTimer); mcpTimer = null; $('mcpPlay').textContent = 'Play'; return; } mcpGo(1); }, 1400); }
+function drawMCP(animate) {
+  const svg = $('mcp'); svg.innerHTML = ''; const W = 900, H = 300, L = 150, R = 750, top = 40, gap = (H - top - 20) / MCP.length;
+  mk(svg, 'defs', {}).innerHTML = '<marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2563eb"/></marker><marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#94a3b8"/></marker>';
+  [[L, 'MCPClient (the Agent side)'], [R, 'MCPServer (subprocess, stdio)']].forEach(([x, t]) => { mk(svg, 'rect', { x: x - 110, y: 4, width: 220, height: 26, rx: 8, fill: '#f8fafc', stroke: '#cbd5e1' }); mk(svg, 'text', { x, y: 22, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 600, fill: '#0f172a' }, t); mk(svg, 'line', { x1: x, x2: x, y1: 30, y2: H - 6, stroke: '#cbd5e1', 'stroke-dasharray': '4 4' }); });
+  MCP.forEach((m, i) => {
+    const y = top + gap * (i + 0.6), on = i === mcpI, past = i < mcpI; if (i > mcpI) return;
+    const x1 = m.dir === '→' ? L : R, x2 = m.dir === '→' ? R : L, err = 'error' in m.body;
+    mk(svg, 'line', { x1, x2: on && animate ? x1 : x2, y1: y, y2: y, stroke: on ? (err ? '#dc2626' : '#2563eb') : '#94a3b8', 'stroke-width': on ? 2.2 : 1.4, 'marker-end': on ? 'url(#am)' : 'url(#ag)', id: on ? 'curLine' : null, 'stroke-dasharray': m.body.id === undefined ? '5 4' : 'none' });
+    mk(svg, 'text', { x: (L + R) / 2, y: y - 5, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': on ? 700 : 400, fill: on ? (err ? '#dc2626' : '#1d4ed8') : '#64748b' }, m.label);
+  });
+  const m = MCP[mcpI]; $('mcpLabel').innerHTML = `<b>${m.dir === '→' ? 'client → server' : 'server → client'}:</b> ${esc(m.label)}`; $('mcpBody').textContent = JSON.stringify(m.body, null, 2); $('mcpNote').innerHTML = m.note;
+  $('mcpNext').disabled = mcpI === MCP.length - 1;
+  if (animate) { const line = svg.querySelector('#curLine'); if (!line) return; const x1 = +line.getAttribute('x1'), x2 = m.dir === '→' ? R : L, t0 = performance.now(); if (anim) cancelAnimationFrame(anim); const step = now => { const f = Math.min(1, (now - t0) / 500); line.setAttribute('x2', x1 + (x2 - x1) * f); if (f < 1) anim = requestAnimationFrame(step); }; anim = requestAnimationFrame(step); }
+}
+// ------------------------------------------------------------ quiz + wiring
+$('quiz').addEventListener('change', () => { const v = $('quiz').value, o = $('quizOut'); if (!v) { o.textContent = 'no answer yet'; o.className = 'badge dim'; return; } o.textContent = v === 'verifier' ? 'correct: the harness runs the tests itself after every session' : v === 'loop' ? 'not quite: the loop stops when the model stops calling tools — that is the claim, not the evidence' : v === 'memory' ? 'close: PROGRESS.md records the verdict, but something has to produce it' : 'no — that component limits what the agent may do, not whether it worked'; o.className = 'badge ' + (v === 'verifier' ? 'ok' : 'no'); });
+$('pattern').addEventListener('change', () => tlSet(0));
+drawAnat(); drawTL(); drawMCP(false);
+</script>
+</body>
+</html>
