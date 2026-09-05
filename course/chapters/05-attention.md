@@ -7,7 +7,7 @@
 
 ## Why this matters
 
-An embedding (Chapter 3) gives every token one fixed vector. But the meaning of `" kite"` in "Mia had a red kite" and in "took the kite to the park" depends on the words around it, and predicting the next token after "took the kite to the" requires knowing that the kite was Mia's, several tokens back. Something has to move information *between positions*. In a Transformer that something is **attention**, and it is the only place where tokens interact; every other layer treats each position on its own. The idea is a lookup that is *soft* (every earlier token contributes, with a weight) and *learned* (the model decides what to look for). This chapter builds it in six lines, verifies the library's version against PyTorch's reference to seven decimal places, and then covers what changes at scale: how positions are encoded (RoPE), why serving long contexts is a memory problem (the KV cache: 40 GiB per 128k-token conversation for a 70B model), and the 2019–2026 line of fixes — MQA, GQA, MLA, FlashAttention, sliding windows and sparse attention.
+An embedding (Chapter 3) gives every token one fixed vector. But the meaning of `" kite"` in "Mia had a red kite" and in "took the kite to the park" depends on the words around it, and predicting the next token after "took the kite to the" requires knowing that the kite was Mia's, several tokens back. Something has to move information *between positions*. In a Transformer that something is **attention**, and it is the only place where tokens interact; every other layer treats each position on its own. The idea is a lookup that is *soft* (every earlier token contributes, with a weight) and *learned* (the model decides what to look for). This chapter builds it in six lines, verifies the library's version against PyTorch's reference to seven decimal places, then covers what changes at scale: positions (RoPE), the memory cost of long contexts (the KV cache: 40 GiB per 128k-token conversation for a 70B model), and the 2019–2026 fixes — MQA, GQA, MLA, FlashAttention, sliding windows and sparse attention.
 
 ## The idea in pictures 📐
 
@@ -37,7 +37,7 @@ During training the model predicts the next token at *every* position of a seque
 
 ### Multiple heads
 
-One set of weights can only express one pattern of "who looks at whom" per token. **Multi-head attention** runs `h` independent attentions in parallel, each on a slice of the vector of width `head_dim = d / h`, and concatenates the outputs. In TinyLM small `d = 192`, `h = 6`, `head_dim = 32`. The lab finds a head in the trained model that puts 0.33 of its weight, on average, on the previous token and another that looks mostly at the first token of the sequence. Different heads specialise; Chapter 6 says more about what they do.
+One set of weights can only express one pattern of "who looks at whom" per token. **Multi-head attention** runs `h` independent attentions in parallel, each on a slice of the vector of width `head_dim = d / h`, and concatenates the outputs. In TinyLM small `d = 192`, `h = 6`, `head_dim = 32`. The lab finds a head in the trained small model that puts 0.36 of its weight, on average, on the previous token and another that puts 0.77 on the first token of the sequence. Different heads specialise; Chapter 6 says more about what they do.
 
 ### The full path through the library's `Attention`
 
@@ -58,7 +58,7 @@ Every box is a line or two of `llm/model.py::Attention.forward`. Three boxes go 
 
 ### Position: RoPE
 
-Attention has no notion of order: permute the keys and values and the outputs permute the same way, because a weighted sum does not care which term came first. Something has to inject position. **Rotary position embeddings (RoPE)** rotate each query and key vector by an angle proportional to its position — before the dot product — treating the `head_dim` channels as `head_dim/2` pairs, each pair a point in a plane, each plane spinning at its own speed (fast for the first pairs, slow for the last: the lab prints speeds from 1.0 down to 0.00018 radians per position for `head_dim = 32`). The dot product of two rotated vectors depends only on the *difference* of their angles, so the score between query at position i and key at position j depends on i − j and not on i or j themselves:
+Attention has no notion of order: permute the keys and values and the outputs permute the same way, because a weighted sum does not care which term came first. Something has to inject position. **Rotary position embeddings (RoPE)** rotate each query and key vector by an angle proportional to its position — before the dot product — treating the `head_dim` channels as `head_dim/2` pairs, each pair a point in a plane, each plane spinning at its own speed (from 1.0 down to 0.00018 radians per position for `head_dim = 32`, per the lab). The dot product of two rotated vectors depends only on the *difference* of their angles, so the score between query at position i and key at position j depends on i − j and not on i or j themselves:
 
 $$
 \langle R_i q,\; R_j k \rangle = \langle q,\; R_{j-i} k \rangle
@@ -91,11 +91,11 @@ The cache formula has `h_kv` in it, and so does the parameter count of `k_proj` 
 
 ### FlashAttention: the same maths, done in a different order
 
-The score matrix is `T × T` per head: 65,536 entries at T = 256, 17 *billion* at T = 128k. **FlashAttention** (Dao et al., 2022) never materialises it. It processes keys in blocks, keeps a running softmax normaliser, and writes only the final output — reading and writing GPU memory far less. The result is *numerically the same attention* (up to floating-point order), which is why the lab compares the library's attention to `torch.nn.functional.scaled_dot_product_attention` — the function that dispatches to a FlashAttention kernel on a GPU — and why the chapter's outline insists it is "an implementation trick, not a new model". Any attention variant you can write as softmax(QKᵀ)V can use it.
+The score matrix is `T × T` per head: 65,536 entries at T = 256, 17 *billion* at T = 128k. **FlashAttention** (Dao et al., 2022) never materialises it. It processes keys in blocks, keeps a running softmax normaliser, and writes only the final output — reading and writing GPU memory far less. The result is *numerically the same attention* (up to floating-point order), which is why the lab compares the library's attention to `torch.nn.functional.scaled_dot_product_attention` — the function that dispatches to a FlashAttention kernel on a GPU — and why the chapter's outline insists it is "an implementation trick, not a new model".
 
 ### Restricting the lookup: sliding windows and 🆕 sparse attention
 
-A **sliding-window** mask lets query i see only keys in `(i − w, i]`. The lab's `causal_mask(6, 6, 0, window=4)` shows the band; a model built with `preset("nano", sliding_window=4)` puts exactly zero weight beyond the window. The cache then holds `w` tokens per layer however long the conversation, and the score matrix is `T × w`. Mistral 7B (2023) and Gemma 2/3 (2024–25) interleave windowed layers with full-attention layers so that some layers retain long-range recall.
+A **sliding-window** mask lets query i see only keys in `(i − w, i]`. The lab's `causal_mask(6, 6, 0, window=4)` shows the band; a model built with `preset("nano", sliding_window=4)` puts exactly zero weight beyond the window. The cache then holds `w` tokens per layer however long the conversation, and the score matrix is `T × w`. Mistral 7B (2023) and Gemma 2/3 (2024–25) interleave windowed and full-attention layers so some layers keep long-range recall.
 
 🆕 The 2025–2026 frontier goes further, and the pattern is worth knowing even though this course implements only the mask. *Native Sparse Attention* (NSA, 2025) and *DeepSeek Sparse Attention* (DSA, DeepSeek-V3.2, 2025) let each query attend to a small **top-k** subset of keys chosen by a cheap "lightning indexer" rather than to all of them. DeepSeek-V4 (report at https://arxiv.org/abs/2606.19348 ; summary at https://www.lmsys.org/blog/2026-04-25-deepseek-v4/) interleaves two kinds of layer — *Compressed Sparse Attention* (compress every m key/value tokens into one entry, then DSA top-k over the compressed entries, plus a sliding window) and *Heavily Compressed Attention* (much stronger compression, dense attention over what remains) — to make a 1M-token context tractable. Separately, hybrid models (Nemotron-H, Qwen3-Next, Kimi Linear, 2025) replace most attention layers with linear/state-space layers that have no growing cache at all and keep a few full-attention layers for recall. All of these keep the four-token picture intact: scores, a (now sparse or compressed) set of keys, softmax, weighted values. What changes is *which* keys a query is allowed to score.
 
@@ -296,11 +296,27 @@ Going from 6 to 2 kv heads cuts the k/v projection parameters by 3× and the cac
   layer 0 head 0, query = second ' kite' (pos 12): top keys ' the'@11 0.24, ' a'@2 0.13, ' kite'@4 0.11
 ```
 
-![Attention maps of the nano model: rows are query tokens, columns are keys; the lower-triangular shape is the causal mask; several heads show a bright sub-diagonal (attend to the previous token)](../figures/generated/lab05_attention_maps.png)
+The query for the second `" kite"` in layer 0 head 0 spends 0.24 on the previous token `" the"`, then 0.13 on the earlier `" a"` and 0.11 on the *first* `" kite"` — the beginning of the copy-from-earlier-context behaviour that lets a model track "Mia's kite" across a sentence.
 
-In the figure every map is lower-triangular (the mask), and the bright diagonal-below-the-diagonal in layer 1 head 0 is the "previous token" pattern the lab detected. The query for the second `" kite"` in layer 0 head 0 spends 0.24 on the previous token `" the"`, then 0.13 on the earlier `" a"` and 0.11 on the *first* `" kite"` — the beginning of the copy-from-earlier-context behaviour that lets a model track "Mia's kite" across a sentence. These patterns are typical of small trained Transformers; they are found by the model, not built in.
+**Full mode — the small model (6 layers × 6 heads).**
 
-<!--FULL05-->
+```
+  6 layers x 6 heads, each map (17, 17)
+✅ every attention row sums to 1
+✅ trained model is causal: zero weight on future tokens
+  strongest 'previous token' head: layer 2 head 3 (mean weight on t-1 = 0.36)
+  strongest 'first token' head:    layer 3 head 5 (mean weight on token 0 = 0.77)
+  layer 0 head 0, query = second ' kite' (pos 12): top keys ' kite'@12 1.00, ' kite'@4 0.00, ' red'@3 0.00
+```
+
+![Attention maps of the small model, 6 layers × 6 heads: rows are query tokens, columns are keys; every map is lower-triangular because of the causal mask](../figures/generated/lab05_attention_maps.png)
+
+In the figure (from whichever mode you ran last; this is the small model) every map is lower-triangular — the mask. Three kinds of head stand out. Layer 0 is almost entirely *diagonal*: each token attends to itself with weight near 1.0 (the second `" kite"` puts 1.00 on itself), so the first layer behaves like a per-token MLP and leaves mixing to later layers. Several heads in layers 1–2 show a bright *sub-diagonal* — the "previous token" pattern, strongest in layer 2 head 3 at 0.36 average weight — which is the building block of copying and of n-gram-like statistics. And layer 3 head 5 puts 0.77 of its weight on the *first* token for every query: an **attention sink**, a head that parks its weight on a fixed position when it has nothing useful to look up (softmax must put its 1.0 somewhere). All three patterns are widely reported in trained Transformers; the model finds them, nothing builds them in.
+
+![Layer 2 head 3 of the small model with token labels. The cells one step below the diagonal (had→Mia, red→a, Mia→day, the→took, to→kite, the→to) are "attend to the previous token"; the same head also parks several queries on the article " a" — real heads are rarely pure](../figures/generated/lab05_attention_head.png)
+
+Look at the labelled map and you will see that the head is not a clean rule: about a third of its weight goes to the previous token on average (the 0.36 the lab reports), while `" red"`, `" kite"`, `"."` and `" sunny"` all look back at `" a"`. Interpreting heads is a matter of degree, and Chapter 6 returns to it.
+
 
 **Section 7 — sliding window.**
 
@@ -326,7 +342,6 @@ The lab ends with `16/16 checks passed`.
 4. **RoPE base.** Rebuild `rope_tables(32, 256, theta=500_000)` (Llama 3's base) and repeat the relative-offset check. Then print the rotation speeds: which pairs became slower, and why might that help long contexts (Chapter 13)?
 5. **Head hunting.** For the small model (`--full`), find the head whose attention from the second `" kite"` to the first `" kite"` is largest. Plot it with token labels (the lab's second figure shows how).
 6. **Window in the toy.** Add a sliding window of 2 to the six-line attention using `causal_mask(T, T, 0, 2, "cpu")` and confirm the output matches `TinyLM` built with `sliding_window=2` in spirit: every row has at most two non-zero weights.
-7. **Cost curve.** Time `attn(x, cos[:T], sin[:T])` for T in (64, 256, 1024) on the small config. Does the time grow closer to T or to T²? (Expect somewhere between at these sizes: the projections are linear in T, the scores quadratic.)
 
 🎛️ In `interactive/05_attention_explorer.html` you type a sentence and see the attention matrix of the trained TinyLM for each layer and head, with a toggle for the causal mask and a slider for a sliding window. Try a sentence that mentions the same name twice, hover over the second mention and look for a head that lights up the first; then switch off the mask and watch the upper triangle fill in. The challenge asks you to find the layer and head that most consistently attends to the previous token across three different sentences.
 

@@ -185,7 +185,7 @@ print(len(curated), tokens.shape)                          # 1310 torch.Size([91
 
 ## Worked example 🧪
 
-Run `python3 labs/lab08_curate.py` (quick: 1,500 clean documents, ~10–20 s) and then `--full` (6,000 documents, ~40 s). The report table from the full run:
+Run `python3 labs/lab08_curate.py` (quick: 1,500 clean documents, 8 s) and then `--full` (6,000 documents, 19 s; both measured with two CPU threads on a shared 4-core VM). The report table from the full run:
 
 ```
 stage                           kept  dropped  planted problems caught
@@ -197,7 +197,7 @@ minhash_dedup                   5329      359  exact_dup:8, near_dup:110, pii:74
 quality_classifier              5304       25  pii:25
 decontaminate                   5301        3  contaminated:3
 
-7,743 raw -> 5,301 curated documents in 12.5s
+7,743 raw -> 5,301 curated documents in 6.8s
 ```
 
 What to look at:
@@ -209,7 +209,7 @@ What to look at:
 5. **The classifier thresholds:** `0.3 keeps 100% of clean, rejects 61% of junk · 0.5: 100% / 92% · 0.7: 76% / 100%`. Pick 0.5 here; a real pipeline would pick by the downstream loss of a proxy model.
 6. **Mixing and packing:** with weights stories:1, math:3, maths becomes 76% of a 2,000-document sample and each of the 665 surviving maths documents is repeated ~2.3×; packing the curated set gives 374,295 tokens, 96% of them story tokens.
 
-The quick run gives the same picture at a quarter of the size (1,938 raw → 1,314 curated, 91,259 tokens, 18 s). Both end with `21/21 checks passed`.
+The quick run gives the same picture at a quarter of the size (1,938 raw → 1,310 curated, 91,115 tokens, 7 s). Both end with `21/21 checks passed`.
 
 🎛️ In `interactive/08_data_pipeline.html`, paste a paragraph of your own text and watch it pass through each stage: the language score, which Gopher rule fires (if any), the shingle set and MinHash signature next to a second document you edit, and the LSH candidate probability as you drag the band/row sliders. The challenge is to find the smallest edit to a 40-word paragraph that makes its copy survive dedup at threshold 0.8.
 

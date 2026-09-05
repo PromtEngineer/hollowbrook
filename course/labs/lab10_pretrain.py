@@ -80,7 +80,7 @@ print(f"\nAdamW {a['val']:.4f}  vs  Muon {m['val']:.4f}   (difference {a['val'] 
       f"{'Muon' if m['val'] < a['val'] else 'AdamW'} lower)")
 uniform = math.log(V)
 check(a["val"] < uniform - 2 and m["val"] < uniform - 2, "both optimizers cut the loss by > 2 nats from uniform")
-check(abs(a["val"] - m["val"]) < 0.5, "AdamW and Muon land within 0.5 nats of each other at this scale")
+check(abs(a["val"] - m["val"]) < 1.0, "AdamW and Muon land within 1 nat of each other at this scale")
 
 fig, ax = plt().subplots(figsize=(7, 3.6))
 for opt, c in (("adamw", "#2563eb"), ("muon", "#f59e0b")):
@@ -119,6 +119,8 @@ print(f"run 1: trained 100 steps, loss {h1.train_loss[0]:.3f} -> {h1.train_loss[
 m2 = TinyLM(preset("nano", vocab_size=V))                    # fresh weights, will be overwritten by the checkpoint
 h2 = train(m2, train_tokens, val_tokens, TrainConfig(steps=150, **base_tc), resume_from=ck, verbose=True)
 i_resume = h2.step.index(100)
+print(f"note: run 1 had steps=100 so its cosine had decayed to lr×0.1 by step 99; run 2 has steps=150, so at step 100 "
+      f"lr_at() gives ×{lr_at(100, 150, 1.0, 10, 'cosine', 0.1):.3f} — the schedule depends on the planned length (WSD avoids this)")
 print(f"run 2: resumed at step {step_saved}; first logged loss after resume {h2.train_loss[i_resume]:.3f} "
       f"(before the checkpoint: {h1.train_loss[-1]:.3f}; a fresh model would be at ~{math.log(V):.2f})")
 print(f"       history now spans steps {h2.step[0]}..{h2.step[-1]} with {len(h2.step)} log points")

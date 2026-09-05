@@ -67,6 +67,17 @@ def get_base_model(quick: bool = False, force: bool = False, verbose: bool = Tru
     tok = get_tokenizer()
     if os.path.exists(path) and not force:
         return TinyLM.load(path), tok
+    # If another process is already training this checkpoint (labs run in parallel), wait for it.
+    lock = path + ".lock"
+    if os.path.exists(lock) and not force:
+        import time
+        if verbose:
+            print(f"[pipeline] another process is training {os.path.basename(path)}; waiting...")
+        for _ in range(120):
+            time.sleep(10)
+            if os.path.exists(path):
+                return TinyLM.load(path), tok
+    open(lock, "w").close()
     docs = get_corpus()
     train_tokens, val_tokens = get_tokens(tok, docs)
     cfg = preset("nano" if quick else "small", vocab_size=tok.vocab_size)
@@ -77,8 +88,12 @@ def get_base_model(quick: bool = False, force: bool = False, verbose: bool = Tru
     if verbose:
         print(f"[pipeline] pretraining {'nano' if quick else 'small'} base model "
               f"({model.num_params():,} params, {tc.steps} steps) -> {path}")
-    train(model, train_tokens, val_tokens, tc, verbose=verbose)
-    model.save(path, TOKENIZER_PATH, extra={"stage": "base"})
+    try:
+        train(model, train_tokens, val_tokens, tc, verbose=verbose)
+        model.save(path, TOKENIZER_PATH, extra={"stage": "base"})
+    finally:
+        if os.path.exists(lock):
+            os.remove(lock)
     return model, tok
 
 

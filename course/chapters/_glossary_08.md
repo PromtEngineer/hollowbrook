@@ -28,3 +28,5 @@
 - **packing** — concatenating documents into one token stream separated by EOS so no padding is wasted (Ch. 08)
 - **EOS token** — the end-of-sequence special token placed between packed documents (Ch. 08)
 - **synthetic rephrasing** — having an LLM rewrite low-quality pages or generate Q&A/summaries from high-quality ones to add diverse tokens (Nemotron-CC) (Ch. 08)
+- **FineWeb-Edu** — a 1.3T-token subset of FineWeb selected by a classifier trained to imitate Llama-3-70B's 0–5 "educational value" ratings (Ch. 08)
+- **DCLM** — DataComp-LM: a 2024 benchmark and dataset whose best recipe keeps the top 10% of Common Crawl by a fastText classifier trained on instruction-style text (Ch. 08)

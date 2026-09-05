@@ -14,3 +14,4 @@
 - **FlashAttention** — an exact attention implementation that processes keys in blocks and never materialises the T × T score matrix (Ch. 05)
 - **sliding-window attention** — a mask that lets each query see only the most recent w keys, bounding the cache and the score matrix (Ch. 05)
 - **top-k sparse attention** — 🆕 each query attends to a small selected subset of keys (NSA, DeepSeek Sparse Attention, DeepSeek-V4 CSA/HCA) (Ch. 05)
+- **attention sink** — a head that parks most of its weight on a fixed position (usually the first token) when it has nothing useful to look up, because softmax weights must sum to 1 (Ch. 05)

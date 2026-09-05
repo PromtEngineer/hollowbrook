@@ -167,7 +167,55 @@ print(h2.step)                                              # [0, 5, 10, 15, 19,
 
 ## Worked example 🧪
 
-WORKED_EXAMPLE_10
+Run `python3 labs/lab10_pretrain.py` (quick: the nano model, 150 steps × 16 × 64 tokens per optimizer, TIMING_Q) and `--full` (the small model, 700 steps × 32 × 128, TIMING_F). Timings are with two CPU threads on a shared 4-core VM. The lab writes its models to `runs/lab10_adamw.pt` and `runs/lab10_muon.pt`; the shared `runs/base_small.pt` that later chapters use is untouched.
+
+**Quick run** — the two training logs, side by side (every 25th step; the lab prints all of them):
+
+```
+[adamw] 295,584 non-embedding params, 2.72e+06 FLOPs/token
+step     0 | loss 6.8026 | lr×0.067 | grad_norm 1.57
+step    50 | loss 3.6542 | lr×0.859 | grad_norm 1.09      val loss 3.6366  (perplexity 38.0)
+step   100 | loss 2.3516 | lr×0.372 | grad_norm 0.84      val loss 2.2492  (perplexity 9.5)
+step   149 | loss 1.8920 | lr×0.100 | grad_norm 0.78      val loss 1.9163  (perplexity 6.8)
+
+[muon]  295,584 non-embedding params, 2.72e+06 FLOPs/token
+step     0 | loss 6.8026 | lr×0.067 | grad_norm 1.57
+step    50 | loss 3.1136 | lr×0.859 | grad_norm 1.55      val loss 3.0868  (perplexity 21.9)
+step   100 | loss 1.7247 | lr×0.372 | grad_norm 0.60      val loss 1.6422  (perplexity 5.2)
+step   149 | loss 1.4116 | lr×0.100 | grad_norm 0.46      val loss 1.4305  (perplexity 4.2)
+
+AdamW 1.9266  vs  Muon 1.4404   (difference +0.4862 nats, Muon lower)
+```
+
+**Full run** — the small model:
+
+```
+FULL_LOG
+```
+
+**Checkpoint and resume** (both modes use the nano model for this part):
+
+```
+run 1: trained 100 steps, loss 6.803 -> 1.800; checkpoint saved at step 100
+[train] resumed from runs/lab10_resume_ckpt.pt at step 100
+step   100 | loss 1.8342 | lr×0.355 | grad_norm 0.76
+step   149 | loss 1.4435 | lr×0.100 | grad_norm 0.84      val loss 1.4124  (perplexity 4.1)
+run 2: resumed at step 100; first logged loss after resume 1.834 (before the checkpoint: 1.800; a fresh model would be at ~6.77)
+✅ loss after resume continues from where it stopped
+✅ loaded history matches the original run exactly
+```
+
+What to look at:
+
+1. **Both runs start at 6.80 = ln 871**, uniform guessing over the vocabulary, and the first 50 steps are the steep part of the hockey stick. The `lr×` column is the schedule: 0.067 at step 0 (warmup), 1.0 at step 15, cosine down to 0.1.
+2. **Muon is ahead at every checkpoint** in the quick run — 3.09 vs 3.64 at step 50, 1.44 vs 1.93 at the end — and its gradient norm settles lower (0.46 vs 0.78), a sign the optimisation is calmer. This is one seed of a tiny model, so treat the 0.49-nat gap as "consistent with the reported 2× compute efficiency", not a measurement of it: AdamW reaches Muon's step-100 loss (1.64) never in these 150 steps, and Muon reaches AdamW's final loss (1.93) at about step 90. FULL_MUON_SENTENCE
+3. **Muon costs more per step on a CPU**: MUON_TPS. Five Newton–Schulz iterations per matrix per step are five extra matmuls on 96 × 96 matrices, which is a large fraction of the tiny model's compute; at 1B+ parameters the overhead is reported at ~1% of step time, and Moonshot distributes it across devices.
+4. **MFU on a CPU is a few percent.** MFU_LINE Against the 100 GFLOP/s placeholder that is ~2%; the same loop on an H100 with a model large enough to fill it reports 40–50%. Small matmuls, Python overhead and no tensor cores are the gap; this is why "tokens per second" is the number to watch on a laptop and MFU the number to watch on a cluster.
+5. **The resume is seamless because the optimizer state was saved.** The first loss after resuming (1.834) is within noise of the last loss before the checkpoint (1.800), the resumed history begins with the 11 log points loaded from the checkpoint, and the run finishes at 1.41 — the same place a 150-step run lands. Note the `lr×0.355` at step 100: run 1 was planned for 100 steps so its cosine had already decayed to 0.1, while run 2 is planned for 150 and *raises* the LR on resume. A schedule tied to the planned length is exactly what WSD avoids.
+6. **The generated text** at the end (`'Mia had a' -> ' red hat. One windy day ... Zoe went home and put the box in a kite.'`) has Storyland's grammar and vocabulary and none of its logic; `'What is 12 + 7?'` gets `'Answer: 40 = 87.'`. Perplexity 4 on this corpus means "fluent", not "correct" — Chapters 15–19 are about the difference.
+
+The three figures the lab saves — `lab10_lr_schedules.png` (cosine, WSD and constant from `lr_at`), `lab10_adamw_vs_muon.png` (train and val curves for both) — are worth opening side by side with the log.
+
 
 🎛️ In `interactive/10_training_dynamics.html`, a simulated run shows loss, gradient norm and LR side by side. Drag the peak LR up until the loss spikes, then try each remedy — longer warmup, clipping, z-loss, skipping the bad batch — and watch which ones recover. Switch the schedule between cosine and WSD and note where the final loss drop happens. The challenge is to find the highest LR that finishes without a spike using at most two remedies.
 

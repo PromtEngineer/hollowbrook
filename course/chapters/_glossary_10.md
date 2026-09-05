@@ -19,3 +19,4 @@
 - **loss spike** — a sudden jump in training loss, from too-high LR, unbounded logits or a bad batch; may recover or diverge (Ch. 10)
 - **z-loss** — an auxiliary loss 1e-4 · (log Z)² on the softmax normaliser Z that keeps logits from drifting to huge values (Ch. 10)
 - **QK-norm** — normalising queries and keys before the attention dot product so attention logits stay bounded (Ch. 10)
+- **gradient norm** — the global L2 norm of all parameter gradients before clipping; a slow rise is the usual early warning of a loss spike (Ch. 10)

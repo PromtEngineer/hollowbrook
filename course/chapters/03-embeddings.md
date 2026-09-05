@@ -66,11 +66,11 @@ The input side looks up a row of `E`. The output side computes a score for every
 
 ### Seeing 96 dimensions in two
 
-To draw the space we need to throw away dimensions. **Principal component analysis (PCA)** finds the two directions along which a set of points is most spread out and projects every point onto them. The lab does it with a singular value decomposition in numpy — no library needed — and reports how much of the total spread the two directions capture (61% for the nano model, so the picture is faithful but not complete).
+To draw the space we need to throw away dimensions. **Principal component analysis (PCA)** finds the two directions along which a set of points is most spread out and projects every point onto them. The lab does it with a singular value decomposition in numpy — no library needed — and reports how much of the total spread the two directions capture (46% for the small model in the figure below, 61% for the nano model — faithful, but not complete).
 
-![PCA of the nano model's embeddings: colours, names, numbers and animals form separate clusters](../figures/generated/lab03_pca.png)
+![PCA of the small model's embeddings (the figure on disk is from whichever mode you ran last): colours, names, numbers and animals form separate clusters](../figures/generated/lab03_pca.png)
 
-In the figure, the four categories form four tight clusters and the number words `one`, `two`, `three` sit apart from the digits, because in Storyland they only ever appear in the counting template ("one, two, three"). No label was given to the model; the clusters are the company each token kept.
+In the figure, the four categories form four separate clusters — colours, animals and digits tight, names more spread out — and the number words `one`, `two`, `three` sit apart from the digits, because in Storyland they only ever appear in the counting template ("one, two, three"). No label was given to the model; the clusters are the company each token kept.
 
 One thing an embedding does *not* carry is position. `E[" kite"]` is the same vector whether the word is the first or the fifteenth token; the model learns about order in the attention layer (RoPE, Chapter 5).
 
@@ -212,7 +212,34 @@ parameters: tied 379,200 vs untied 462,816 -> tying saves 83,616 (= V x d = 871 
 
 After "Mia had a" the model's top five candidates are all colours, at roughly equal probability — which is both correct (the template is "{A} had a {c} {o}") and a direct picture of the embedding geometry: the hidden state points toward the colour cluster, and every colour row has about the same dot product with it.
 
-<!--FULL03-->
+**Full mode — the small model (6 layers, d = 192, 700 training steps).** The same sections with `--full`:
+
+```
+model: 6 layers, d_model=192, vocab=871; embedding matrix (871, 192) = 167,232 parameters (7% of the model)
+row norms: mean 1.556, min 0.500, max 2.341
+
+nearest neighbours (cosine) in the TRAINED embedding matrix:
+  ' red'     -> ' orange' 0.93, ' purple' 0.92, ' black' 0.92, ' yellow' 0.91, ' white' 0.91
+  ' kite'    -> ' map' 0.79, ' book' 0.71, ' cake' 0.70, ' cup' 0.70, ' rope' 0.68
+  ' Mia'     -> ' Zoe' 0.60, ' Ruby' 0.57, ' Sam' 0.57, ' Jack' 0.56, ' Lily' 0.54
+  '7'        -> '2' 0.76, '8' 0.74, '16' 0.74, '13' 0.72, '5' 0.71
+  ' three'   -> ' two' 0.38, ' for' 0.24, ',' 0.24, ' were' 0.18, ' more' 0.17
+' red' neighbours that are colours: 5/5 | ' Mia' -> names: 5/5 | '7' -> digits: 5/5
+
+mean cosine between groups (rows/cols: colour, name, object, animal, number):
+  colour    0.91  -0.07   0.17  -0.06  -0.05
+  name     -0.07   0.47  -0.09  -0.07  -0.21
+  object    0.17  -0.09   0.56  -0.05  -0.07
+  animal   -0.06  -0.07  -0.05   0.90   0.05
+  number   -0.05  -0.21  -0.07   0.05   0.40
+mean within-group cosine 0.649 vs across-group -0.046
+top-2 principal axes explain 27% + 19% = 46% of the variance in 192 dimensions
+after 'Mia had a', top next tokens: ' blue' 0.11, ' brown' 0.11, ' red' 0.11, ' green' 0.10, ' orange' 0.10
+parameters: tied 2,529,024 vs untied 2,696,256 -> tying saves 167,232 (= V x d = 871 x 192)
+```
+
+The categories are the same, but the bigger model, trained longer, keeps its names *apart*: the within-name cosine drops from 0.92 (nano) to 0.47, and `" Mia"`'s nearest name is only 0.60 away. Colours and animals stay near-interchangeable (0.91, 0.90) because Storyland never distinguishes them, while names appear in more varied slots (subject, object, possessive `Mia's`) and the Q&A lines ask *which* name did what, so telling names apart pays off in the loss. The embedding matrix has also spread out: row norms now range from 0.50 to 2.34 (mean 1.56) against a mean of 0.71 in the nano model, and two principal axes capture only 46% of the variance instead of 61% — the extra dimensions are being used. This is a preview of a theme that recurs through the course: what a model learns is exactly what the data rewards, and more capacity is spent where the loss cares.
+
 
 The lab ends with `8/8 checks passed`.
 

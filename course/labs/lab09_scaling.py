@@ -59,6 +59,14 @@ for name, d, L, h in SIZES:
     print(f"  {name}: d={d:>3} layers={L}  N={N:>9,} (+{N_all - N:,} embedding)  "
           f"val loss {val:.3f}  {dt:5.1f}s  {D / dt:,.0f} tok/s  C = {flops:.2e} FLOPs")
 
+# The same validation windows were scored every STEPS//5 steps, so we also get L(N, D) for free.
+print("\nval loss L(N, D) at intermediate token counts (rows: D, columns: model size):")
+print(f"{'D (tokens)':>12}" + "".join(f"{r['name']:>9}" for r in results) + "   (biggest − smallest)")
+for i, st in enumerate(results[0]["hist"].val_step):
+    row = [r["hist"].val_loss[i] for r in results]
+    print(f"{(st + 1) * BS * SL:>12,}" + "".join(f"{v:9.3f}" for v in row) + f"   {row[-1] - row[0]:+.3f}")
+print("as D grows every size approaches the same floor: the irreducible loss E of Storyland")
+
 Ns = np.array([r["N"] for r in results], dtype=float)
 Ls = np.array([r["val"] for r in results])
 check(Ls[0] > Ls[1] > Ls[2], "bigger model -> lower loss at a fixed token budget")
@@ -149,7 +157,7 @@ print(f"\n{'budget':<22}{'GPU-hours':>10}{'FLOPs':>10}{'N (20 tok/param)':>18}{'
 def fmt(x):
     for unit, s in ((1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "k")):
         if x >= unit:
-            return f"{x / unit:.2g}{s}"
+            return f"{x / unit:.3g}{s}"
     return f"{x:.0f}"
 
 

@@ -359,8 +359,10 @@ class TinyLM(nn.Module):
     def save(self, path: str, tokenizer_path: Optional[str] = None, extra: Optional[dict] = None) -> None:
         import os
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        tmp = path + ".tmp"                      # write-then-rename so readers never see a half-written file
         torch.save({"config": self.cfg.to_dict(), "state_dict": self.state_dict(),
-                    "tokenizer_path": tokenizer_path, "extra": extra or {}}, path)
+                    "tokenizer_path": tokenizer_path, "extra": extra or {}}, tmp)
+        os.replace(tmp, path)
 
     @classmethod
     def load(cls, path: str, map_location="cpu") -> "TinyLM":

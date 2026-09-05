@@ -210,7 +210,6 @@ print(f"  strongest 'previous token' head: layer {best_prev[0]} head {best_prev[
 print(f"  strongest 'first token' head:    layer {best_first[0]} head {best_first[1]} (mean weight on token 0 = {best_first[4]:.2f})")
 # where does the second ' kite' look?
 second_kite = [i for i, t in enumerate(toks) if t == " kite"][-1]
-l, h = best_prev[0], best_prev[1]
 row = maps[0][0, 0, second_kite]
 top = row.topk(3)
 print(f"  layer 0 head 0, query = second ' kite' (pos {second_kite}): top keys "
@@ -230,11 +229,12 @@ fig.suptitle(f"attention maps, TinyLM {'nano' if args.quick else 'small'}: rows 
 fig.tight_layout()
 savefig(fig, "lab05_attention_maps.png")
 
-# a bigger view of one head, with token labels
+# a bigger view of the strongest 'previous token' head, with token labels
+lp, hp = best_prev[0], best_prev[1]
 fig, ax = plt.subplots(figsize=(6.5, 6))
-ax.imshow(maps[l][0, h].numpy(), cmap="Blues", vmin=0, vmax=1)
+ax.imshow(maps[lp][0, hp].numpy(), cmap="Blues", vmin=0, vmax=1)
 ax.set_xticks(range(Tn), toks, rotation=90, fontsize=7); ax.set_yticks(range(Tn), toks, fontsize=7)
-ax.set_title(f"layer {l} head {h}: the 'previous token' head", fontsize=10)
+ax.set_title(f"layer {lp} head {hp}: the 'previous token' head", fontsize=10)
 savefig(fig, "lab05_attention_head.png")
 
 # ----------------------------------------------------------------------------
