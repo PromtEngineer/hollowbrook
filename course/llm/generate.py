@@ -138,13 +138,15 @@ def sample_group(model: TinyLM, prompt_ids: Sequence[int], n: int, max_new_token
 
 # ---------------------------------------------------------------- benchmark
 def benchmark_decode(model: TinyLM, tok: BPETokenizer, prompt: str = "Once upon a time",
-                     max_new_tokens: int = 64) -> dict:
+                     max_new_tokens: int = 64, repeats: int = 3) -> dict:
     """Tokens/second with and without the KV cache (Lab 7)."""
     out = {}
     for use_cache in (True, False):
-        t0 = time.perf_counter()
-        generate(model, tok, prompt, max_new_tokens=max_new_tokens, temperature=1.0,
-                 use_cache=use_cache, seed=0)
-        dt = time.perf_counter() - t0
-        out["cache" if use_cache else "no_cache"] = max_new_tokens / dt
+        best = float("inf")
+        for _ in range(repeats):                       # take the best of a few runs: less noise
+            t0 = time.perf_counter()
+            generate(model, tok, prompt, max_new_tokens=max_new_tokens, temperature=1.0,
+                     use_cache=use_cache, seed=0)
+            best = min(best, time.perf_counter() - t0)
+        out["cache" if use_cache else "no_cache"] = max_new_tokens / best
     return out

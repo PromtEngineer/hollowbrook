@@ -420,8 +420,8 @@ python3 labs/lab06_build_tinylm.py --full     # small base model (trains runs/ba
 
 ### What to look at (quick run, nano base model)
 
-The quick run took about 2 minutes on a 4-core CPU that was shared with other jobs; alone it is
-closer to one minute. Section 2 is the parameter table, printed by the lab from the same formulas
+The quick run takes about 7 seconds on an idle 4-core CPU (about 20 s when the CPU is shared with
+other jobs). Section 2 is the parameter table, printed by the lab from the same formulas
 as the table above and checked against the library:
 
 ```
@@ -492,10 +492,10 @@ loss at init 6.7891  vs  ln(V) = ln(871) = 6.7696
 
 --- 7. Load the pretrained base model and generate ---
 loaded nano base: 295,584 non-embedding params
-val loss 1.129 (perplexity 3.1)  vs untrained 6.789
+val loss 1.134 (perplexity 3.1)  vs untrained 6.789
 ✅ trained model's loss is > 2 nats below the untrained one
-T=0.0: 'At the park, Mia met' -> ' Mia. Mia was proud because Mia lost a pear.'
-T=0.8: 'At the park, Mia met' -> ' Ella. Ruby was calm because Nora lost a cup. Max liked the orange drum more than the pink shell. Then Ava and Ruby played with the white'
+T=0.0: 'At the park, Mia met' -> ' Mia. Mia was sleepy because Mia lost a pear.'
+T=0.8: 'At the park, Mia met' -> ' Ella. Ruby was calm because Nora lost a cup. Max liked the orange drum more than the pink shell. Then Ava and Ruby played with the orange'
 ```
 
 The untrained model's output includes raw byte tokens (the `�` characters) because a uniform
@@ -508,23 +508,58 @@ zeros) and the validation loss is re-measured:
 
 ```
 --- 8. What each part does: ablate attention / MLP sub-layers of the trained model ---
-layer   no attn    no mlp   (loss; baseline 1.129)
-    0     1.903     4.967
-    1     1.323     1.628
-    2     1.151     1.451
+layer   no attn    no mlp   (loss; baseline 1.134)
+    0     1.983     5.216
+    1     1.359     1.645
+    2     1.163     1.463
 ✅ zeroing any sub-layer's write raises the loss
 with ALL attention zeroed, last-token logits of two different sentences ending in 'kite' differ by max 0.00e+00
 ✅ no attention -> each position only sees its own token (a bigram model)
 ```
 
 Two things to look at. Block 0's MLP is by far the most important sub-layer in this tiny model
-(loss 1.13 → 4.97 without it: nearly back to "uniform"), consistent with the picture that early
+(loss 1.13 → 5.22 without it: nearly back to "uniform"), consistent with the picture that early
 MLPs turn raw token embeddings into usable features; later blocks matter less and less. And the
 last check is the cleanest demonstration in the chapter: with every attention write removed, two
 different sentences that end in the same token produce *bit-for-bit identical* logits, because no
 information can cross between positions any more.
 
-<<LAB06_FULL>>
+### The full run (small base model)
+
+`--full` loads `runs/base_small.pt` — the 6-layer model whose parameters you counted, trained for
+700 steps (about 5 minutes on an idle laptop CPU; 26 s for the lab itself once the checkpoint
+exists). Sections 1–6 are identical; sections 7 and 8 change:
+
+```
+--- 7. Load the pretrained base model and generate ---
+loaded small base: 2,361,792 non-embedding params
+val loss 0.826 (perplexity 2.3)  vs untrained 6.805
+✅ trained model's loss is > 2 nats below the untrained one
+T=0.0: 'At the park, Mia met' -> ' Ella. Ella was sleepy because Ella lost a shell. Mia went home and put the flag in a red box. The end. Mia and Ella looked'
+T=0.8: 'At the park, Mia met' -> ' Ella. Ella was brave because Ella lost a cup. The fox gave the cup back. Ella was very happy and said thank you.'
+
+--- 8. What each part does: ablate attention / MLP sub-layers of the trained model ---
+layer   no attn    no mlp   (loss; baseline 0.826)
+    0     4.135     2.639
+    1     0.959     0.898
+    2     0.843     0.841
+    3     0.855     0.827
+    4     0.957     0.845
+    5     0.844     1.025
+✅ zeroing any sub-layer's write raises the loss
+with ALL attention zeroed, last-token logits of two different sentences ending in 'kite' differ by max 0.00e+00
+✅ no attention -> each position only sees its own token (a bigram model)
+```
+
+Perplexity 2.3 means the model is, on average, choosing between about two equally likely tokens
+at each step — Storyland is a small world. The greedy sample now keeps the second character
+distinct ("Mia met Ella") and follows a story template to "The end." Compare the ablation with
+the nano model's: in the deeper model, block 0's *attention* is now the single most important
+write (0.83 → 4.14), the middle blocks are nearly dispensable one at a time (removing block 2's
+MLP costs 0.015), and the *last* block's MLP matters again (1.025) — the "early: build features,
+middle: compute, late: turn it into a prediction" pattern from the interpretability literature,
+visible in a 2.4 M-parameter model. `figures/generated/lab06_ablation.png` is the bar chart.
+
 
 
 ## Try it yourself ✍️

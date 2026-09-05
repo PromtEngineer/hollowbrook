@@ -61,11 +61,11 @@ class TinyLMConfig:
 
 
 PRESETS: dict[str, dict] = {
-    # ~0.9M non-embedding params; quick smoke tests
+    # ~0.3M non-embedding params (V≈871); trains to readable text in ~1 min on a laptop CPU
     "nano": dict(d_model=96, n_layers=3, n_heads=3, n_kv_heads=1, max_seq_len=128),
-    # ~2.7M non-embedding params; the default course model
+    # ~2.4M non-embedding params (~2.5M total); the default course model
     "small": dict(d_model=192, n_layers=6, n_heads=6, n_kv_heads=2, max_seq_len=256),
-    # ~19M non-embedding params; for a GPU
+    # ~21M non-embedding params; for a GPU
     "medium": dict(d_model=384, n_layers=12, n_heads=12, n_kv_heads=4, max_seq_len=512),
 }
 

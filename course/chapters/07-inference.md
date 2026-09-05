@@ -377,91 +377,95 @@ python3 labs/lab07_generate.py --full     # small base model; longer benchmark; 
 
 ### What to look at (quick run, nano base model)
 
-The quick run takes about 7 seconds. Section 1 prints the model's belief about the token after
-`"At the park, Mia met"`:
+The quick run takes about 7 seconds on an idle CPU. Section 1 prints the model's belief about the
+token after `"At the park, Mia met"`:
 
 ```
 --- 1. logits -> softmax -> a distribution over the next token ---
-logits shape (1, 6, 871); last-position logits range [-3.31, 5.74]
+logits shape (1, 6, 871); last-position logits range [-3.21, 5.80]
        token    logit    prob
-      ' Mia'     5.74   0.070
-     ' Jack'     5.67   0.065
-     ' Ella'     5.65   0.064
-     ' Finn'     5.65   0.064
-      ' Leo'     5.65   0.064
-      ' Ben'     5.61   0.062
-      ' Ava'     5.59   0.060
-     ' Ruby'     5.57   0.059
-      ' Tom'     5.53   0.057
-      ' Ivy'     5.52   0.057
-entropy of this distribution: 4.56 bits  (uniform over V=871 would be 9.77)
+      ' Mia'     5.80   0.069
+     ' Ella'     5.78   0.067
+      ' Ava'     5.77   0.067
+     ' Ruby'     5.75   0.065
+     ' Finn'     5.72   0.063
+     ' Jack'     5.72   0.063
+      ' Leo'     5.67   0.060
+      ' Ben'     5.63   0.058
+      ' Ivy'     5.63   0.058
+      ' Max'     5.62   0.057
+entropy of this distribution: 4.57 bits  (uniform over V=871 would be 9.77)
 ```
 
 The model has learned that a name comes next but has no way to know *which* name, so ten names
-share nearly equal logits (5.5–5.7) and the entropy is 4.6 bits — a genuinely uncertain
+share nearly equal logits (5.6–5.8) and the entropy is 4.6 bits — a genuinely uncertain
 distribution, and exactly the situation where the sampling knobs matter.
 
 Section 2 is the knob table. Same prompt, same seed, 24 new tokens each:
 
 ```
 --- 2. The sampling knobs on the SAME prompt and seed ---
-greedy (T=0)         | ' Mia. Mia was proud because Mia lost a pear.'
+greedy (T=0)         | ' Mia. Mia was sleepy because Mia lost a pear.'
 T=0.5                | ' Ella. Ruby was calm because Nora lost a cup. Max liked the orange drum more than the pink shell. Then Ava'
 T=1.0                | ' Ella. Ruby was calm because Nora lost a cup. Max liked the orange drum more than the pink shell. Max went'
-T=1.5                | ':.\ny  frog said One windy The the cave Max�159 orange drumMax had a pink shell. marke +'
-T=1.0 top-k=5        | ' Ella. Finn was calm because Mia lost a cup.'
+T=1.5                | ': oney 133 said thank At for the rope to�159 orange drum near the village. shell. marke +'
+T=1.0 top-k=5        | ' Ella. Ruby was calm because Mia lost a cup. A rabbit ran across the hill. Mia laughed and Ella clapped.'
 T=1.0 top-p=0.9      | ' Ella. Ruby was calm because Nora lost a cup. Max liked the orange drum more than the pink shell. Max went'
 T=1.0 min-p=0.1      | ' Ella. Ruby was calm because Nora lost a cup. Max liked the orange drum more than the pink shell. Max went'
-T=1.0 rep-pen=1.5    | ' Ella. Ruby was calm because Nora lost a cup.\nQuestion:159 = Max had a pink shell?\nAnswer:'
+T=1.0 rep-pen=1.5    | ' Ella. Ruby was calm because Nora lost a cup.\nQuestion:159 = Max had a pink shell. One cold'
 ✅ greedy decoding is deterministic (seed does not matter)
 ✅ repetition penalty never raises the logit of a token already seen
 ```
 
 Read down the table. Greedy picks the top name ("Mia") and then loops on it — "Mia met Mia. Mia
-was proud because Mia lost" — the classic greedy failure. `T=0.5` and `T=1.0` produce the same
+was sleepy because Mia lost" — the classic greedy failure. `T=0.5` and `T=1.0` produce the same
 first sentence because the random draw with seed 0 lands on the same token when the distribution
 is this flat; they diverge only at the 20th token. `T=1.5` falls apart into byte fragments and
 raw digits: the tail of the vocabulary, which the model has correctly assigned tiny probability,
 is now being sampled. `top-p=0.9` and `min-p=0.1` match `T=1.0` here because on this flat
-distribution neither truncates much. `top-k=5` diverges — "Finn", not "Ruby" — because it cut the
-distribution to five names. The repetition penalty, at 1.5, pushes the model away from the words
-it has used and it wanders into the arithmetic format of the maths documents.
+distribution neither truncates much. `top-k=5` diverges at the third name — "Mia", not "Nora" —
+because "Nora" was outside the five best at that step. The repetition penalty, at 1.5, pushes the
+model away from the words it has used and it wanders into the question-and-answer format of the
+Storyland documents.
 
 Section 3 sweeps temperature and averages the entropy over all six prompt positions:
 
 ```
-T=0.1   mean entropy   1.68 bits   top-1 prob at last position 0.251
-T=0.5   mean entropy   1.98 bits   top-1 prob at last position 0.089
-T=1.0   mean entropy   2.67 bits   top-1 prob at last position 0.070
-T=1.5   mean entropy   5.71 bits   top-1 prob at last position 0.049
-T=2.0   mean entropy   8.06 bits   top-1 prob at last position 0.029
-T=5.0   mean entropy   9.66 bits   top-1 prob at last position 0.005
+T=0.1   mean entropy   1.59 bits   top-1 prob at last position 0.188
+T=0.5   mean entropy   1.99 bits   top-1 prob at last position 0.085
+T=1.0   mean entropy   2.75 bits   top-1 prob at last position 0.069
+T=1.5   mean entropy   5.69 bits   top-1 prob at last position 0.048
+T=2.0   mean entropy   7.97 bits   top-1 prob at last position 0.028
+T=5.0   mean entropy   9.65 bits   top-1 prob at last position 0.005
 ✅ entropy increases monotonically with temperature
 ```
 
-Notice that even at `T=0.1` the top name only reaches 25%: temperature can only amplify
+Notice that even at `T=0.1` the top name only reaches 19%: temperature can only amplify
 differences that exist, and the names are nearly tied. Between `T=1` and `T=2` the entropy jumps
-from 2.7 to 8.1 bits — that is the whole tail of the vocabulary being switched on, and it is why
+from 2.8 to 8.0 bits — that is the whole tail of the vocabulary being switched on, and it is why
 `T=1.5` above produced garbage. `figures/generated/lab07_temperature_entropy.png` plots the curve
 against the uniform limit of 9.77 bits.
 
-Section 4 verifies the cache and times it:
+Section 4 verifies the cache and times it (numbers from a single-threaded run on an otherwise
+idle CPU):
 
 ```
 --- 4. KV cache: same numbers, fewer FLOPs ---
 ✅ greedy ids identical with and without cache (32 tokens)
 cache.pos after prefill+decode = 38 (= sequence length 38)
-max |logits_full - logits_incremental| = 4.29e-06
+max |logits_full - logits_incremental| = 4.77e-06
 ✅ cached incremental logits == full-sequence logits (allclose)
 greedy 32 tokens: cache  191.8 tok/s   no cache  159.4 tok/s   speed-up 1.20x
 benchmark_decode(32 tokens): {'cache': 209.7, 'no_cache': 159.2}
 ```
 
-The numbers agree to `4e-6` — floating-point rounding from summing in a different order — and
-the ids are identical. The speed-up of 1.2× is modest because a 300 K-parameter model
+The numbers agree to `5e-6` — floating-point rounding from summing in a different order — and
+the ids are identical. The speed-up of 1.2–1.3× is modest because a 300 K-parameter model
 generating 32 tokens is dominated by Python overhead per step, not by the recomputation the cache
 avoids; the full run below, with the larger model and 96 tokens, shows the gap widening. On a GPU
-serving a real model it is the difference between usable and unusable.
+serving a real model it is the difference between usable and unusable. (Timings on a CPU shared
+with other jobs are noisy; if your speed-up comes out below 1, run the lab again on a quiet
+machine.)
 
 Sections 5 and 6 are the arithmetic from the chapter, printed:
 
@@ -492,21 +496,79 @@ economic fact behind section 9:
 70B, batch 512 (near compute-bound)    $3.0/h at 7,000 tok/s -> $   0.12 per M tokens
 ```
 
-Section 7 (speculative decoding) needs both checkpoints and runs in the full mode. Section 8
-shows the chat template as tokens and the base model ignoring `<|end|>`:
+Section 7 (speculative decoding) needs both checkpoints and runs once `runs/base_small.pt`
+exists. Section 8 shows the chat template as tokens and the base model ignoring `<|end|>`:
 
 ```
 '<|bos|><|user|>What is 2 + 3?<|end|><|assistant|>'
 tokens: ['<|bos|>', '<|user|>', 'What', ' is', ' ', '2', ' +', ' ', '3', '?', '<|end|>', '<|assistant|>'] ...
 stop token '<|end|>' has id 868; base model generation with stop='<|end|>':
-' + 78 = 78<|eos|>What is 78 + 78?\nAnswer: 78 + 78 = 78.<|eos|>What is '
+'.<|eos|>What is 78 + 78?\nAnswer: 78 + 78 = 78.<|eos|>What is 78 + 78?\n'
 ```
 
 The base model treats the `<|user|>`/`<|assistant|>` tokens as noise, latches onto "What is …"
 as the start of a Storyland maths document, emits `<|eos|>` at the end of each "document" (which
 it did see in pretraining) and never `<|end|>` (which it did not).
 
-<<LAB07_FULL>>
+### The full run (small base model)
+
+`--full` uses `runs/base_small.pt` (2.4 M parameters), generates 96 tokens in the cache
+benchmark, and runs the speculative-decoding demo; it takes about 80 s on a shared 4-core CPU.
+The distribution after the prompt is now sharper (4.0 bits; "Ella" leads at 7.9%), and the knob
+table shows a model that can hold a story together:
+
+```
+--- 2. The sampling knobs on the SAME prompt and seed ---
+greedy (T=0)         | ' Ella. Ella was sleepy because Ella lost a shell. Mia went home and put the flag in a red box. The'
+T=0.5                | ' Ella. Ella was brave because Ella lost a cup. Mia counted the books: one, two, three. There were'
+T=1.0                | ' Ella. Ella was brave because Ella lost a cup. The fox gave the cup back. Ella was very happy and said'
+T=1.5                | ' Ella.86. Ella liked the blue cup more than the white pear.'
+T=1.0 top-k=5        | ' Ella. Ella was brave because Ella lost a pear. The fox gave the pear back. Ella was very proud and said'
+T=1.0 top-p=0.9      | ' Ella. Ella was brave because Ella lost a cup. The fox gave the cup back. Ella was very happy and said'
+T=1.0 min-p=0.1      | ' Ella. Ella was brave because Ella lost a cup. The fox gave the cup back. Ella was very happy and said'
+T=1.0 rep-pen=1.5    | ' Ella.86 - 8 = 85'
+
+--- 3. Temperature sweep: entropy of the next-token distribution ---
+T=0.1   mean entropy   1.46 bits   top-1 prob at last position 0.389
+T=1.0   mean entropy   2.00 bits   top-1 prob at last position 0.079
+T=1.5   mean entropy   2.40 bits   top-1 prob at last position 0.071
+T=2.0   mean entropy   4.04 bits   top-1 prob at last position 0.062
+T=3.0   mean entropy   7.62 bits   top-1 prob at last position 0.038
+```
+
+Greedy now produces a coherent story rather than a loop ("Mia went home and put the flag in a
+red box. The end."), and the trained model is confident enough that `T=1.5` merely injects a
+stray number ("Ella.86.") instead of collapsing. The entropy curve has moved right: the tail does
+not switch on until `T≈2`, where the nano model's did at `T≈1.5` — a better-trained model has
+pushed more probability mass away from the junk tokens, so it tolerates a higher temperature.
+The repetition penalty at 1.5 is now clearly harmful: once every common story word has been
+penalised, arithmetic is what is left.
+
+```
+--- 4. KV cache: same numbers, fewer FLOPs ---
+✅ greedy ids identical with and without cache (96 tokens)
+cache.pos after prefill+decode = 102 (= sequence length 102)
+max |logits_full - logits_incremental| = 9.54e-06
+✅ cached incremental logits == full-sequence logits (allclose)
+benchmark_decode(96 tokens): {'cache': 45.4, 'no_cache': 28.4}
+✅ the KV cache is faster than recomputing
+
+--- 7. Speculative decoding: nano drafts, small verifies (greedy acceptance rule) ---
+draft nano (295,584) -> target small (2,361,792)
+acceptance rate 26/60 = 43%; target calls 15 instead of 40
+speculative: ' Ella. Ella was sleepy because Ella lost a shell. Mia went home and put the flag in a red box. The end. Mia and Ella looked for the shell near the village. A fox was'
+plain greedy: ' Ella. Ella was sleepy because Ella lost a shell. Mia went home and put the flag in a red box. The end. Mia and Ella looked for the shell near the village. A fox was'
+✅ speculative output == target's plain greedy output (lossless)
+```
+
+With 96 tokens and the 8×-larger model the cache's advantage grows to 1.6× (45 vs 28 tok/s in
+`benchmark_decode`; the lab's own first timing pair was noisy on the shared CPU). Section 7 is
+the chapter's most satisfying check: the nano model drafts four tokens at a time, the small model
+verifies them in one pass each, 43% of drafts are accepted, and the small model is called 15
+times instead of 40 — while the output is byte-for-byte identical to plain greedy decoding. A
+real deployment has a draft that agrees with its target 70–90% of the time and a target so large
+that each saved call is worth tens of milliseconds; the mechanism is the same 25 lines.
+
 
 
 ## Try it yourself ✍️
