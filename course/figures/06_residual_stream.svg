@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560" viewBox="0 0 900 560" font-family="system-ui, sans-serif">
+  <rect width="900" height="560" fill="#ffffff"/>
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0f172a"/>
+    </marker>
+    <marker id="arrB" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrO" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+  <text x="450" y="30" text-anchor="middle" font-size="20" font-weight="600" fill="#0f172a">The residual stream: one vector per token, read by every sub-layer, written by addition</text>
+
+  <!-- residual stream column -->
+  <rect x="120" y="60" width="90" height="450" rx="8" fill="#64748b" fill-opacity="0.12" stroke="#64748b" stroke-width="1.5"/>
+  <text x="165" y="80" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">residual</text>
+  <text x="165" y="96" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">stream x</text>
+  <text x="165" y="112" text-anchor="middle" font-size="12" fill="#64748b">(B, T, d)</text>
+
+  <!-- bottom: embedding -->
+  <rect x="110" y="520" width="110" height="30" rx="6" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="165" y="540" text-anchor="middle" font-size="13" fill="#0f172a">embed(tokens)</text>
+  <line x1="165" y1="520" x2="165" y2="512" stroke="#0f172a" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- stream arrow up -->
+  <line x1="165" y1="500" x2="165" y2="125" stroke="#0f172a" stroke-width="3" marker-end="url(#arr)"/>
+
+  <!-- top: final norm + lm head -->
+  <rect x="100" y="38" width="0" height="0"/>
+
+  <!-- Block 1 (bottom) : attention -->
+  <g>
+    <line x1="165" y1="460" x2="330" y2="460" stroke="#2563eb" stroke-width="2" marker-end="url(#arrB)"/>
+    <rect x="330" y="440" width="120" height="40" rx="6" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="390" y="465" text-anchor="middle" font-size="13" fill="#0f172a">RMSNorm</text>
+    <line x1="450" y1="460" x2="500" y2="460" stroke="#0f172a" stroke-width="2" marker-end="url(#arr)"/>
+    <rect x="500" y="435" width="180" height="50" rx="6" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+    <text x="590" y="456" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">attention (block 1)</text>
+    <text x="590" y="474" text-anchor="middle" font-size="11" fill="#64748b">moves info between positions</text>
+    <path d="M680,460 L720,460 L720,410 L230,410" fill="none" stroke="#f59e0b" stroke-width="2"/>
+    <line x1="230" y1="410" x2="200" y2="410" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrO)"/>
+    <circle cx="165" cy="410" r="9" fill="#ffffff" stroke="#f59e0b" stroke-width="2"/>
+    <text x="165" y="414" text-anchor="middle" font-size="13" font-weight="700" fill="#f59e0b">+</text>
+  </g>
+  <!-- Block 1: MLP -->
+  <g>
+    <line x1="165" y1="370" x2="330" y2="370" stroke="#2563eb" stroke-width="2" marker-end="url(#arrB)"/>
+    <rect x="330" y="350" width="120" height="40" rx="6" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="390" y="375" text-anchor="middle" font-size="13" fill="#0f172a">RMSNorm</text>
+    <line x1="450" y1="370" x2="500" y2="370" stroke="#0f172a" stroke-width="2" marker-end="url(#arr)"/>
+    <rect x="500" y="345" width="180" height="50" rx="6" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
+    <text x="590" y="366" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">MLP / SwiGLU (block 1)</text>
+    <text x="590" y="384" text-anchor="middle" font-size="11" fill="#64748b">transforms within a position</text>
+    <path d="M680,370 L720,370 L720,320 L230,320" fill="none" stroke="#f59e0b" stroke-width="2"/>
+    <line x1="230" y1="320" x2="200" y2="320" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrO)"/>
+    <circle cx="165" cy="320" r="9" fill="#ffffff" stroke="#f59e0b" stroke-width="2"/>
+    <text x="165" y="324" text-anchor="middle" font-size="13" font-weight="700" fill="#f59e0b">+</text>
+  </g>
+  <!-- Block 2: attention -->
+  <g>
+    <line x1="165" y1="280" x2="330" y2="280" stroke="#2563eb" stroke-width="2" marker-end="url(#arrB)"/>
+    <rect x="330" y="260" width="120" height="40" rx="6" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="390" y="285" text-anchor="middle" font-size="13" fill="#0f172a">RMSNorm</text>
+    <line x1="450" y1="280" x2="500" y2="280" stroke="#0f172a" stroke-width="2" marker-end="url(#arr)"/>
+    <rect x="500" y="255" width="180" height="50" rx="6" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+    <text x="590" y="276" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">attention (block 2)</text>
+    <text x="590" y="294" text-anchor="middle" font-size="11" fill="#64748b">reads what block 1 wrote</text>
+    <path d="M680,280 L720,280 L720,230 L230,230" fill="none" stroke="#f59e0b" stroke-width="2"/>
+    <line x1="230" y1="230" x2="200" y2="230" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrO)"/>
+    <circle cx="165" cy="230" r="9" fill="#ffffff" stroke="#f59e0b" stroke-width="2"/>
+    <text x="165" y="234" text-anchor="middle" font-size="13" font-weight="700" fill="#f59e0b">+</text>
+  </g>
+  <!-- Block 2: MLP -->
+  <g>
+    <line x1="165" y1="190" x2="330" y2="190" stroke="#2563eb" stroke-width="2" marker-end="url(#arrB)"/>
+    <rect x="330" y="170" width="120" height="40" rx="6" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="390" y="195" text-anchor="middle" font-size="13" fill="#0f172a">RMSNorm</text>
+    <line x1="450" y1="190" x2="500" y2="190" stroke="#0f172a" stroke-width="2" marker-end="url(#arr)"/>
+    <rect x="500" y="165" width="180" height="50" rx="6" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
+    <text x="590" y="186" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">MLP / SwiGLU (block 2)</text>
+    <text x="590" y="204" text-anchor="middle" font-size="11" fill="#64748b">… and so on for L blocks</text>
+    <path d="M680,190 L720,190 L720,140 L230,140" fill="none" stroke="#f59e0b" stroke-width="2"/>
+    <line x1="230" y1="140" x2="200" y2="140" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrO)"/>
+    <circle cx="165" cy="140" r="9" fill="#ffffff" stroke="#f59e0b" stroke-width="2"/>
+    <text x="165" y="144" text-anchor="middle" font-size="13" font-weight="700" fill="#f59e0b">+</text>
+  </g>
+
+  <!-- top exit: final norm -> lm head -->
+  <path d="M165,125 L165,118" fill="none" stroke="#0f172a" stroke-width="2"/>
+  <line x1="210" y1="100" x2="330" y2="100" stroke="#0f172a" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="330" y="80" width="120" height="40" rx="6" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="390" y="105" text-anchor="middle" font-size="13" fill="#0f172a">final RMSNorm</text>
+  <line x1="450" y1="100" x2="500" y2="100" stroke="#0f172a" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="500" y="75" width="180" height="50" rx="6" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626" stroke-width="1.5"/>
+  <text x="590" y="96" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">lm_head (tied to embed)</text>
+  <text x="590" y="114" text-anchor="middle" font-size="11" fill="#64748b">logits (B, T, V)</text>
+
+  <!-- legend -->
+  <rect x="740" y="380" width="150" height="130" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1"/>
+  <text x="815" y="402" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">Legend</text>
+  <line x1="752" y1="422" x2="782" y2="422" stroke="#2563eb" stroke-width="2" marker-end="url(#arrB)"/>
+  <text x="790" y="426" font-size="11" fill="#0f172a">read (via norm)</text>
+  <line x1="752" y1="447" x2="782" y2="447" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrO)"/>
+  <text x="790" y="451" font-size="11" fill="#0f172a">write (addition)</text>
+  <line x1="752" y1="472" x2="782" y2="472" stroke="#0f172a" stroke-width="3"/>
+  <text x="790" y="476" font-size="11" fill="#0f172a">stream, never</text>
+  <text x="790" y="490" font-size="11" fill="#0f172a">normalised in place</text>
+  <text x="815" y="505" text-anchor="middle" font-size="10" fill="#64748b">x ← x + f(norm(x))</text>
+</svg>

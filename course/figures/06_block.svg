@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520" font-family="system-ui, sans-serif">
+  <rect width="900" height="520" fill="#ffffff"/>
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0f172a"/>
+    </marker>
+  </defs>
+  <text x="450" y="28" text-anchor="middle" font-size="20" font-weight="600" fill="#0f172a">Anatomy of one pre-norm block (TinyLM "small": d=192, h=6, kv=2, hd=32, d_ff=512)</text>
+
+  <!-- input -->
+  <rect x="30" y="230" width="110" height="60" rx="8" fill="#64748b" fill-opacity="0.12" stroke="#64748b" stroke-width="1.5"/>
+  <text x="85" y="255" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">x in</text>
+  <text x="85" y="273" text-anchor="middle" font-size="12" fill="#64748b">(B, T, 192)</text>
+
+  <!-- residual line across the bottom -->
+  <path d="M140,260 L160,260 L160,440 L560,440" fill="none" stroke="#f59e0b" stroke-width="2.5"/>
+  <text x="360" y="458" text-anchor="middle" font-size="12" fill="#f59e0b">skip connection (identity, no parameters)</text>
+
+  <!-- attention half -->
+  <line x1="140" y1="260" x2="185" y2="260" stroke="#0f172a" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="185" y="235" width="90" height="50" rx="6" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="230" y="256" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">RMSNorm</text>
+  <text x="230" y="272" text-anchor="middle" font-size="11" fill="#64748b">γ: 192</text>
+
+  <line x1="275" y1="260" x2="305" y2="260" stroke="#0f172a" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="305" y="120" width="250" height="280" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="430" y="142" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">Attention (GQA + RoPE)</text>
+  <rect x="320" y="155" width="105" height="40" rx="5" fill="#ffffff" stroke="#2563eb"/>
+  <text x="372" y="172" text-anchor="middle" font-size="11" fill="#0f172a">q_proj 192→192</text>
+  <text x="372" y="187" text-anchor="middle" font-size="10" fill="#64748b">6 heads × 32 = 36,864</text>
+  <rect x="435" y="155" width="105" height="40" rx="5" fill="#ffffff" stroke="#2563eb"/>
+  <text x="487" y="172" text-anchor="middle" font-size="11" fill="#0f172a">k_proj 192→64</text>
+  <text x="487" y="187" text-anchor="middle" font-size="10" fill="#64748b">2 kv heads: 12,288</text>
+  <rect x="320" y="205" width="105" height="40" rx="5" fill="#ffffff" stroke="#2563eb"/>
+  <text x="372" y="222" text-anchor="middle" font-size="11" fill="#0f172a">v_proj 192→64</text>
+  <text x="372" y="237" text-anchor="middle" font-size="10" fill="#64748b">12,288</text>
+  <rect x="435" y="205" width="105" height="40" rx="5" fill="#ffffff" stroke="#2563eb"/>
+  <text x="487" y="222" text-anchor="middle" font-size="11" fill="#0f172a">RoPE on q, k</text>
+  <text x="487" y="237" text-anchor="middle" font-size="10" fill="#64748b">0 params</text>
+  <rect x="320" y="255" width="220" height="40" rx="5" fill="#ffffff" stroke="#2563eb"/>
+  <text x="430" y="272" text-anchor="middle" font-size="11" fill="#0f172a">softmax(q·kᵀ/√32 + causal mask) · v</text>
+  <text x="430" y="287" text-anchor="middle" font-size="10" fill="#64748b">(B, 6, T, T) scores → (B, 6, T, 32)</text>
+  <rect x="320" y="305" width="220" height="40" rx="5" fill="#ffffff" stroke="#2563eb"/>
+  <text x="430" y="322" text-anchor="middle" font-size="11" fill="#0f172a">o_proj 192→192</text>
+  <text x="430" y="337" text-anchor="middle" font-size="10" fill="#64748b">36,864 · init std 0.02/√(2L)</text>
+  <text x="430" y="375" text-anchor="middle" font-size="12" font-weight="600" fill="#2563eb">98,304 params</text>
+  <text x="430" y="391" text-anchor="middle" font-size="11" fill="#64748b">out: (B, T, 192)</text>
+
+  <!-- add 1 -->
+  <line x1="555" y1="260" x2="580" y2="260" stroke="#0f172a" stroke-width="2"/>
+  <line x1="560" y1="440" x2="560" y2="385" stroke="#f59e0b" stroke-width="2.5"/>
+  <path d="M560,385 L560,275" fill="none" stroke="#f59e0b" stroke-width="2.5"/>
+  <circle cx="595" cy="260" r="14" fill="#ffffff" stroke="#f59e0b" stroke-width="2.5"/>
+  <text x="595" y="266" text-anchor="middle" font-size="16" font-weight="700" fill="#f59e0b">+</text>
+  <path d="M560,275 L575,262" fill="none" stroke="#f59e0b" stroke-width="2.5"/>
+
+  <!-- MLP half -->
+  <line x1="609" y1="260" x2="635" y2="260" stroke="#0f172a" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="635" y="235" width="80" height="50" rx="6" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="675" y="256" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">RMSNorm</text>
+  <text x="675" y="272" text-anchor="middle" font-size="11" fill="#64748b">γ: 192</text>
+  <line x1="715" y1="260" x2="740" y2="260" stroke="#0f172a" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="740" y="120" width="150" height="280" rx="8" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="815" y="142" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">MLP (SwiGLU)</text>
+  <rect x="752" y="155" width="126" height="40" rx="5" fill="#ffffff" stroke="#7c3aed"/>
+  <text x="815" y="172" text-anchor="middle" font-size="11" fill="#0f172a">gate_proj 192→512</text>
+  <text x="815" y="187" text-anchor="middle" font-size="10" fill="#64748b">98,304</text>
+  <rect x="752" y="205" width="126" height="40" rx="5" fill="#ffffff" stroke="#7c3aed"/>
+  <text x="815" y="222" text-anchor="middle" font-size="11" fill="#0f172a">up_proj 192→512</text>
+  <text x="815" y="237" text-anchor="middle" font-size="10" fill="#64748b">98,304</text>
+  <rect x="752" y="255" width="126" height="40" rx="5" fill="#ffffff" stroke="#7c3aed"/>
+  <text x="815" y="272" text-anchor="middle" font-size="11" fill="#0f172a">silu(gate) ⊙ up</text>
+  <text x="815" y="287" text-anchor="middle" font-size="10" fill="#64748b">(B, T, 512), 0 params</text>
+  <rect x="752" y="305" width="126" height="40" rx="5" fill="#ffffff" stroke="#7c3aed"/>
+  <text x="815" y="322" text-anchor="middle" font-size="11" fill="#0f172a">down_proj 512→192</text>
+  <text x="815" y="337" text-anchor="middle" font-size="10" fill="#64748b">98,304 · std 0.02/√(2L)</text>
+  <text x="815" y="375" text-anchor="middle" font-size="12" font-weight="600" fill="#7c3aed">294,912 params</text>
+  <text x="815" y="391" text-anchor="middle" font-size="11" fill="#64748b">out: (B, T, 192)</text>
+
+  <!-- second add and output, drawn below MLP -->
+  <path d="M815,400 L815,470 L720,470" fill="none" stroke="#0f172a" stroke-width="2"/>
+  <line x1="720" y1="470" x2="700" y2="470" stroke="#0f172a" stroke-width="2"/>
+  <line x1="595" y1="274" x2="595" y2="470" stroke="#f59e0b" stroke-width="2.5" stroke-dasharray="6 4"/>
+  <line x1="595" y1="470" x2="640" y2="470" stroke="#f59e0b" stroke-width="2.5"/>
+  <circle cx="686" cy="470" r="14" fill="#ffffff" stroke="#f59e0b" stroke-width="2.5"/>
+  <text x="686" y="476" text-anchor="middle" font-size="16" font-weight="700" fill="#f59e0b">+</text>
+  <line x1="640" y1="470" x2="672" y2="470" stroke="#f59e0b" stroke-width="2.5"/>
+  <line x1="686" y1="484" x2="686" y2="500" stroke="#0f172a" stroke-width="2"/>
+  <text x="686" y="514" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">x out (B, T, 192) → next block</text>
+
+  <!-- totals -->
+  <rect x="30" y="330" width="240" height="160" rx="8" fill="#ffffff" stroke="#64748b"/>
+  <text x="150" y="352" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">Per block, parameters</text>
+  <text x="42" y="374" font-size="11" fill="#0f172a">attention q+k+v+o</text><text x="258" y="374" text-anchor="end" font-size="11" fill="#0f172a">98,304</text>
+  <text x="42" y="392" font-size="11" fill="#0f172a">MLP gate+up+down</text><text x="258" y="392" text-anchor="end" font-size="11" fill="#0f172a">294,912</text>
+  <text x="42" y="410" font-size="11" fill="#0f172a">two RMSNorm gains</text><text x="258" y="410" text-anchor="end" font-size="11" fill="#0f172a">384</text>
+  <line x1="42" y1="418" x2="258" y2="418" stroke="#64748b"/>
+  <text x="42" y="436" font-size="11" font-weight="600" fill="#0f172a">block total</text><text x="258" y="436" text-anchor="end" font-size="11" font-weight="600" fill="#0f172a">393,600</text>
+  <text x="42" y="458" font-size="11" fill="#64748b">× 6 blocks = 2,361,600</text>
+  <text x="42" y="476" font-size="11" fill="#64748b">+ final norm 192 = 2,361,792</text>
+</svg>

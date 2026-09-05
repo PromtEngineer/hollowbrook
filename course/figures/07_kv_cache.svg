@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="500" viewBox="0 0 900 500" font-family="system-ui, sans-serif">
+  <rect width="900" height="500" fill="#ffffff"/>
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0f172a"/>
+    </marker>
+  </defs>
+  <text x="450" y="28" text-anchor="middle" font-size="20" font-weight="600" fill="#0f172a">The KV cache: prefill fills it in one pass, decode appends one column per step</text>
+
+  <!-- PREFILL panel -->
+  <text x="225" y="62" text-anchor="middle" font-size="15" font-weight="600" fill="#2563eb">1. Prefill — the whole prompt at once</text>
+  <text x="225" y="80" text-anchor="middle" font-size="11" fill="#64748b">T=5 prompt tokens, one forward pass, compute-bound (big matmuls)</text>
+  <!-- prompt tokens -->
+  <g font-size="12" fill="#0f172a" text-anchor="middle">
+    <rect x="60" y="95" width="60" height="30" rx="5" fill="#64748b" fill-opacity="0.12" stroke="#64748b"/><text x="90" y="115">Once</text>
+    <rect x="126" y="95" width="60" height="30" rx="5" fill="#64748b" fill-opacity="0.12" stroke="#64748b"/><text x="156" y="115">upon</text>
+    <rect x="192" y="95" width="60" height="30" rx="5" fill="#64748b" fill-opacity="0.12" stroke="#64748b"/><text x="222" y="115">a</text>
+    <rect x="258" y="95" width="60" height="30" rx="5" fill="#64748b" fill-opacity="0.12" stroke="#64748b"/><text x="288" y="115">time</text>
+    <rect x="324" y="95" width="60" height="30" rx="5" fill="#64748b" fill-opacity="0.12" stroke="#64748b"/><text x="354" y="115">,</text>
+  </g>
+  <line x1="222" y1="125" x2="222" y2="150" stroke="#0f172a" stroke-width="2" marker-end="url(#a)"/>
+  <text x="240" y="145" font-size="11" fill="#64748b">k_proj, v_proj (per layer)</text>
+  <!-- cache K rows -->
+  <text x="40" y="180" font-size="12" font-weight="600" fill="#0f172a">K</text>
+  <g>
+    <rect x="60" y="165" width="60" height="26" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+    <rect x="126" y="165" width="60" height="26" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+    <rect x="192" y="165" width="60" height="26" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+    <rect x="258" y="165" width="60" height="26" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+    <rect x="324" y="165" width="60" height="26" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+  </g>
+  <text x="40" y="216" font-size="12" font-weight="600" fill="#0f172a">V</text>
+  <g>
+    <rect x="60" y="201" width="60" height="26" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed"/>
+    <rect x="126" y="201" width="60" height="26" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed"/>
+    <rect x="192" y="201" width="60" height="26" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed"/>
+    <rect x="258" y="201" width="60" height="26" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed"/>
+    <rect x="324" y="201" width="60" height="26" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed"/>
+  </g>
+  <text x="222" y="250" text-anchor="middle" font-size="11" fill="#64748b">cache.pos = 5 · each column is (kv_heads × head_dim) numbers per layer</text>
+  <text x="222" y="268" text-anchor="middle" font-size="11" fill="#64748b">The last position's logits give the first new token: "there"</text>
+
+  <!-- DECODE panel -->
+  <text x="675" y="62" text-anchor="middle" font-size="15" font-weight="600" fill="#f59e0b">2. Decode — one new token per step</text>
+  <text x="675" y="80" text-anchor="middle" font-size="11" fill="#64748b">forward pass on ONE token; reads all cached K,V; memory-bound</text>
+  <g font-size="12" fill="#0f172a" text-anchor="middle">
+    <rect x="640" y="95" width="70" height="30" rx="5" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="2"/><text x="675" y="115">there</text>
+  </g>
+  <line x1="675" y1="125" x2="675" y2="150" stroke="#0f172a" stroke-width="2" marker-end="url(#a)"/>
+  <text x="690" y="145" font-size="11" fill="#64748b">new q, k, v for 1 token</text>
+  <text x="490" y="180" font-size="12" font-weight="600" fill="#0f172a">K</text>
+  <g>
+    <rect x="510" y="165" width="26" height="26" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+    <rect x="540" y="165" width="26" height="26" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+    <rect x="570" y="165" width="26" height="26" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+    <rect x="600" y="165" width="26" height="26" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+    <rect x="630" y="165" width="26" height="26" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb"/>
+    <rect x="662" y="165" width="26" height="26" fill="#f59e0b" fill-opacity="0.25" stroke="#f59e0b" stroke-width="2"/>
+  </g>
+  <text x="490" y="216" font-size="12" font-weight="600" fill="#0f172a">V</text>
+  <g>
+    <rect x="510" y="201" width="26" height="26" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed"/>
+    <rect x="540" y="201" width="26" height="26" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed"/>
+    <rect x="570" y="201" width="26" height="26" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed"/>
+    <rect x="600" y="201" width="26" height="26" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed"/>
+    <rect x="630" y="201" width="26" height="26" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed"/>
+    <rect x="662" y="201" width="26" height="26" fill="#f59e0b" fill-opacity="0.25" stroke="#f59e0b" stroke-width="2"/>
+  </g>
+  <text x="705" y="184" font-size="11" fill="#f59e0b" font-weight="600">← appended (cat along T)</text>
+  <text x="598" y="250" text-anchor="middle" font-size="11" fill="#64748b">cache.pos = 6 · the query for "there" attends to all 6 keys</text>
+  <text x="598" y="268" text-anchor="middle" font-size="11" fill="#64748b">no recomputation of the 5 old columns</text>
+
+  <!-- comparison strip -->
+  <rect x="40" y="300" width="820" height="180" rx="8" fill="#ffffff" stroke="#64748b"/>
+  <text x="450" y="322" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">Why it matters: work per generated token, prompt length T₀, n new tokens</text>
+  <text x="60" y="350" font-size="12" fill="#0f172a" font-weight="600">Without cache</text>
+  <text x="60" y="370" font-size="11" fill="#0f172a">step i re-runs all T₀+i tokens through every layer → total ≈ n·(T₀ + n/2) token-forwards, O(n²)</text>
+  <text x="60" y="388" font-size="11" fill="#dc2626">TinyLM measured in Lab 7: the no-cache loop gets slower every step</text>
+  <text x="60" y="418" font-size="12" fill="#0f172a" font-weight="600">With cache</text>
+  <text x="60" y="438" font-size="11" fill="#0f172a">step i runs 1 token and reads T₀+i cached columns → total ≈ n token-forwards, O(n)</text>
+  <text x="60" y="456" font-size="11" fill="#16a34a">cost moves from FLOPs to bytes: every step streams the weights + the cache from memory</text>
+  <text x="60" y="474" font-size="11" fill="#64748b">cache bytes = 2 (K and V) · n_layers · n_kv_heads · head_dim · bytes_per_number · tokens   (GQA shrinks n_kv_heads)</text>
+</svg>

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>N-gram Playground — Chapter 1</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page-specific */
+h3{margin:0 0 8px;font-size:15px}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:4px 6px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}th{color:var(--muted);font-weight:500}
+.bar{height:12px;background:var(--blue);border-radius:3px;display:inline-block;vertical-align:middle}
+.num{font-family:ui-monospace,Menlo,monospace;text-align:right;white-space:nowrap}
+.tbl{max-height:320px;overflow:auto}
+select{width:auto}input[type=number]{font:inherit;padding:6px;border:1px solid var(--line);border-radius:8px;width:80px}
+.meter{height:14px;background:#e2e8f0;border-radius:7px;overflow:hidden}.meter div{height:100%;background:var(--orange)}
+.out{white-space:pre-wrap;background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:10px;min-height:60px;font-size:14px}
+.gen{color:var(--purple)}.stat{font-size:22px;font-weight:600}.small{font-size:13px;color:var(--muted)}
+.tok{display:inline-block;padding:1px 4px;margin:1px;border-radius:4px;background:#f1f5f9;font-size:13px;font-family:ui-monospace,Menlo,monospace}
+.tok.bad{background:#fee2e2;color:var(--red)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>N-gram playground <a class="chip" href="../chapters/01-next-token.md">Chapter 01</a></h1>
+  <div class="sub">A language model built from counting alone. Type text, watch the count table fill, generate.</div>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Change <em>n</em> and watch the table of "what came next" shrink to a handful of rows as the context gets longer. Type a prefix to see the model's next-word distribution for it, then press <em>Generate</em> a few times with different seeds. Finally, put a sentence the model has never seen in the perplexity box and see how much it is "surprised".</div>
+
+<div class="grid two">
+  <div class="panel">
+    <h3>Training text</h3>
+    <textarea id="text" rows="9" aria-label="Training text"></textarea>
+    <div class="row" style="margin-top:8px">
+      <label>n = <select id="n" aria-label="n"><option value="1">1 (unigram)</option><option value="2" selected>2 (bigram)</option><option value="3">3 (trigram)</option></select></label>
+      <span class="small" id="corpusinfo"></span>
+    </div>
+  </div>
+  <div class="panel">
+    <h3>Next-word counts for a prefix</h3>
+    <input type="text" id="prefix" value="the kite" aria-label="Prefix">
+    <div class="small" id="ctxinfo" style="margin:6px 0"></div>
+    <div class="tbl"><table id="table"></table></div>
+  </div>
+</div>
+
+<div class="grid two">
+  <div class="panel">
+    <h3>Generate</h3>
+    <div class="row">
+      <label>seed <input type="number" id="seed" value="42" aria-label="seed"></label>
+      <label>tokens <input type="number" id="len" value="40" min="5" max="200" aria-label="tokens to generate"></label>
+      <button id="gen">Generate</button>
+      <button class="secondary" id="reseed">New seed</button>
+    </div>
+    <div class="small" style="margin:6px 0">Starts from the prefix above (or from the start-of-text symbol if the prefix is unseen). Sampling uses the counts as probabilities, with a seeded <code>mulberry32</code> RNG so the same seed gives the same text.</div>
+    <div class="out" id="out"></div>
+  </div>
+  <div class="panel">
+    <h3>Perplexity on a held-out sentence</h3>
+    <input type="text" id="held" value="the kite flew over the river and the dog ran home" aria-label="held-out sentence">
+    <div class="row" style="margin:8px 0">
+      <div><div class="stat" id="pplraw">—</div><div class="small">unsmoothed (∞ if any n-gram is unseen)</div></div>
+      <div><div class="stat" id="pplsm">—</div><div class="small">add-α smoothed, α = 0.1</div></div>
+    </div>
+    <div id="ppl" class="small"></div>
+    <div id="heldtoks" style="margin-top:6px"></div>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>Sparsity meter</h3>
+  <div class="grid two">
+    <div>
+      <div class="small">Fraction of all V<sup>n</sup> possible n-grams that were <em>never seen</em> in training</div>
+      <div class="meter" style="margin:6px 0"><div id="m1" style="width:0%"></div></div>
+      <div id="m1txt" class="small"></div>
+    </div>
+    <div>
+      <div class="small">Fraction of the held-out sentence's n-grams that are unseen</div>
+      <div class="meter" style="margin:6px 0"><div id="m2" style="width:0%"></div></div>
+      <div id="m2txt" class="small"></div>
+    </div>
+  </div>
+  <div class="small" style="margin-top:8px">Read this as: with a vocabulary of V words, an n-gram model has V<sup>n</sup> possible contexts to learn, but the text only shows it a few hundred of them. That is why counting stops working as n grows — and why we will replace the count table with a neural network.</div>
+</div>
+
+<div class="box challenge"><strong>Challenge.</strong> Find an <em>n</em> at which <em>Generate</em> produces a loop (the same phrase repeating) and explain why it happens. Then find the <em>n</em> at which it just replays the training text word for word.
+<details><summary>Show answer</summary>
+<p>With n = 2, each word only knows the one word before it. Whenever the corpus has a cycle like <em>the → kite → flew → over → the</em>, the sampler can go round it for ever, and it will if the counts along the cycle dominate (try a few seeds; "the" is the most common hub). With n = 3 most two-word contexts occur exactly once in a short text, so every choice is forced and the model reproduces the training text verbatim: that is memorisation, the other face of sparsity. n = 1 ignores context entirely and produces word salad.</p>
+</details></div>
+
+<footer><a href="index.html">← Back to all interactives</a></footer>
+</div>
+
+<script>
+'use strict';
+const DEFAULT = `Once upon a time in Storyland there lived a small red kite. The kite loved the wind and the wind loved the kite. Every morning the kite flew over the river and over the hill and over the little town. The children of the town waved at the kite and the kite waved back with its long tail. One day the wind was very strong. The kite flew higher and higher until the town was small and the river was a thin blue line. The kite was afraid. Then a kind old bird flew up beside the kite and said, do not be afraid, the wind will bring you home. The wind grew soft and the kite floated down over the hill and over the river and landed in the town. The children cheered and the kite was happy.`;
+const BOS = '<s>';
+const $ = id => document.getElementById(id);
+$('text').value = DEFAULT;
+
+function mulberry32(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function tokenize(s){ return (s.toLowerCase().match(/[a-z0-9']+|[.,!?;]/g) || []); }
+
+let N = 2, counts = new Map(), ctxTotal = new Map(), vocab = new Set(), distinct = 0, tokens = [];
+
+function train(){
+  N = +$('n').value;
+  tokens = tokenize($('text').value);
+  counts = new Map(); ctxTotal = new Map(); vocab = new Set(tokens); distinct = 0;
+  const padded = Array(N-1).fill(BOS).concat(tokens);
+  for (let i = N-1; i < padded.length; i++){
+    const ctx = padded.slice(i-(N-1), i).join(' '), w = padded[i];
+    if (!counts.has(ctx)) counts.set(ctx, new Map());
+    const m = counts.get(ctx);
+    if (!m.has(w)) distinct++;
+    m.set(w, (m.get(w)||0)+1);
+    ctxTotal.set(ctx, (ctxTotal.get(ctx)||0)+1);
+  }
+  $('corpusinfo').textContent = `${tokens.length} tokens, V = ${vocab.size} distinct words, ${distinct} distinct ${N}-grams`;
+}
+function contextFor(toks){ // returns [ctxString, backedOff] — with backoff to shorter contexts for display/generation
+  const need = N-1;
+  const padded = Array(need).fill(BOS).concat(toks);
+  const ctx = padded.slice(padded.length-need).join(' ');
+  return counts.has(ctx) ? [ctx, false] : [null, true];
+}
+function renderTable(){
+  const toks = tokenize($('prefix').value);
+  const [ctx, off] = contextFor(toks);
+  const tbl = $('table');
+  if (N === 1){ $('ctxinfo').innerHTML = `n = 1: no context, this is just word frequency.`; }
+  else if (off){ $('ctxinfo').innerHTML = `Context <code>${escapeH(lastCtx(toks))}</code> was <strong>never seen</strong> in training — the model has no idea what comes next. (Sparsity in action.)`; tbl.innerHTML = ''; return; }
+  else $('ctxinfo').innerHTML = `Context <code>${escapeH(ctx)}</code> was seen ${ctxTotal.get(ctx)} time(s). P(next | context) = count / ${ctxTotal.get(ctx)}.`;
+  const m = counts.get(ctx), tot = ctxTotal.get(ctx);
+  const rows = [...m.entries()].sort((a,b)=>b[1]-a[1]);
+  tbl.innerHTML = '<tr><th>next word</th><th>count</th><th>probability</th></tr>' + rows.map(([w,c])=>
+    `<tr><td><code>${escapeH(w)}</code></td><td class="num">${c}</td><td><span class="bar" style="width:${(c/tot*120).toFixed(0)}px"></span> <span class="num">${(c/tot).toFixed(3)}</span></td></tr>`).join('');
+}
+function lastCtx(toks){ const need=N-1; const p=Array(need).fill(BOS).concat(toks); return p.slice(p.length-need).join(' '); }
+function escapeH(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function sample(m, rnd){
+  let tot = 0; for (const c of m.values()) tot += c;
+  let r = rnd()*tot;
+  for (const [w,c] of m){ r -= c; if (r < 0) return w; }
+  return [...m.keys()].pop();
+}
+function generate(){
+  const rnd = mulberry32(+$('seed').value || 0);
+  let toks = tokenize($('prefix').value);
+  let [ctx] = contextFor(toks);
+  let start = toks.slice();
+  if (ctx === null){ start = []; toks = []; }
+  const L = Math.max(1, Math.min(200, +$('len').value || 40));
+  const gen = [];
+  for (let i=0;i<L;i++){
+    const [c] = contextFor(toks.concat(gen));
+    if (c === null) break;
+    gen.push(sample(counts.get(c), rnd));
+  }
+  $('out').innerHTML = escapeH(start.join(' ')) + (start.length?' ':'') + `<span class="gen">${escapeH(gen.join(' '))}</span>` + (gen.length < L ? `<div class="small">(stopped: reached an unseen context)</div>` : '');
+}
+function perplexity(){
+  const held = tokenize($('held').value);
+  const alpha = 0.1, V = vocab.size + 1; // +1 for the unknown word
+  const padded = Array(N-1).fill(BOS).concat(held);
+  let lpRaw = 0, lpSm = 0, unseen = 0, inf = false; const parts = [];
+  for (let i = N-1; i < padded.length; i++){
+    const ctx = padded.slice(i-(N-1), i).join(' '), w = padded[i];
+    const m = counts.get(ctx), tot = ctxTotal.get(ctx) || 0, c = m ? (m.get(w)||0) : 0;
+    const pSm = (c + alpha) / (tot + alpha*V);
+    lpSm += Math.log(pSm);
+    if (c === 0){ inf = true; unseen++; } else lpRaw += Math.log(c/tot);
+    parts.push({w, c, tot, p: c ? c/tot : 0, pSm});
+  }
+  const n = held.length || 1;
+  $('pplraw').textContent = held.length ? (inf ? '∞' : Math.exp(-lpRaw/n).toFixed(2)) : '—';
+  $('pplsm').textContent = held.length ? Math.exp(-lpSm/n).toFixed(2) : '—';
+  $('ppl').innerHTML = `perplexity = exp(−mean log P) over ${n} tokens. Read it as: "the model is as unsure as if it were choosing uniformly among this many words." Smoothing: P = (count + α) / (total + α·V) with V = ${V}, so unseen n-grams get a small non-zero probability instead of killing the whole score.`;
+  $('heldtoks').innerHTML = parts.map(x=>`<span class="tok ${x.c===0?'bad':''}" title="count ${x.c}/${x.tot}, P=${x.p.toFixed(3)}, smoothed ${x.pSm.toFixed(4)}">${escapeH(x.w)} <span style="color:#94a3b8">${x.c?x.p.toFixed(2):'0'}</span></span>`).join('');
+  // sparsity meters
+  const possible = Math.pow(vocab.size, N);
+  const fracUnseen = 1 - distinct/possible;
+  $('m1').style.width = (fracUnseen*100).toFixed(2)+'%';
+  $('m1txt').textContent = `${distinct.toLocaleString()} of V^n = ${vocab.size}^${N} = ${possible.toLocaleString()} possible ${N}-grams seen → ${(fracUnseen*100).toFixed(N===1?0:3)}% unseen`;
+  const f2 = held.length ? unseen/held.length : 0;
+  $('m2').style.width = (f2*100).toFixed(1)+'%';
+  $('m2txt').textContent = `${unseen} of ${held.length} held-out ${N}-grams unseen → ${(f2*100).toFixed(0)}%`;
+}
+function refresh(){ train(); renderTable(); perplexity(); }
+$('text').addEventListener('input', refresh);
+$('n').addEventListener('change', ()=>{ refresh(); generate(); });
+$('prefix').addEventListener('input', renderTable);
+$('held').addEventListener('input', perplexity);
+$('gen').addEventListener('click', generate);
+$('reseed').addEventListener('click', ()=>{ $('seed').value = Math.floor(Math.random()*100000); generate(); });
+refresh(); generate();
+</script>
+</body>
+</html>

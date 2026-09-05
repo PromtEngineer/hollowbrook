@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pipeline Map — Chapter 0</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page-specific */
+.stage{cursor:pointer}.stage rect{fill:#fff;stroke:#cbd5e1;stroke-width:1.5;transition:fill .15s,stroke .15s}
+.stage:hover rect,.stage:focus rect{stroke:var(--blue)}.stage.on rect{fill:#eef2ff;stroke:var(--blue);stroke-width:2.5}
+.stage.dim rect{fill:#f1f5f9;stroke:#e2e8f0}.stage.dim text{fill:#94a3b8}.stage.lit rect{stroke:var(--green);stroke-width:2.5;fill:#f0fdf4}
+.stage text{font-size:12px;fill:var(--ink);pointer-events:none}.stage .n{font-size:10px;fill:var(--muted)}
+.arrow{stroke:#94a3b8;stroke-width:1.5;fill:none;marker-end:url(#ah)}
+.tog button{background:#e2e8f0;color:var(--ink)}.tog button.on{background:var(--green);color:#fff}
+dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:8px 0}dt{color:var(--muted);font-size:13px}dd{margin:0}
+.badge{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;background:#f1f5f9;color:var(--muted);margin-right:4px}
+.badge.on{background:#dcfce7;color:#166534}
+#detail h2{margin:0 0 6px;font-size:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>The whole pipeline on one page <a class="chip" href="../chapters/00-pipeline.md">Chapter 00</a></h1>
+  <div class="sub">Eleven stages from raw text to a deployed agent. Click any stage.</div>
+</header>
+
+<div class="box try"><strong>What to try.</strong> Click a stage to see what goes in, what comes out, and what changes inside the model. Then use the <em>base / instruct / reasoning / agentic</em> buttons to see which stages each kind of model has been through. Numbers are rough 2026 frontier-scale figures; labs publish few exact figures, so treat every number as an order of magnitude.</div>
+
+<div class="panel">
+  <div class="row tog" id="toggles" role="group" aria-label="Model type">
+    <label>Highlight the stages that produce a:</label>
+    <button data-k="all" class="on">all stages</button>
+    <button data-k="base">base model</button>
+    <button data-k="instruct">instruct model</button>
+    <button data-k="reasoning">reasoning model</button>
+    <button data-k="agentic">agentic model</button>
+  </div>
+  <div id="tognote" class="sub" style="font-size:13px;margin-top:6px"></div>
+  <svg id="map" width="100%" role="list" aria-label="Pipeline stages"></svg>
+</div>
+
+<div class="panel" id="detail"></div>
+
+<div class="box challenge"><strong>Challenge.</strong> Without looking at the detail panel, say which stages are shared by <em>every</em> model type, and which single stage is the first one where the model sees a <em>reward</em> rather than a target token. Then click around to check.
+<details><summary>Show answer</summary>
+<p>Every model type — base, instruct, reasoning, agentic — goes through the first five stages (raw text → curation → tokenizer → pretraining → mid-training) plus evals. The reward model / DPO stage is the first where the training signal is a preference or score rather than a next token to imitate (SFT still imitates tokens). RLVR then uses a <em>verifiable</em> reward from a checker instead of a learned one.</p>
+</details></div>
+
+<footer><a href="index.html">← Back to all interactives</a></footer>
+</div>
+
+<script>
+'use strict';
+const STAGES = [
+ {id:'raw', name:'Raw text', ch:'08', link:'../chapters/08-pretraining-data.md',
+  inputs:'The public web (Common Crawl snapshots), books, code repositories, papers, transcripts, licensed corpora.',
+  outputs:'Petabytes of HTML and text, most of it boilerplate, duplicates or junk.',
+  changes:'Nothing yet — there is no model. This is the raw material.',
+  size:'Common Crawl alone is on the order of 10¹⁴–10¹⁵ tokens of extracted text before filtering; a single snapshot is a few hundred TB compressed.',
+  types:['base','instruct','reasoning','agentic']},
+ {id:'cur', name:'Curation', ch:'08', link:'../chapters/08-pretraining-data.md',
+  inputs:'Raw documents.',
+  outputs:'A cleaned, deduplicated, quality-scored, decontaminated corpus with a chosen mix of domains (web, code, math, multilingual).',
+  changes:'Still no model, but curation decides most of what the model will know. Filters: language ID, heuristics (Gopher/C4 rules), MinHash dedup, model-based quality classifiers, PII removal, eval decontamination.',
+  size:'Typically keeps 1–10% of raw text. Frontier pretraining sets in 2026 are roughly 15–40 trillion tokens after curation (hedged: labs rarely publish exact counts).',
+  types:['base','instruct','reasoning','agentic']},
+ {id:'tok', name:'Tokenizer', ch:'02', link:'../chapters/02-tokenization.md',
+  inputs:'A sample of the curated corpus (a few GB is plenty).',
+  outputs:'A vocabulary of byte-pair merges: text ↔ integer ids. Applied to the whole corpus to produce the token stream the model trains on.',
+  changes:'Fixes the model\'s alphabet. The vocabulary size V sets the embedding matrix shape (V × d).',
+  size:'Vocabularies of about 100k–260k tokens in 2026 (GPT-4o ~200k, Llama 3 128k, Gemma 256k). Training the tokenizer takes minutes to hours.',
+  types:['base','instruct','reasoning','agentic']},
+ {id:'pre', name:'Pretraining', ch:'10', link:'../chapters/10-pretraining-loop.md',
+  inputs:'The token stream plus a randomly initialised Transformer.',
+  outputs:'A base model: a next-token predictor that has absorbed grammar, facts, code and reasoning patterns from the corpus.',
+  changes:'Every weight, from random to trained. Loss: cross-entropy on the next token. This is >95% of total compute.',
+  size:'15–40T tokens, 10²⁵–10²⁶ FLOPs, weeks to months on 10⁴–10⁵ accelerators; costs quoted from tens to hundreds of millions of dollars for the largest 2026 runs.',
+  types:['base','instruct','reasoning','agentic']},
+ {id:'mid', name:'Mid-training', ch:'13', link:'../chapters/13-midtraining.md',
+  inputs:'The base checkpoint plus a smaller, higher-quality mix: textbooks, code, math, long documents, some instruction and reasoning data.',
+  outputs:'A stronger base checkpoint with a longer context window (RoPE scaling / YaRN) and sharper knowledge.',
+  changes:'All weights, but gently: learning rate is annealed toward zero. Context length grows from ~8k to 128k–1M tokens.',
+  size:'Hundreds of billions to a few trillion tokens; a few percent of pretraining compute.',
+  types:['base','instruct','reasoning','agentic']},
+ {id:'sft', name:'SFT', ch:'15', link:'../chapters/15-sft.md',
+  inputs:'Base checkpoint plus (prompt → ideal response) pairs in a chat template, human-written, synthetic or rejection-sampled.',
+  outputs:'An instruct model that follows the chat format and answers questions instead of continuing text.',
+  changes:'All weights (or LoRA adapters), small learning rate, 1–3 epochs. Loss is still next-token, but only on the response tokens (the prompt is masked).',
+  size:'Roughly 10⁵–10⁷ examples; hours to days of compute. Tiny compared to pretraining.',
+  types:['instruct','reasoning','agentic']},
+ {id:'rm', name:'Reward model / DPO', ch:'17', link:'../chapters/17-reward-dpo.md',
+  inputs:'Pairs of responses to the same prompt with a preference label (chosen / rejected), from humans or an LLM judge.',
+  outputs:'Either a reward model (a scalar scorer) used by RL, or, with DPO, a directly updated policy that prefers the chosen responses.',
+  changes:'DPO nudges the policy\'s log-probabilities: up on chosen, down on rejected, anchored to a frozen reference. A reward model is a separate network (often a copy of the policy with a scalar head).',
+  size:'10⁵–10⁶⁺ preference pairs. Rubric-based and generative reward models are the 2026 trend.',
+  types:['instruct','reasoning','agentic']},
+ {id:'rl', name:'RLVR (GRPO)', ch:'19', link:'../chapters/19-grpo-rlvr.md',
+  inputs:'Prompts with a checkable answer (math, code with unit tests, puzzles) plus the SFT/DPO checkpoint.',
+  outputs:'A reasoning model: it produces long chains of thought and gets rewarded only when the final answer verifies.',
+  changes:'Policy-gradient updates (GRPO and 2026 variants: DAPO, Dr. GRPO, GSPO). The model learns to spend more tokens thinking; entropy and response length are watched closely.',
+  size:'10⁴–10⁶ prompts, 8–64 rollouts each, so 10⁷–10⁸ generated samples; RL compute is now a meaningful fraction (order 10%) of pretraining for reasoning-focused models.',
+  types:['reasoning','agentic']},
+ {id:'opd', name:'On-policy distillation', ch:'20', link:'../chapters/20-distillation.md',
+  inputs:'A strong teacher model, a smaller student, and prompts. The student samples; the teacher scores every token.',
+  outputs:'A smaller model that reproduces most of the teacher\'s behaviour at a fraction of the inference cost.',
+  changes:'The student\'s weights move toward the teacher\'s per-token distribution on the student\'s own samples (no off-policy exposure bias).',
+  size:'10⁵–10⁶ prompts; cheapest post-training stage per point of benchmark gain (2026 evidence: Qwen3, Thinking Machines write-ups).',
+  types:['reasoning','agentic']},
+ {id:'ev', name:'Evals', ch:'23', link:'../chapters/23-evaluation.md',
+  inputs:'Every checkpoint above plus benchmark suites and internal evals.',
+  outputs:'Scores, regressions, and the go/no-go decision for release. Feeds back into every earlier stage.',
+  changes:'Nothing in the weights — but everything in the decisions. Contamination checks make sure the model did not train on the test.',
+  size:'Dozens to hundreds of benchmarks (SWE-bench Verified, Terminal-Bench, HLE, ARC-AGI-3, ...), thousands of items each; agentic evals can cost more compute than SFT.',
+  types:['base','instruct','reasoning','agentic']},
+ {id:'ag', name:'Agent harness', ch:'27', link:'../chapters/27-harness.md',
+  inputs:'A trained model plus a system prompt, tools (files, shell, browser, MCP servers), permissions and a loop.',
+  outputs:'An agent: a program that observes, calls the model, acts with tools, and repeats until done. Agentic RL (Chapter 21) trains the model inside such a loop.',
+  changes:'No weights change at deployment time; the harness changes what the model sees (context engineering) and what it can do. Agentic RL does change weights, using trajectories through tool environments.',
+  size:'Context windows of 128k–1M tokens, tool sets of 10–100+ tools, sessions running for hours. Agentic RL: 10³–10⁵ environments/tasks.',
+  types:['agentic']},
+];
+const TYPE_NOTE = {
+  all:'Every stage is shown. Click one for details.',
+  base:'A base model has only been pretrained (and usually mid-trained). It continues text; it does not chat.',
+  instruct:'An instruct model is a base model plus SFT and preference training. It follows the chat format and answers questions.',
+  reasoning:'A reasoning model adds RL with verifiable rewards (and often on-policy distillation from a bigger sibling). It thinks before answering.',
+  agentic:'An agentic model is trained with multi-turn tool use (agentic RL sits inside the RLVR stage) and is deployed inside a harness.'
+};
+const svg = document.getElementById('map');
+const NS = 'http://www.w3.org/2000/svg';
+let selected = 'pre', typeSel = 'all';
+
+function layout(){
+  const W = Math.max(320, svg.clientWidth || svg.parentNode.clientWidth - 32);
+  const cols = W >= 820 ? 6 : W >= 560 ? 4 : W >= 400 ? 3 : 2;
+  const gap = 16, bw = (W - gap*(cols+1))/cols, bh = 54, rowH = bh + 34;
+  const rows = Math.ceil(STAGES.length/cols);
+  const H = rows*rowH + 10;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('height', H);
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  const defs = document.createElementNS(NS,'defs');
+  defs.innerHTML = '<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#94a3b8"/></marker>';
+  svg.appendChild(defs);
+  const pos = STAGES.map((s,i)=>{
+    const r = Math.floor(i/cols); let c = i % cols; if (r % 2 === 1) c = cols-1-c; // snake
+    return {x: gap + c*(bw+gap), y: 8 + r*rowH, r, c};
+  });
+  // arrows
+  for (let i=0;i<STAGES.length-1;i++){
+    const a = pos[i], b = pos[i+1];
+    const p = document.createElementNS(NS,'path');
+    let d;
+    if (a.r === b.r){
+      const dir = b.x > a.x ? 1 : -1;
+      d = `M${a.x + (dir>0?bw:0)} ${a.y+bh/2} L${b.x + (dir>0?0:bw)} ${b.y+bh/2}`;
+    } else {
+      d = `M${a.x+bw/2} ${a.y+bh} L${b.x+bw/2} ${b.y}`;
+    }
+    p.setAttribute('d', d); p.setAttribute('class','arrow'); svg.appendChild(p);
+  }
+  STAGES.forEach((s,i)=>{
+    const g = document.createElementNS(NS,'g');
+    g.setAttribute('class','stage'); g.setAttribute('tabindex','0'); g.setAttribute('role','button');
+    g.setAttribute('aria-label', s.name); g.dataset.id = s.id;
+    const {x,y} = pos[i];
+    g.innerHTML = `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="10"/>
+      <text class="n" x="${x+10}" y="${y+16}">${i+1} · Ch ${s.ch}</text>
+      <text x="${x+10}" y="${y+38}" font-weight="600">${fit(s.name, bw)}</text>`;
+    g.addEventListener('click', ()=>select(s.id));
+    g.addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();select(s.id);} });
+    svg.appendChild(g);
+  });
+  paint();
+}
+function fit(name, w){ return w < 120 && name.length > 13 ? name.replace('Reward model / DPO','RM / DPO').replace('On-policy distillation','On-policy distil.').replace('Agent harness','Agent harness') : name; }
+function paint(){
+  svg.querySelectorAll('.stage').forEach(g=>{
+    const s = STAGES.find(t=>t.id===g.dataset.id);
+    g.classList.toggle('on', s.id===selected);
+    const lit = typeSel!=='all' && s.types.includes(typeSel);
+    const dim = typeSel!=='all' && !s.types.includes(typeSel);
+    g.classList.toggle('lit', lit && s.id!==selected); g.classList.toggle('dim', dim);
+  });
+  document.getElementById('tognote').textContent = TYPE_NOTE[typeSel];
+}
+function select(id){
+  selected = id; paint();
+  const s = STAGES.find(t=>t.id===id), i = STAGES.indexOf(s);
+  const badges = ['base','instruct','reasoning','agentic'].map(t=>`<span class="badge ${s.types.includes(t)?'on':''}">${t}</span>`).join('');
+  document.getElementById('detail').innerHTML = `
+    <h2>${i+1}. ${s.name} <a class="chip" href="${s.link}">Chapter ${s.ch}</a></h2>
+    <div style="margin-bottom:6px"><span class="sub" style="font-size:13px">Part of every:</span> ${badges}</div>
+    <dl>
+      <dt>Inputs</dt><dd>${s.inputs}</dd>
+      <dt>Outputs</dt><dd>${s.outputs}</dd>
+      <dt>What changes in the model</dt><dd>${s.changes}</dd>
+      <dt>Typical size (2026, rough)</dt><dd>${s.size}</dd>
+    </dl>
+    <div class="row" style="margin-top:8px">
+      <button class="secondary" ${i===0?'disabled':''} onclick="select('${i>0?STAGES[i-1].id:''}')">← previous stage</button>
+      <button ${i===STAGES.length-1?'disabled':''} onclick="select('${i<STAGES.length-1?STAGES[i+1].id:''}')">next stage →</button>
+    </div>`;
+}
+document.getElementById('toggles').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b) return;
+  typeSel = b.dataset.k;
+  document.querySelectorAll('#toggles button').forEach(x=>x.classList.toggle('on', x===b));
+  paint();
+});
+window.addEventListener('resize', layout);
+layout(); select('pre');
+</script>
+</body>
+</html>
