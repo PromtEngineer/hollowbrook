@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Interactive explainers — LLMs From Scratch to Agents</title>
+<style>
+:root{--bg:#fafaf9;--panel:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--orange:#f59e0b;--green:#16a34a;--purple:#7c3aed;--red:#dc2626;--radius:12px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}header{margin-bottom:16px}h1{font-size:26px;margin:0 0 4px}.sub{color:var(--muted)}
+.chip{display:inline-block;background:#eef2ff;color:var(--blue);border-radius:999px;padding:2px 10px;font-size:12px;text-decoration:none;margin-left:8px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:12px 0}
+.try{border-left:4px solid var(--blue)}.challenge{border-left:4px solid var(--orange)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}label{font-size:13px;color:var(--muted)}
+input[type=range]{width:180px}button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+button.secondary{background:#e2e8f0;color:var(--ink)}textarea,input[type=text],select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;width:100%}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto}
+.grid{display:grid;gap:12px}@media(min-width:800px){.grid.two{grid-template-columns:1fr 1fr}}
+footer{margin-top:32px;color:var(--muted);font-size:13px}svg text{font-family:system-ui,sans-serif}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:middle}
+/* page-specific */
+h2{font-size:18px;margin:24px 0 8px;padding-bottom:4px;border-bottom:2px solid var(--line)}
+h2 small{font-weight:400;color:var(--muted);font-size:13px;margin-left:8px}
+.cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;border-top:4px solid var(--blue);transition:box-shadow .15s}
+.card a.main{display:block;text-decoration:none;color:var(--ink)}.card:hover,.card:focus-within{box-shadow:0 4px 14px rgba(15,23,42,.10);border-color:var(--blue)}
+.card .n{font-size:11px;color:var(--muted);font-family:ui-monospace,monospace}.card .t{font-weight:700;margin:2px 0 4px}.card .d{font-size:13px;color:#475569}
+.card .ch{font-size:12px;color:var(--blue);margin-top:6px}
+.p0 .card{border-top-color:#64748b}.p1 .card{border-top-color:var(--blue)}.p2 .card{border-top-color:var(--orange)}.p3 .card{border-top-color:var(--purple)}.p4 .card{border-top-color:var(--green)}
+.links a{margin-right:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Interactive explainers <a class="chip" href="../OUTLINE.md">Course outline</a></h1>
+  <div class="sub">Twenty-one browser playgrounds, one per chapter that has one, from n-grams to agent harnesses. Plain HTML — open any file directly, no server needed.</div>
+</header>
+
+<div class="box try"><strong>How to use these.</strong> Each page opens on something already interesting, has a <em>What to try</em> box with two or three experiments, and ends with a <em>Challenge</em> you can check against a hidden answer. Read the chapter first, then play for ten minutes; every number on the page is computed for real (the maths, the optimisers, the simulations), so if a result surprises you, it is worth understanding why. Everything runs offline in the page — nothing is sent anywhere.</div>
+
+<div class="links" style="font-size:14px"><a href="../README.md">README</a><a href="../OUTLINE.md">OUTLINE.md (all chapters)</a><a href="../chapters/00-the-whole-pipeline.md">Start at Chapter 0</a></div>
+
+<div id="parts"></div>
+
+<footer>All interactives are single self-contained files in <code>course/interactive/</code>; they work from <code>file://</code> and need no build step or network. Chapters without an interactive (13, 15, 20–23, 26, 28, 29) rely on their labs instead.</footer>
+</div>
+
+<script>
+'use strict';
+const PARTS=[
+  {name:"Part 0 — Orientation", cls:"p0", items:[
+    ["00","00_pipeline_map.html","Pipeline map","Click any stage from raw text to a deployed agent to see its inputs, outputs and chapter.","00-the-whole-pipeline"],
+  ]},
+  {name:"Part I — Foundations: what a language model is", cls:"p1", items:[
+    ["01","01_ngram_playground.html","N-gram playground","Type text, watch the count table fill, and sample from a bigram/trigram model.","01-next-token-prediction"],
+    ["02","02_bpe_stepper.html","BPE stepper","Watch byte-pair merges happen one at a time on your own text.","02-tokenization"],
+    ["03","03_vector_playground.html","Vector playground","Drag 2-D vectors and read off dot products and cosine similarity.","03-embeddings"],
+    ["04","04_gradient_descent.html","Gradient descent landscape","Roll a ball down a loss surface with SGD, momentum and Adam.","04-how-networks-learn"],
+    ["05","05_attention_explorer.html","Attention explorer","See the attention matrix per head for a sentence; toggle the causal mask.","05-attention"],
+    ["06","06_block_dataflow.html","Transformer block dataflow","Animated data flow through one block with a live parameter counter.","06-transformer-block"],
+    ["07","07_sampling_playground.html","Sampling playground","Move temperature, top-k and top-p and watch the next-token distribution reshape.","07-inference"],
+  ]},
+  {name:"Part II — Pretraining", cls:"p2", items:[
+    ["08","08_data_pipeline.html","Data pipeline","Twelve documents pass through real filters, dedup, a classifier and decontamination; see what is dropped and why.","08-pretraining-data"],
+    ["09","09_scaling_calculator.html","Scaling calculator","GPUs × hours × MFU → FLOPs → Chinchilla-optimal (or overtrained) model size and tokens, with an iso-FLOP chart.","09-scaling-laws"],
+    ["10","10_training_dynamics.html","Training dynamics","A real tiny network trained live with warmup/cosine/WSD schedules; provoke a loss spike and fix it.","10-pretraining-loop"],
+    ["11","11_parallelism_visualizer.html","Parallelism visualizer","Split a model across 2–16 devices with DP/TP/PP/EP and ZeRO; see per-device memory and traffic.","11-distributed-training"],
+    ["12","12_moe_router.html","MoE router","Tokens flow to experts under a softmax router; watch load balancing succeed or collapse.","12-modern-architectures"],
+  ]},
+  {name:"Part III — Post-training", cls:"p3", items:[
+    ["14","14_posttraining_map.html","Post-training map","The 2026 pipeline from base model to release, with a stage-by-stage trace of one prompt.","14-posttraining-pipeline"],
+    ["16","16_labeling_tool.html","Preference labeling tool","A working pairwise annotation UI with guidelines, shortcuts, JSONL export and Cohen's κ.","16-data-labeling"],
+    ["17","17_dpo_explorer.html","DPO explorer","Move chosen/rejected log-probs and watch the DPO loss and its gradient.","17-reward-models-and-dpo"],
+    ["18","18_policy_gradient.html","Policy gradient bandit","A bandit whose policy updates with REINFORCE in front of you.","18-rl-for-llms"],
+    ["19","19_grpo_simulator.html","GRPO simulator","A group of rollouts, their rewards, advantages and clipping, live.","19-grpo-and-rlvr"],
+  ]},
+  {name:"Part IV — Agents and harnesses", cls:"p4", items:[
+    ["24","24_agent_loop_tracer.html","Agent loop tracer","Step through an agent transcript one event at a time: observe, think, act.","24-the-agent-loop"],
+    ["25","25_context_budget.html","Context budget","Watch a context window fill, compact and recover.","25-context-engineering"],
+    ["27","27_harness_anatomy.html","Harness anatomy","The parts of a long-running coding-agent harness: permissions, hooks, verification, resumability.","27-harness-engineering"],
+  ]},
+];
+document.getElementById("parts").innerHTML=PARTS.map(p=>`<section class="${p.cls}"><h2>${p.name}<small>${p.items.length} interactive${p.items.length>1?"s":""}</small></h2><div class="cards">${p.items.map(([n,f,t,d,ch])=>`<div class="card"><a class="main" href="${f}"><div class="n">${f}</div><div class="t">${t}</div><div class="d">${d}</div></a><div class="ch">Chapter ${n} → <a href="../chapters/${ch}.md">${ch}.md</a></div></div>`).join("")}</div></section>`).join("");
+</script>
+</body>
+</html>

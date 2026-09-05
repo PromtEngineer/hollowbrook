@@ -26,7 +26,7 @@ svg.plot{width:100%;height:auto;display:block}
 .node text{pointer-events:none}
 .detail h3{margin:0 0 4px;font-size:16px}.detail .kv{display:grid;grid-template-columns:110px 1fr;gap:4px 10px;font-size:13px}.detail .kv b{color:var(--muted);font-weight:600}
 .tl{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.tl div{border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;background:#f8fafc;color:var(--muted)}.tl div.cur{background:var(--blue);color:#fff;border-color:var(--blue)}.tl div.past{color:var(--ink)}
-.files{display:grid;gap:8px}@media(min-width:800px){.files{grid-template-columns:1fr 1fr}}.files pre{margin:0;max-height:210px;font-size:12px}
+.files{display:grid;gap:8px}@media(min-width:800px){.files{grid-template-columns:1fr 1fr}}.files>*{min-width:0}.files pre{margin:0;max-height:210px;font-size:12px}.scroller{overflow-x:auto}.scroller svg{min-width:640px}
 .badge{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}.badge.ok{background:#dcfce7;color:#166534}.badge.no{background:#fee2e2;color:#991b1b}.badge.dim{background:#f1f5f9;color:var(--muted)}
 .mcp pre{max-height:180px;font-size:12px}
 </style>
@@ -41,7 +41,7 @@ svg.plot{width:100%;height:auto;display:block}
 <div class="box try"><strong>What to try.</strong> Click (or tab to) each block in the diagram and read the failure it exists to prevent. Step through the session timeline and watch PLAN.md stay fixed while PROGRESS.md grows with verified results. Then play the MCP handshake and compare the two kinds of error at the end: a protocol error (no such tool) and a tool result flagged <code>isError</code>.</div>
 
 <div class="panel">
-  <svg id="anat" class="plot" viewBox="0 0 900 400" role="group" aria-label="harness anatomy diagram"></svg>
+  <div class="scroller"><svg id="anat" class="plot" viewBox="0 0 900 400" role="group" aria-label="harness anatomy diagram"></svg></div>
   <div class="note">Solid arrows: the request path of one turn. Dashed: side channels (files, child agents, remote tool servers).</div>
 </div>
 <div class="panel detail" id="detail"></div>
@@ -61,7 +61,7 @@ svg.plot{width:100%;height:auto;display:block}
     <div><strong>MCP handshake</strong> <span class="note">— JSON-RPC 2.0 over stdio, bodies from <code>llm/agent/mcp_mini.py</code> (protocol 2025-11-25)</span></div>
     <div class="row"><button class="secondary" onclick="mcpGo(-1)">◀</button><button id="mcpNext" onclick="mcpGo(1)">Next ▶</button><button class="secondary" id="mcpPlay" onclick="mcpPlay()">Play</button></div>
   </div>
-  <svg id="mcp" class="plot" viewBox="0 0 900 300" role="img" aria-label="MCP message sequence"></svg>
+  <div class="scroller"><svg id="mcp" class="plot" viewBox="0 0 900 300" role="img" aria-label="MCP message sequence"></svg></div>
   <div class="grid two"><div><div class="note" id="mcpLabel"></div><pre id="mcpBody"></pre></div><div class="note" id="mcpNote"></div></div>
 </div>
 
