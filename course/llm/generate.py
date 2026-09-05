@@ -86,6 +86,10 @@ def generate_ids(model: TinyLM, idx: Tensor, max_new_tokens: int, temperature: f
     cache = model.new_cache() if use_cache else None
     budget = model.cfg.max_seq_len - idx.shape[1]
     steps = min(max_new_tokens, budget)
+    if steps <= 0:
+        import warnings
+        warnings.warn(f"prompt length {idx.shape[1]} leaves no room under max_seq_len={model.cfg.max_seq_len}; "
+                      "nothing generated", stacklevel=2)
     cur = idx
     for _ in range(steps):
         if use_cache:
@@ -133,10 +137,13 @@ def generate(model: TinyLM, tok: BPETokenizer, prompt: str, max_new_tokens: int 
 @torch.no_grad()
 def sample_group(model: TinyLM, prompt_ids: Sequence[int], n: int, max_new_tokens: int,
                  temperature: float = 1.0, top_k: Optional[int] = None, top_p: Optional[float] = None,
-                 stop_ids: Sequence[int] = (), pad_id: int = 0, seed: Optional[int] = None) -> Tensor:
+                 stop_ids: Sequence[int] = (), pad_id: Optional[int] = None,
+                 seed: Optional[int] = None) -> Tensor:
     """``n`` independent samples for one prompt, as a (n, T0 + T_new) tensor.
 
     This is the rollout primitive for GRPO (Chapter 19): one prompt, a *group* of answers.
+    Pass ``pad_id=tok.special_tokens["<|pad|>"]`` so finished rows are padded (without it,
+    rows keep emitting tokens after their stop token).
     """
     device = next(model.parameters()).device
     idx = torch.tensor([list(prompt_ids)] * n, device=device)

@@ -65,14 +65,15 @@ Before any result enters the context, `Agent._execute` truncates it:
 
 ```python
 big = "\n".join(f"line {i}: INFO worker handled request {1000 + i}" for i in range(200))
-print(len(big))                                     # 8,290 chars
+print(len(big))                                     # 8489 chars
 small = truncate_tool_result(big, max_chars=200)
 print(small)
 # line 0: INFO worker handled request 1000
 # line 1: INFO worker handled request 1001
-# li
-# ... [8090 chars truncated] ...
-# 8
+# line 2: INFO worke
+# ... [8289 chars truncated] ...
+# d request 1197
+# line 198: INFO worker handled request 1198
 # line 199: INFO worker handled request 1199
 ```
 
@@ -90,7 +91,7 @@ for i in range(10):
 out = compact(msgs, keep_last=4)
 print(len(msgs), "->", len(out))                                        # 21 -> 21 (same count, smaller middle)
 print(out[2]["content"])                                                # [tool result truncated: 400 chars]
-print(out[-1]["content"][:10], budget.used(msgs), "->", budget.used(out))   # xxxxxxxxxx 1724 -> 1076
+print(out[-1]["content"][:10], budget.used(msgs), "->", budget.used(out))   # xxxxxxxxxx 1681 -> 945
 ```
 
 The rules, in order of importance: the first message (the task, or the system prompt if it is in the list) is never touched, because an agent that forgets what it was asked is worse than one that forgets what it found; the last `keep_last` messages are kept verbatim, because recent context is the most relevant; every older `tool_result` becomes a stub. Assistant turns in the middle are kept, so the model can still see *what it did*, just not *what it saw*. With a `summarizer` function the whole middle collapses into one message instead:
@@ -153,7 +154,7 @@ def common_prefix(a, b):
 backend = ScriptedBackend([{"text": "", "tool_calls": [{"name": "list_dir", "arguments": {}}]}] * 3 + ["done"])
 Agent(backend, tools, AgentConfig(permission_policy="allow_read_only", context_budget_tokens=10**9)).run("look around")
 prev, cur = rendered(backend.calls[1]), rendered(backend.calls[2])
-print(len(prev), common_prefix(prev, cur))             # 2262 2261: all of the previous request but its closing bracket
+print(len(prev), common_prefix(prev, cur))             # 2327 2326: all of the previous request but its closing bracket
 ```
 
 Three things break the prefix, and the lab shows each: a value that changes every call (a timestamp, a random id, "you have N tokens left") placed early in the system prompt, which cuts the common prefix to 28 bytes and makes every call pay full price; compaction, which rewrites the middle of the history and drops the reuse to 8.5 % on that turn; and re-ordering (tool schemas in a different order, a memory block that is re-rendered differently). None of this changes what the model sees; it changes what you pay and how fast the first token arrives.
@@ -290,7 +291,7 @@ The system prompt plus every tool schema, re-sent on every call whether or not a
 
 <details><summary>2. <code>compact()</code> keeps the first message and the last <code>keep_last</code> and stubs older tool results. What is lost, and what is the alternative?</summary>
 
-The *content* of older results is lost: the lab's `db_port=4242`, read at turn 1, became `[tool result truncated: 43 chars]`. The assistant turns are kept, so the agent still sees what it did. The alternative is a summariser, which sees the full older messages and collapses them into one message that can carry the facts, at the price of a model call and the risk that the summary omits something.
+The *content* of older results is lost: the lab's `db_port=4242`, read at turn 1, became `[tool result truncated: 39 chars]`. The assistant turns are kept, so the agent still sees what it did. The alternative is a summariser, which sees the full older messages and collapses them into one message that can carry the facts, at the price of a model call and the risk that the summary omits something.
 </details>
 
 <details><summary>3. Why does the TinyLM backend return an empty string when the context is too long, and why is that dangerous for the loop?</summary>
