@@ -333,8 +333,8 @@ with Stage("9. a TinyLM agent answers with a calculator tool (Chapters 21, 24)")
                           {"role": "tool_result", "content": str(a + b)},
                           {"role": "assistant", "content": f"{a} + {b} = {a + b}"}])
         n_tok = len(tok.encode(chat.render(convs[0], add_generation_prompt=False)))
-        steps = 80 if args.quick else 160
-        losses = distill.sft_steps(model, tok, convs, steps=steps, lr=3e-4, batch_size=8)
+        steps = 60 if args.quick else 160
+        losses = distill.sft_steps(model, tok, convs, steps=steps, lr=1e-3, batch_size=4)
         print(f"   tool-SFT: {len(convs)} traces of {n_tok} tokens, {steps} steps, loss {losses[0]:.3f} -> {losses[-1]:.3f}")
         p = save_stage(model, f"capstone_tool_{TAG}.pt", "tool-sft")
         st.note = f"tool-SFT {steps} steps, loss {losses[0]:.2f} -> {losses[-1]:.2f}"
@@ -344,6 +344,8 @@ with Stage("9. a TinyLM agent answers with a calculator tool (Chapters 21, 24)")
         st.note = f"reused {os.path.basename(p)}"
     paths["tool"] = p
     backend = TinyLMBackend(model, tok, max_new_tokens=48)
+    probe = backend.complete([{"role": "user", "content": Q}], reg.schemas(), SYS)
+    print(f"   raw generation for {Q!r}: {probe.raw[:100]!r}")
     t_real = Agent(backend, reg, AgentConfig(max_turns=3, permission_policy="allow_all"), system_prompt=SYS).run(Q)
     print("   TinyLM transcript:\n" + "\n".join("      " + l for l in t_real.pretty().splitlines()))
     ex = tasks.TaskExample("add", Q, "17 + 25 = 42", {"answer": 42})

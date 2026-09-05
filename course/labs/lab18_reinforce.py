@@ -39,7 +39,7 @@ SIZE = "nano" if args.quick else "small"
 RL_STEPS = 12 if args.quick else 30
 N_PROMPTS, G = 6, 8                              # prompts per step x samples per prompt
 MAX_NEW = 12
-RL_LR = 3e-4 if args.quick else 1e-4
+RL_LR = 1e-4
 BANDIT_TRIALS = 20 if args.quick else 40
 torch.manual_seed(args.seed)
 
@@ -177,11 +177,15 @@ for step in range(RL_STEPS):
     lp = logp_correct(model, rl_prompts)
     hist_r.append(r_mean); hist_lp.append(lp)
     if step % max(1, RL_STEPS // 6) == 0 or step == RL_STEPS - 1:
-        print(f"   step {step:3d} | mean reward {r_mean:.3f} | log pi(correct) {lp:6.2f} | grad norm {gnorm:.2f} | {time.perf_counter() - t0:.0f}s")
+        print(f"   step {step:3d} | mean reward {r_mean:.3f} | log pi(reference answer) {lp:6.2f} | grad norm {gnorm:.2f} | {time.perf_counter() - t0:.0f}s")
 first, last = np.mean(hist_r[:3]), np.mean(hist_r[-3:])
-print(f"   mean reward, first 3 steps {first:.3f} -> last 3 steps {last:.3f}; log pi(correct) {lp0:.2f} -> {hist_lp[-1]:.2f}")
-check(hist_lp[-1] > lp0, "REINFORCE raised log pi(correct answer) on the training prompts")
+rewarded = [tok.decode(rl.split_completion(r, P, pad_id, end_id)) for ids_, P, _, rw in batch for r, x in zip(ids_.tolist(), rw.tolist()) if x > 0]
+print(f"   mean reward, first 3 steps {first:.3f} -> last 3 steps {last:.3f}; log pi(reference answer) {lp0:.2f} -> {hist_lp[-1]:.2f}")
+print(f"   rewarded samples in the last batch (what REINFORCE actually pushed up): {rewarded[:5]}")
+print("   note: the verifier grades only the last number, so 'a + b' can be misquoted and still be rewarded; RL raises the")
+print("         probability of ITS OWN rewarded samples, which need not be the reference string")
 check(last >= first, "the sampled reward on the training prompts went up (noisy: 48 samples per step)")
+check(all(np.isfinite(hist_lp)) and all(np.isfinite(hist_r)), "every step produced finite log-probs and rewards")
 
 # ============================================================ (c) variance on TinyLM
 section("(c) gradient variance on TinyLM: five sample batches, with vs without baseline")
@@ -203,16 +207,24 @@ check(var["baseline"] < var["no baseline"], "subtracting the batch-mean reward l
 section("(d) k1, k2, k3: unbiased? always positive? how noisy?")
 rng = np.random.default_rng(args.seed)
 V = 10
-p = softmax(rng.normal(size=V) * 1.0); q = softmax(rng.normal(size=V) * 1.0)   # policy p, reference q
-true_kl = float(np.sum(p * (np.log(p) - np.log(q))))
-xs = rng.choice(V, size=20000, p=p)
-ks = rl.kl_estimators(torch.tensor(np.log(p[xs])), torch.tensor(np.log(q[xs])))
-print(f"   true KL(p || q) = {true_kl:.4f} over V={V} symbols, 20,000 samples from p")
-for name, v in ks.items():
-    print(f"   {name}: mean {v.mean():.4f} | std {v.std():.3f} | fraction of negative samples {(v < 0).float().mean():.2f} | "
-          f"bias {v.mean() - true_kl:+.4f}")
-check(abs(ks["k1"].mean() - true_kl) < 0.02 and abs(ks["k3"].mean() - true_kl) < 0.02, "k1 and k3 are unbiased")
-check(ks["k3"].std() < ks["k1"].std() and (ks["k3"] >= 0).all(), "k3 has lower variance than k1 and is never negative")
+results = {}
+for label, spread in (("close (small KL)", 0.3), ("far (large KL)", 1.0)):
+    p = softmax(rng.normal(size=V) * spread); q = softmax(rng.normal(size=V) * spread)   # policy p, reference q
+    true_kl = float(np.sum(p * (np.log(p) - np.log(q))))
+    xs = rng.choice(V, size=20000, p=p)
+    ks = rl.kl_estimators(torch.tensor(np.log(p[xs])), torch.tensor(np.log(q[xs])))
+    results[label] = (true_kl, ks)
+    print(f"   {label}: true KL(p || q) = {true_kl:.4f} over V={V} symbols, 20,000 samples from p")
+    for name, v in ks.items():
+        print(f"      {name}: mean {v.mean():.4f} | std {v.std():.3f} | fraction of negative samples {(v < 0).float().mean():.2f} | "
+              f"bias {v.mean() - true_kl:+.4f}")
+true_kl, ks = results["close (small KL)"]
+check(all(abs(results[k][1][e].mean() - results[k][0]) < 0.03 for k in results for e in ("k1", "k3")), "k1 and k3 are unbiased in both regimes")
+check(ks["k3"].std() < ks["k1"].std() and all((results[k][1]["k3"] >= 0).all() for k in results),
+      "k3 is never negative, and has lower variance than k1 when the two distributions are close")
+far_kl, far = results["far (large KL)"]
+print(f"   caveat: when the distributions are far apart (KL {far_kl:.2f}) k3's std ({far['k3'].std():.2f}) exceeds k1's ({far['k1'].std():.2f}): "
+      "the exp(log r) term explodes; the low-variance claim is a small-KL statement, which is the regime a KL penalty keeps you in")
 # on TinyLM: policy = the REINFORCE'd model, reference = the SFT warm start, tokens sampled from the policy
 ref = warm_start(SIZE).eval()
 with torch.no_grad():
@@ -271,7 +283,7 @@ fig.tight_layout()
 savefig(fig, "lab18_reinforce.png")
 
 fig, axes = plt().subplots(1, 3, figsize=(15, 3.6))
-for ax, (name, v) in zip(axes, ks.items()):
+for ax, (name, v) in zip(axes, results["close (small KL)"][1].items()):
     ax.hist(v.numpy(), bins=40, color="#7c3aed", alpha=0.6)
     ax.axvline(true_kl, color="#dc2626", ls="--", label=f"true KL {true_kl:.3f}")
     ax.axvline(v.mean().item(), color="#0f172a", label=f"mean {v.mean():.3f}, std {v.std():.2f}")

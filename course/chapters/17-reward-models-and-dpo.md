@@ -288,4 +288,4 @@ When you need to score answers you have not seen: in an RL loop that samples fre
 
 ---
 
-← [Chapter 16](16-data-labeling-and-curation.md) · [Course home](../README.md) · [Chapter 18](18-rl-for-llms.md) →
+← [Chapter 16](16-data-labeling.md) · [Course home](../README.md) · [Chapter 18](18-rl-for-llms.md) →
