@@ -147,7 +147,7 @@ print(fit_power_law(N, L))                                      # (2.009, 305.7,
 
 ## Worked example 🧪
 
-Run `python3 labs/lab09_scaling.py` (quick: three models, 61,440 tokens each, TIMING_Q) and `--full` (1,228,800 tokens each, TIMING_F). Timings are with two CPU threads on a shared 4-core VM; an idle laptop is faster.
+Run `python3 labs/lab09_scaling.py` (quick: three models, 61,440 tokens each, 293 s when measured, 39 + 76 + 119 s of it training, with two threads on a shared 4-core VM running ~10 other jobs — an idle laptop should need about a minute) and `--full` (1,228,800 tokens each, 659 s measured on the same VM under one thread and heavy load). Timings are with two CPU threads on a shared 4-core VM; an idle laptop is faster.
 
 **Quick run** — the three sizes and the fit:
 
@@ -156,6 +156,14 @@ train stream 357,931 tokens | budget D = 60 steps × 16 × 64 = 61,440 tokens pe
   xs: d= 64 layers=2  N=   98,624 (+55,744 embedding)  val loss 3.381  ...
   s: d= 96 layers=3  N=  295,584 (+83,616 embedding)  val loss 2.499  ...
   m: d=160 layers=4  N=1,117,600 (+139,360 embedding)  val loss 2.390  ...
+
+val loss L(N, D) at intermediate token counts (rows: D, columns: model size):
+  D (tokens)       xs        s        m   (biggest − smallest)
+      13,312    5.102    4.775    4.804   -0.297
+      25,600    4.451    3.888    4.043   -0.408
+      37,888    3.855    3.081    3.158   -0.697
+      50,176    3.518    2.663    2.639   -0.879
+      61,440    3.381    2.497    2.388   -0.993
 ✅ bigger model -> lower loss at a fixed token budget
 
 fit: L(N) = 2.381 + 5.55e+09 / N^1.951
@@ -173,7 +181,6 @@ train stream 357,931 tokens | budget D = 300 steps × 32 × 128 = 1,228,800 toke
   s: d= 96 layers=3  N=  295,584 (+83,616 embedding)  val loss 1.014  ...
   m: d=160 layers=4  N=1,117,600 (+139,360 embedding)  val loss 1.008  ...
 
-LND_TABLE
 
 fit: L(N) = 1.006 + 2.06e+04 / N^1.164
 
@@ -183,9 +190,9 @@ fit: L(N) = 1.006 + 2.06e+04 / N^1.164
   this lab used 1.52e+13 FLOPs in total — a frontier run is ~10^25–10^26, i.e. 10^12× more
 
 budget                 GPU-hours     FLOPs  N (20 tok/param)        D  N (200 tok/param)        D
-$100 (nanochat)               33   4.8e+19              634M    12.7B               200M    40.1B
-$10k                       3,333   4.8e+21             6.34B     127B                 2B     401B
-$10M                   3,333,333   4.8e+24              200B    4.01T              63.4B    12.7T
+$100 (nanochat)               33   4.8e+19              629M    12.6B               199M    39.8B
+$10k                       3,333   4.8e+21             6.29B     126B              1.99B     398B
+$10M                   3,333,333   4.8e+24              199B    3.98T              62.9B    12.6T
 ```
 
 What to look at:
@@ -193,10 +200,10 @@ What to look at:
 1. **Bigger is better at fixed *D*, but by less and less.** In the quick run, going from `xs` to `s` (3× the parameters) buys 0.88 nats; going from `s` to `m` (3.8×) buys 0.11. In the full run the whole spread is 0.03 nats. At a fixed token budget the marginal parameter is worth less the more you already have — that is the *A*/*N*<sup>α</sup> term shrinking toward *E*.
 2. **The fitted *E* is Storyland's irreducible loss.** With 1.2M tokens every size lands within 0.03 of *E* = 1.006 nats (perplexity 2.7). Storyland is generated from ten templates and a few hundred words, so most of the remaining uncertainty is *which* name, colour or object the template drew — no model can predict a random draw. This is what the constant in Chinchilla's law means, on a corpus small enough to see it.
 3. **Do not trust *α* from three points.** Three measurements determine three constants exactly (the residual is zero by construction), and the two runs give *α* = 1.95 and 1.16 — nothing like Chinchilla's 0.34. Both runs are also unfair to the larger models: one learning rate for all widths (Chapter 9's muP section) and a token budget so small that `m` is far from converged in the quick run. Exercise 1 adds a fourth point and exercise 2 a fair sweep; the *shape* of the fit is the lesson, not its exponent.
-4. **The *L*(*N*, *D*) table** is the same experiment read the other way: down a column, loss falls with tokens; across a row, with parameters; and the rightmost column (biggest minus smallest) shrinks toward zero as *D* grows. That is the Chinchilla surface, sampled at 15 points.
+4. **The *L*(*N*, *D*) table** (quick run) is the same experiment read the other way: down a column, loss falls with tokens; across a row, with parameters. Look at `s` versus `m`: the wider model is *behind* until 50k tokens and only overtakes at the end. A bigger model needs more tokens before its extra capacity pays for its slower start (and it is the one most hurt by the shared learning rate). Read across the two runs and the whole Chinchilla surface appears: at 61k tokens the biggest-minus-smallest gap is still opening (−0.99 nats); by 1.2M tokens it has closed to −0.03 because every size is at the floor.
 5. **The loss-vs-tokens plot** (`figures/generated/lab09_scaling.png`, right panel) for model `m` is the log-*x* hockey stick from the "reading a loss curve" section: 6.83 nats at 4k tokens, most of the drop by 100k tokens, then a slow slide to 0.99.
-6. **The attention term** adds 7–21% to 6·N·D for these models at *T* = 64–128, more for the narrow ones (attention cost is ∝ *d*·*T* per layer while parameters are ∝ *d*<sup>2</sup>). The achieved rate was ACHIEVED_GFLOPS on this CPU; an H100 delivers ~400,000 GFLOP/s at 40% MFU.
-7. **The budget table** turns the formula into decisions: at 20 tokens per parameter nanochat's budget buys a 634M-parameter model on 12.7B tokens (the real d20 model is 560M on 11B); at 200 tokens per parameter the same budget buys a 200M model that is 3× cheaper to serve. $10M buys a 200B model on 4T tokens by Chinchilla — or a 63B model on 12.7T tokens, which is close to how the open 2025–2026 dense models were actually sized.
+6. **The attention term** adds 7–21% to 6·N·D for these models at *T* = 64–128, more for the narrow ones (attention cost is ∝ *d*·*T* per layer while parameters are ∝ *d*<sup>2</sup>). The achieved rate was 1.6–4.2 GFLOP/s in the quick run and 12–32 GFLOP/s in the full run on this (contended) CPU; an H100 delivers ~400,000 GFLOP/s at 40% MFU.
+7. **The budget table** turns the formula into decisions: at 20 tokens per parameter nanochat's budget buys a 629M-parameter model on 12.6B tokens (the real d20 model is 560M on 11B); at 200 tokens per parameter the same budget buys a 199M model that is 3× cheaper to serve. $10M buys a 199B model on 4T tokens by Chinchilla — or a 63B model on 12.6T tokens, which is close to how the open 2025–2026 dense models were actually sized.
 
 
 🎛️ In `interactive/09_scaling_calculator.html`, drag the compute slider from $100 to $100M and watch *N*, *D* and the predicted loss move along the frontier; then drag the tokens-per-parameter slider from 20 to 2,000 and watch training cost rise while per-token inference cost falls. The challenge is to find the ratio at which a model serving 10<sup>12</sup> tokens over its lifetime has the lowest *total* FLOPs.

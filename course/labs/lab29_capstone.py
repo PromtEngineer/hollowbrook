@@ -76,22 +76,39 @@ class Stage:
         print(f"   [{self.name}: {secs:.1f}s]")
 
 
-def existing(*names: str, d_model: int) -> str | None:
-    """The first checkpoint in runs/ that exists and has the right width (nano vs small)."""
+def _parent_of(path: str) -> str | None:
+    """Which checkpoint a capstone_* file was trained from (recorded in its ``extra`` dict)."""
+    try:
+        return torch.load(path, map_location="cpu").get("extra", {}).get("parent")
+    except Exception:
+        return None
+
+
+def existing(*names: str, d_model: int, parent: str | None = None) -> str | None:
+    """The first checkpoint in runs/ that exists and has the right width (nano vs small).
+
+    Checkpoints from the earlier labs (sft_nano.pt, grpo_small.pt, ...) are always welcome.
+    This script's own capstone_* files are reused only if they were trained from the
+    checkpoint this run is actually using upstream (``parent``), so the chain stays a
+    lineage; --fresh ignores them altogether."""
     for n in names:
         p = run_path(n)
-        if os.path.exists(p) and (not n.startswith("capstone_") or not args.fresh):
-            try:
-                if TinyLM.load(p).cfg.d_model == d_model:
-                    return p
-            except Exception:                           # a checkpoint from another format
+        if not os.path.exists(p):
+            continue
+        if n.startswith("capstone_"):
+            if args.fresh or (parent is not None and _parent_of(p) != os.path.basename(parent)):
                 continue
+        try:
+            if TinyLM.load(p).cfg.d_model == d_model:
+                return p
+        except Exception:                           # a checkpoint from another format
+            continue
     return None
 
 
-def save_stage(model: TinyLM, name: str, stage: str) -> str:
+def save_stage(model: TinyLM, name: str, stage: str, parent: str | None = None) -> str:
     p = run_path(name)
-    model.save(p, TOKENIZER_PATH, extra={"stage": stage})
+    model.save(p, TOKENIZER_PATH, extra={"stage": stage, "parent": os.path.basename(parent) if parent else None})
     return p
 
 
@@ -145,7 +162,7 @@ with Stage("2. base model: pretrain or load (Chapter 10)") as st:
 
 # ======================================================== 3. mid-training
 with Stage("3. mid-training anneal on a math-heavy mix (Chapter 13)") as st:
-    p = existing(f"capstone_mid_{TAG}.pt", "lab13_annealed.pt", d_model=D_MODEL)
+    p = existing(f"capstone_mid_{TAG}.pt", "lab13_annealed.pt", d_model=D_MODEL, parent=paths["base"])
     eval_docs = make_corpus(600, seed=12345)
     math_eval = tokenize_and_pack([d for d in eval_docs if d["source"] == "math"], tok)
     if p is None:
@@ -169,7 +186,7 @@ with Stage("3. mid-training anneal on a math-heavy mix (Chapter 13)") as st:
         model.eval()
         after = estimate_loss(model, math_eval, 16, T_EVAL, 4)
         print(f"   {steps} anneal steps on stories:math = 1:4; held-out MATH loss {before:.3f} -> {after:.3f}")
-        p = save_stage(model, f"capstone_mid_{TAG}.pt", "mid-training")
+        p = save_stage(model, f"capstone_mid_{TAG}.pt", "mid-training", parent=paths["base"])
         st.note = f"{steps} steps, math loss {before:.3f} -> {after:.3f}"
         check(after < before, "annealing on a math-heavy mix lowers the held-out math loss")
     else:
@@ -180,17 +197,18 @@ with Stage("3. mid-training anneal on a math-heavy mix (Chapter 13)") as st:
 
 # =================================================================== 4. SFT
 with Stage("4. supervised fine-tuning (Chapter 15)") as st:
-    p = existing(f"sft_{TAG}.pt", f"capstone_sft_{TAG}.pt", d_model=D_MODEL)
+    p = existing(f"sft_{TAG}.pt", f"lab15_sft_{TAG}.pt", "lab20_teacher_sft_small.pt", f"lab17_sft_{TAG}.pt",
+                 f"capstone_sft_{TAG}.pt", d_model=D_MODEL, parent=paths["mid"])
     sft_examples = make_sft_examples(800, seed=1)
     val_examples = make_sft_examples(24, seed=2)
     if p is None:
         model = TinyLM.load(paths["mid"])
-        steps = 120 if args.quick else 240
+        steps = 120 if args.quick else 200
         cfg = SFTConfig(steps=steps, batch_size=16, lr=3e-4, warmup_steps=10, log_every=max(1, steps // 4),
                         eval_every=steps)
         hist = sft_train(model, tok, sft_examples, cfg, val_examples=val_examples, verbose=True)
         print(f"   SFT loss {hist.train_loss[0]:.3f} -> {hist.train_loss[-1]:.3f}; val accuracy {hist.val_acc[-1]:.2f}")
-        p = save_stage(model, f"capstone_sft_{TAG}.pt", "sft")
+        p = save_stage(model, f"capstone_sft_{TAG}.pt", "sft", parent=paths["mid"])
         st.note = f"{steps} steps, loss {hist.train_loss[0]:.2f} -> {hist.train_loss[-1]:.2f}"
         check(hist.train_loss[-1] < hist.train_loss[0] * 0.8, "SFT lowers the masked assistant-token loss by > 20%")
     else:
@@ -200,7 +218,7 @@ with Stage("4. supervised fine-tuning (Chapter 15)") as st:
 
 # ================================================================ 5. DPO
 with Stage("5. preference pairs and DPO (Chapter 17)") as st:
-    p = existing(f"dpo_{TAG}.pt", f"capstone_dpo_{TAG}.pt", d_model=D_MODEL)
+    p = existing(f"dpo_{TAG}.pt", f"lab17_dpo_{TAG}.pt", f"capstone_dpo_{TAG}.pt", d_model=D_MODEL, parent=paths["sft"])
     if p is None:
         model = TinyLM.load(paths["sft"])
         synthetic = make_preference_pairs(tasks.make_examples(160 if args.quick else 320, seed=5), n_wrong_styles=1)
@@ -211,7 +229,7 @@ with Stage("5. preference pairs and DPO (Chapter 17)") as st:
         print(f"   {len(synthetic)} synthetic pairs + {len(on_policy)} on-policy pairs "
               f"(sampled {stats['n_prompts']} prompts × 4: accuracy {stats['sample_accuracy']:.2f}, "
               f"{stats['n_all_wrong']} all-wrong, {stats['n_all_correct']} all-right)")
-        cfg = DPOConfig(steps=40 if args.quick else 80, batch_size=8, lr=1e-4 if args.quick else 5e-5, beta=0.1,
+        cfg = DPOConfig(steps=40 if args.quick else 60, batch_size=8, lr=1e-4 if args.quick else 5e-5, beta=0.1,
                         warmup=4, log_every=10)
         ref = make_reference(model)
         before = dpo_eval(model, ref, tok, held, cfg)
@@ -219,7 +237,7 @@ with Stage("5. preference pairs and DPO (Chapter 17)") as st:
         after = dpo_eval(model, ref, tok, held, cfg)
         print(f"   held-out pairs: margin {before['margin']:+.3f} -> {after['margin']:+.3f}, "
               f"pair accuracy {before['accuracy']:.2f} -> {after['accuracy']:.2f}")
-        p = save_stage(model, f"capstone_dpo_{TAG}.pt", "dpo")
+        p = save_stage(model, f"capstone_dpo_{TAG}.pt", "dpo", parent=paths["sft"])
         st.note = f"{len(pairs)} pairs, {cfg.steps} steps, margin {before['margin']:+.2f} -> {after['margin']:+.2f}"
         check(after["margin"] > before["margin"] and after["accuracy"] > 0.5, "DPO raises the implicit-reward margin on held-out pairs")
     else:
@@ -230,10 +248,10 @@ with Stage("5. preference pairs and DPO (Chapter 17)") as st:
 # ================================================================ 6. GRPO
 MAX_VALUE = 9 if args.quick else 20
 with Stage("6. GRPO with a verifiable reward on addition (Chapter 19)") as st:
-    p = existing(f"grpo_{TAG}.pt", f"capstone_grpo_{TAG}.pt", d_model=D_MODEL)
+    p = existing(f"grpo_{TAG}.pt", f"lab19_grpo_{TAG}.pt", f"capstone_grpo_{TAG}.pt", d_model=D_MODEL, parent=paths["dpo"])
     if p is None:
         model = TinyLM.load(paths["dpo"])
-        cfg = GRPOConfig(group_size=8, prompts_per_step=4, max_new_tokens=16, steps=12 if args.quick else 24,
+        cfg = GRPOConfig(group_size=8, prompts_per_step=4, max_new_tokens=16, steps=12 if args.quick else 20,
                          lr=2e-4, log_every=3)
         add_train = tasks.make_examples(64, seed=9, tasks=["add"], max_value=MAX_VALUE)
         hist = grpo_train(model, tok, add_train, cfg, verbose=True)
@@ -241,7 +259,7 @@ with Stage("6. GRPO with a verifiable reward on addition (Chapter 19)") as st:
         r1 = sum(h["reward"] for h in hist[-3:]) / 3
         print(f"   mean reward, first 3 steps {r0:.3f} -> last 3 steps {r1:.3f}; "
               f"entropy {hist[0].get('entropy', float('nan')):.2f} -> {hist[-1].get('entropy', float('nan')):.2f}")
-        p = save_stage(model, f"capstone_grpo_{TAG}.pt", "grpo")
+        p = save_stage(model, f"capstone_grpo_{TAG}.pt", "grpo", parent=paths["dpo"])
         st.note = f"{cfg.steps} steps × {cfg.prompts_per_step}×G{cfg.group_size}, reward {r0:.2f} -> {r1:.2f}"
         check(all(math.isfinite(h["loss"]) for h in hist), "every GRPO step produced a finite loss")
     else:
@@ -256,7 +274,7 @@ with Stage("7. on-policy distillation into a student (Chapter 20)") as st:
         # quick: same-size "self-distillation" — the RL'd model teaches the pre-RL SFT model
         student, student_name = TinyLM.load(paths["sft"]), "the SFT checkpoint (same size)"
     else:
-        sp = existing("sft_nano.pt", "capstone_sft_nano.pt", d_model=preset("nano").d_model)
+        sp = existing("sft_nano.pt", "lab20_student_sft_nano.pt", "capstone_sft_nano.pt", d_model=preset("nano").d_model)
         if sp is None:                                    # a nano student that at least knows the chat format
             student, _ = get_base_model(quick=True, verbose=False)
             sft_train(student, tok, sft_examples, SFTConfig(steps=60, batch_size=16, lr=3e-4, warmup_steps=5,
@@ -264,7 +282,7 @@ with Stage("7. on-policy distillation into a student (Chapter 20)") as st:
             student_name = "base_nano + 60 SFT steps"
         else:
             student, student_name = TinyLM.load(sp), os.path.basename(sp)
-    p = existing(f"capstone_opd_{TAG}.pt", d_model=student.cfg.d_model)
+    p = existing(f"capstone_opd_{TAG}.pt", d_model=student.cfg.d_model, parent=paths["grpo"])
     if p is None:
         cfg = distill.OPDConfig(steps=6 if args.quick else 16, group_size=4, prompts_per_step=4, max_new_tokens=16,
                                 lr=2e-4, log_every=max(1, (6 if args.quick else 16) // 4))
@@ -272,7 +290,7 @@ with Stage("7. on-policy distillation into a student (Chapter 20)") as st:
         hist = distill.opd_train(student, teacher, tok, add_train, cfg, verbose=True)
         print(f"   student = {student_name}, teacher = {os.path.basename(paths['grpo'])}: "
               f"reverse KL {hist[0]['reverse_kl']:.3f} -> {hist[-1]['reverse_kl']:.3f}")
-        p = save_stage(student, f"capstone_opd_{TAG}.pt", "opd")
+        p = save_stage(student, f"capstone_opd_{TAG}.pt", "opd", parent=paths["grpo"])
         st.note = f"{student_name} <- teacher, {cfg.steps} steps, rKL {hist[0]['reverse_kl']:.2f} -> {hist[-1]['reverse_kl']:.2f}"
         check(all(math.isfinite(h["loss"]) for h in hist), "every OPD step produced a finite loss")
     else:
@@ -282,7 +300,7 @@ with Stage("7. on-policy distillation into a student (Chapter 20)") as st:
 
 # =============================================================== 8. evals
 with Stage("8. evaluate every checkpoint (Chapter 23)") as st:
-    n_all, n_add = (40, 24) if args.quick else (80, 40)
+    n_all, n_add = (40, 24) if args.quick else (60, 30)
     held_all = tasks.make_examples(n_all, seed=2024)
     held_add = tasks.make_examples(n_add, seed=2025, tasks=["add"], max_value=MAX_VALUE)
     contam = contamination_check(clean, held_all)
@@ -319,7 +337,7 @@ with Stage("9. a TinyLM agent answers with a calculator tool (Chapters 21, 24)")
     print("   scripted reference transcript:\n" + "\n".join("      " + l for l in t_ref.pretty().splitlines()))
 
     # (b) a tool-SFT'd TinyLM, reused if a checkpoint exists, else trained now from the GRPO model
-    p = existing(f"tool_sft_{TAG}.pt", f"agent_sft_{TAG}.pt", f"capstone_tool_{TAG}.pt", d_model=D_MODEL)
+    p = existing(f"tool_sft_{TAG}.pt", f"agent_sft_{TAG}.pt", f"capstone_tool_{TAG}.pt", d_model=D_MODEL, parent=paths["grpo"])
     if p is None:
         model = TinyLM.load(paths["grpo"])
         model.extend_context(512)                          # the tool schema alone is ~130 tokens
@@ -333,17 +351,17 @@ with Stage("9. a TinyLM agent answers with a calculator tool (Chapters 21, 24)")
                           {"role": "tool_result", "content": str(a + b)},
                           {"role": "assistant", "content": f"{a} + {b} = {a + b}"}])
         n_tok = len(tok.encode(chat.render(convs[0], add_generation_prompt=False)))
-        steps = 60 if args.quick else 160
+        steps = 60 if args.quick else 200
         losses = distill.sft_steps(model, tok, convs, steps=steps, lr=1e-3, batch_size=4)
         print(f"   tool-SFT: {len(convs)} traces of {n_tok} tokens, {steps} steps, loss {losses[0]:.3f} -> {losses[-1]:.3f}")
-        p = save_stage(model, f"capstone_tool_{TAG}.pt", "tool-sft")
+        p = save_stage(model, f"capstone_tool_{TAG}.pt", "tool-sft", parent=paths["grpo"])
         st.note = f"tool-SFT {steps} steps, loss {losses[0]:.2f} -> {losses[-1]:.2f}"
     else:
         model = TinyLM.load(p)
         print(f"   reusing {os.path.basename(p)}")
         st.note = f"reused {os.path.basename(p)}"
     paths["tool"] = p
-    backend = TinyLMBackend(model, tok, max_new_tokens=48)
+    backend = TinyLMBackend(model, tok, max_new_tokens=80)      # a tool-call turn is ~51 tokens
     probe = backend.complete([{"role": "user", "content": Q}], reg.schemas(), SYS)
     print(f"   raw generation for {Q!r}: {probe.raw[:100]!r}")
     t_real = Agent(backend, reg, AgentConfig(max_turns=3, permission_policy="allow_all"), system_prompt=SYS).run(Q)
@@ -361,7 +379,7 @@ with Stage("9. a TinyLM agent answers with a calculator tool (Chapters 21, 24)")
 # ============================================================== report
 total = time.perf_counter() - T_LAB
 lines = [f"# Capstone report ({TAG} model, {'quick' if args.quick else 'full'} mode)", "",
-         f"{device_summary()} | threads {torch.get_num_threads()} | total wall-clock {total:.0f}s", "",
+         f"{device_summary()} | load average at start {load:.1f} | total wall-clock {total:.0f}s", "",
          "## Stages", "", "| stage | what happened | seconds |", "|---|---|---:|"]
 lines += [f"| {n} | {note} | {s:.1f} |" for n, note, s in stages]
 lines += ["", "## Every checkpoint on the same questions", "",

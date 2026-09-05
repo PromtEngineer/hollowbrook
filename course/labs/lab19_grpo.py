@@ -36,7 +36,8 @@ args = setup("Lab 19: GRPO with verifiable rewards")
 SIZE = "nano" if args.quick else "small"
 STEPS = 20 if args.quick else 40
 ABL_STEPS = 10
-LR = 5e-5                           # 1e-4 with 2 PPO epochs already spikes the KL on both model sizes
+LR = 1e-4 if args.quick else 5e-5
+PPO_EPOCHS = 1 if args.quick else 2     # 2 epochs make the clip real, but with lr 1e-4 they spike the KL; nano gets 1 epoch
 MAX_NEW = 12
 N_TTC = 40 if args.quick else 50            # prompts for the pass@k / majority-vote measurements
 torch.manual_seed(args.seed)
@@ -58,12 +59,16 @@ TRAIN_SET = [add_example(a, b) for a, b in ALL_PAIRS[100:]]
 
 
 def warm_start(size: str) -> TinyLM:
-    for name in (f"sft_{size}.pt", f"lab17_sft_{size}.pt"):
+    for name in (f"lab17_sft_{size}.pt", f"sft_{size}.pt"):
         if os.path.exists(run_path(name)):
-            print(f"   loading SFT warm start {run_path(name)}")
-            return TinyLM.load(run_path(name))
+            m = TinyLM.load(run_path(name))
+            acc = eval_tasks(m, tok, EVAL_SET[:20], max_new_tokens=MAX_NEW).accuracy
+            if acc >= 0.10 or name.startswith("lab17"):
+                print(f"   loading SFT warm start {run_path(name)} (greedy accuracy on 20 sums: {acc:.2f})")
+                return m
+            print(f"   {run_path(name)} cannot add (accuracy {acc:.2f} on 20 sums; Lab 15's model may be multi-task) -> training our own")
     model, _ = get_base_model(quick=(size == "nano"), verbose=True)
-    cfg = SFTConfig(steps=450 if size == "nano" else 400, batch_size=16, lr=1e-3 if size == "nano" else 3e-4,
+    cfg = SFTConfig(steps=450 if size == "nano" else 700, batch_size=16, lr=1e-3 if size == "nano" else 3e-4,
                     log_every=100, eval_every=150)
     print(f"   no SFT checkpoint found: SFT on {len(TRAIN_SET)} 'add' examples, {cfg.steps} steps, lr {cfg.lr}")
     sft_train(model, tok, TRAIN_SET, cfg, val_examples=EVAL_SET[:30], verbose=True)
@@ -111,7 +116,7 @@ for c in (ex.answer, ex.answer.replace(str(ex.meta["answer"]), str(ex.meta["answ
     print(f"   reward({c!r:28}) = {rl.default_reward(ex, c, [0]):.1f}   (verify {tasks.verify(ex, c):.0f} + 0.1 x format {tasks.format_reward(ex, c):.0f})")
 cfg = rl.GRPOConfig(group_size=8, steps=STEPS, prompts_per_step=4, max_new_tokens=MAX_NEW, lr=LR,
                     clip_eps_low=0.2, clip_eps_high=0.28, dynamic_sampling=True, token_level_loss=True,
-                    normalize_std=True, kl_coef=0.0, ppo_epochs=2, seed=args.seed, log_every=max(1, STEPS // 10))
+                    normalize_std=True, kl_coef=0.0, ppo_epochs=PPO_EPOCHS, seed=args.seed, log_every=max(1, STEPS // 10))
 ro = rl.rollout_group(sft_model, tok, ex, cfg, seed=args.seed)
 adv = rl.grpo_advantages(ro.rewards)
 print(f"   prompt {ex.prompt!r}: G={cfg.group_size} rollouts, ids {tuple(ro.ids.shape)}, mask {tuple(ro.mask.shape)}, prompt_len {ro.prompt_len}")
@@ -136,7 +141,10 @@ print(f"   training reward, first {k} steps {r_first:.3f} -> last {k} {r_last:.3
       f"mean clip frac {np.mean([h['clip_frac'] for h in hist]):.3f} | mean skipped {np.mean([h['skipped_frac'] for h in hist]):.2f} | "
       f"resp len {hist[0]['resp_len']:.1f} -> {hist[-1]['resp_len']:.1f}")
 print(f"   training reward {'rose' if r_last > r_first else 'did not rise'} over the run (per-step values are noisy: 32 samples per step)")
-check(np.mean([h["clip_frac"] for h in hist]) > 0, "with ppo_epochs=2 the clip is exercised (non-zero clip fraction)")
+if cfg.ppo_epochs > 1:
+    check(np.mean([h["clip_frac"] for h in hist]) > 0, "with ppo_epochs=2 the clip is exercised (non-zero clip fraction)")
+else:
+    check(all(h["clip_frac"] == 0 for h in hist), "with ppo_epochs=1 every ratio is exactly 1, so the clip never fires (by construction)")
 check(all(np.isfinite(h["loss"]) for h in hist), "every step produced a finite loss")
 
 # ------------------------------------------------------------- (d) before vs after

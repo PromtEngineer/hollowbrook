@@ -116,22 +116,25 @@ print(f"saved {save_path} (accuracy {after.accuracy:.2f}); Labs 14, 16, 17, 19 a
 
 # ------------------------------------------------------------ 5. LoRA
 section(f"5. LoRA rank {LORA_RANK}: freeze the base, train small adapters, merge them back")
-lora_model = copy.deepcopy(base)
+demo = copy.deepcopy(base)                       # a throwaway copy to look at the adapters themselves
 x_probe = torch.tensor([ids[:32]])
 with torch.no_grad():
-    logits_before, _ = lora_model(x_probe)
-apply_lora(lora_model, LORA_RANK)
-n_lora = trainable_params(lora_model)
-n_layers_wrapped = sum(isinstance(m, LoRALinear) for m in lora_model.modules())
+    logits_before, _ = demo(x_probe)
+apply_lora(demo, LORA_RANK)
+n_lora = trainable_params(demo)
+n_layers_wrapped = sum(isinstance(m, LoRALinear) for m in demo.modules())
 with torch.no_grad():
-    logits_after, _ = lora_model(x_probe)
-q = lora_model.blocks[0].attn.q_proj
+    logits_after, _ = demo(x_probe)
+q = demo.blocks[0].attn.q_proj
 print(f"wrapped {n_layers_wrapped} linear layers; block 0 q_proj: W {tuple(q.base.weight.shape)} frozen, "
       f"A {tuple(q.lora_A.shape)} + B {tuple(q.lora_B.shape)} trainable, scale alpha/r = {q.scale:.1f}")
 print(f"trainable params: {n_lora:,} (LoRA) vs {n_all:,} (full) = {100 * n_lora / n_all:.1f}%")
 check(torch.allclose(logits_before, logits_after, atol=1e-5), "at initialisation B = 0, so the LoRA model computes exactly what the base did")
 check(n_lora < 0.1 * n_all, "LoRA trains fewer than 10% of the parameters")
 
+# sft_train applies LoRA itself when cfg.lora_rank > 0 (and merges it at the end), so hand it a FRESH copy:
+# calling apply_lora twice on one model freezes the first adapters and leaves nothing trainable.
+lora_model = copy.deepcopy(base)
 lcfg = SFTConfig(steps=LORA_STEPS, batch_size=16, lr=LORA_LR, warmup_steps=20, schedule="cosine",
                  log_every=50, eval_every=EVAL_EVERY, seed=args.seed, lora_rank=LORA_RANK)
 t0 = time.perf_counter()

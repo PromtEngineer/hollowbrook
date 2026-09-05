@@ -127,7 +127,7 @@ respond(model, tok, "Write in capitals: kite")      # 'KITE' after SFT (the base
 eval_tasks(model, tok, val, max_new_tokens=16).table()   # a markdown table with a bootstrap CI per task
 ```
 
-`respond` renders the system and user turns, appends `<|assistant|>`, decodes greedily and stops at `<|end|>`. `eval_tasks` does that for every example and grades with `tasks.verify`; `EvalResult.table()` adds a 95% bootstrap confidence interval so that a difference of 0.05 on 32 items is not over-read.
+`respond` encodes the system and user turns with `chat.encode_chat` (role ids from the template, content with `allowed_special=False`, a trailing `<|assistant|>`), decodes greedily and stops at `<|end|>`. `eval_tasks` does that for every example and grades with `tasks.verify`; `EvalResult.table()` adds a 95% bootstrap confidence interval so that a difference of 0.05 on 32 items is not over-read.
 
 ## Worked example 🧪
 

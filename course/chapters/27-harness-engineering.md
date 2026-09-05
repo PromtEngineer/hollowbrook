@@ -375,4 +375,4 @@ A system prompt is always present. A skill is a folder of instructions whose one
 
 ---
 
-← [Chapter 26](26-tools-mcp-protocols.md) · [Course home](../README.md) · [Chapter 28](28-multi-agent-systems.md) →
+← [Chapter 26](26-tools-and-mcp.md) · [Course home](../README.md) · [Chapter 28](28-multi-agent-systems.md) →

@@ -7,21 +7,19 @@
 
 ## Why this matters
 
-Chapter 24 gave the agent seven tools that live in the same Python process. Real agents in 2026 use hundreds, written by other people, running on other machines: a database server, a browser, a ticketing system, a company's internal search. Two problems appear at once. The first is *quality*: a tool with a vague name, an undocumented argument and a stack trace for an error message makes even a frontier model flail, and the model cannot fix the tool. The second is *plumbing*: without a standard, every agent needs a bespoke adapter for every tool, which is N × M integrations. The **Model Context Protocol (MCP)**, published in November 2024, is the standard that turned this into N + M: a tool server speaks MCP once, and any MCP-speaking agent can list and call its tools. This chapter shows you how to design a tool the model can use well, walks through the 200-line MCP server and client in `llm/agent/mcp_mini.py` message by message, and then turns to what a standard does *not* solve: a tool result is text the model reads, and if that text says "ignore your instructions", a badly built harness will let the model obey it. You will watch that happen in the lab, and then watch the permission gate and hooks stop it.
+Chapter 24 gave the agent seven tools in the same Python process. Real agents in 2026 use hundreds, written by other people, running on other machines: a database, a browser, a ticketing system, an internal search. Two problems appear at once. The first is *quality*: a tool with a vague name, an undocumented argument and a stack trace for an error message makes even a frontier model flail, and the model cannot fix the tool. The second is *plumbing*: without a standard, every agent needs a bespoke adapter for every tool, which is N × M integrations. The **Model Context Protocol (MCP)**, published in November 2024, is the standard that turned this into N + M: a tool server speaks MCP once, and any MCP-speaking agent can list and call its tools. This chapter shows you how to design a tool the model can use well, walks through the 200-line MCP server and client in `llm/agent/mcp_mini.py` message by message, and then turns to what a standard does *not* solve: a tool result is text the model reads, and if that text says "ignore your instructions", a badly built harness will let the model obey it. You will watch that happen in the lab, and then watch the permission gate and hooks stop it.
 
 ## The idea in pictures 📐
 
-Start with a single tool, because everything else is a way of moving tools around.
-
 ![Anatomy of a good tool and the same job done badly](../figures/26_tool_design.svg)
 
-The left panel of the figure is a `Tool` as the model sees it (the schema) and as the harness runs it (the function and the `read_only` flag). Read it top to bottom: the name is a verb and a noun, so the model can guess what it does and a search can find it; the description says what comes back and *when* to use it; every argument has a type, a description and an example; the error message contains the fix; the `read_only` flag is honest. The right panel is the same job with all of that removed. Nothing in the loop of Chapter 24 changes between the two, and yet the model on the left will succeed in one call where the model on the right guesses, fails, reads a Python traceback that tells it nothing, and retries the same call. **Tool design** is the part of agent engineering that has nothing to do with the model and the most to do with whether the agent works.
+The left panel of the figure is a `Tool` as the model sees it (the schema) and as the harness runs it (the function and the `read_only` flag). Read it top to bottom: the name is a verb and a noun, so the model can guess what it does and a search can find it; the description says what comes back and *when* to use it; every argument has a type, a description and an example; the error message contains the fix; the `read_only` flag is honest. The right panel is the same job with all of that removed. Nothing in the loop of Chapter 24 changes between the two, yet the model on the left succeeds in one call where the model on the right guesses, fails, reads a traceback that tells it nothing, and retries. **Tool design** is the part of agent engineering that has nothing to do with the model and the most to do with whether the agent works.
 
 Now the plumbing. The figure below is the message sequence the lab prints, drawn as the four parties involved.
 
 ![MCP: host, client and server, and the JSON-RPC messages between them](../figures/26_mcp_handshake.svg)
 
-MCP names three roles. The **host** is the application that owns the model and the loop, in our case the `Agent` of Chapter 24 with its permission gate and hooks. The **client** is the object inside the host that owns one connection to one server (`MCPClient`, one instance per server). The **server** is a separate program that exposes tools, and possibly resources and prompts, over that connection (`MCPServer`, here a subprocess wrapping a `ToolRegistry`). Reading the figure top to bottom: ① the client and server first exchange versions and capabilities (the *handshake*); ② the client asks for the tool list and the host wraps each entry as a local `Tool`; ③ from then on a tool call from the model travels host → client → server → the real function and its text travels back the same way; ④ there are two different error channels, one that the *model* reads (a result flagged `isError`) and one that the *client* raises (a JSON-RPC error object). The band at the top names the **transport**, the channel the JSON travels over: in the lab it is *stdio*, one JSON object per line on the subprocess's standard input and output.
+MCP names three roles. The **host** owns the model and the loop: the `Agent` of Chapter 24 with its gate and hooks. The **client** is the object inside the host that owns one connection to one server (`MCPClient`, one per server). The **server** is a separate program that exposes tools, and possibly resources and prompts, over that connection (`MCPServer`, here a subprocess wrapping a `ToolRegistry`). Reading the figure top to bottom: ① client and server exchange versions and capabilities (the *handshake*); ② the client asks for the tool list and the host wraps each entry as a local `Tool`; ③ a tool call then travels host → client → server → the real function, and its text travels back; ④ there are two error channels, one the *model* reads (a result flagged `isError`) and one the *client* raises (a JSON-RPC error object). The band at the top names the **transport**, the channel the JSON travels over: in the lab, *stdio*, one JSON object per line on the subprocess's standard input and output.
 
 The flow from a model's tool call to a remote tool and back, as the loop experiences it:
 
@@ -116,7 +114,7 @@ print(srv.handle({"jsonrpc": "2.0", "id": 3, "method": "resources/list"})["error
 # {'code': -32601, 'message': 'Method not found: resources/list'}
 ```
 
-The four methods our server implements are the minimum for tools: `initialize` (versions and capabilities), `notifications/initialized` (the client's "I am ready"), `tools/list` and `tools/call`, plus `ping`. Note the two error channels in code. A tool that fails returns a *result* with `"isError": true` and the message in `content[0].text`, so the model reads it, exactly like the `Error: ...` strings of Chapter 24. A request the server cannot serve at all (unknown tool, unknown method, unparsable JSON) returns a JSON-RPC *error* with a standard code (`-32602` invalid params, `-32601` method not found, `-32700` parse error), and the client raises it: that is a bug in the plumbing, not something to show the model.
+Our server implements the minimum for tools: `initialize` (versions and capabilities), `notifications/initialized` (the client's "I am ready"), `tools/list`, `tools/call` and `ping`. Note the two error channels. A tool that fails returns a *result* with `"isError": true` and the message in `content[0].text`, so the model reads it, like the `Error: ...` strings of Chapter 24. A request the server cannot serve at all (unknown tool, unknown method, unparsable JSON) returns a JSON-RPC *error* with a standard code (`-32602` invalid params, `-32601` method not found, `-32700` parse error), and the client raises it: a bug in the plumbing, not something to show the model.
 
 ### Step 3: the client starts the server as a subprocess
 
@@ -148,11 +146,11 @@ print(t.messages[2]["content"], "|", remote.get("calculator").read_only)    # 42
 client.close()
 ```
 
-`mcp_tools_to_registry` copies each server entry's `name`, `description` and `inputSchema` into a `Tool` whose function is a closure over `client.call_tool`. The loop is unchanged. The one design decision worth noticing is `read_only=False` for everything: the protocol does not tell the client which tools are safe (the 2025 revisions added optional *annotations* such as `readOnlyHint`, but they are hints from an untrusted server), so the library takes the conservative default and the permission gate treats every remote tool as a write until you say otherwise. The lab shows the cost of that honesty: under `allow_read_only`, even the remote calculator is denied.
+`mcp_tools_to_registry` copies each server entry's `name`, `description` and `inputSchema` into a `Tool` whose function is a closure over `client.call_tool`. The loop is unchanged. The design decision to notice is `read_only=False` for everything: the protocol does not reliably tell the client which tools are safe (the 2025 revisions added optional *annotations* such as `readOnlyHint`, but they are hints from an untrusted server), so the library takes the conservative default and the gate treats every remote tool as a write until you say otherwise. The cost: under `allow_read_only`, even the remote calculator is denied.
 
 ### Step 5: what the full protocol adds
 
-Our server stops at tools. The real specification, date-versioned and at revision **2025-11-25** at the time of writing, adds (check the specification for exact shapes):
+Our server stops at tools. The real specification, date-versioned and at revision 2025-11-25 at the time of writing, adds (check the specification for exact shapes):
 
 - **Resources**: read-only data identified by a URI (`file:///…`, `db://orders/42`) that the host may attach to the context: things the model can *read*, as opposed to things it can *do*.
 - **Prompts**: reusable prompt templates with arguments, so a server can ship the instructions that make its tools work well.
@@ -213,12 +211,11 @@ python3 labs/lab26_mcp.py            # quick: about 4 s
 python3 labs/lab26_mcp.py --full     # adds a 300- and 1,000-tool schema sweep: about 4 s
 ```
 
-Part (a) prints the calculator's schema and its validation errors, then the bad and good temperature tools side by side:
+Part (a) prints the calculator's schema and validation errors, then the two temperature tools side by side:
 
 ```
    bad : do({'x': 'twenty'})            -> Error calling do: ValueError: could not convert string to float: 'twenty'
    good: convert_temperature(20, 'K')   -> Error: from_unit must be 'C' or 'F' (got 'K'). Example: value=20, from_unit='C'.
-   good: convert_temperature(20, 'C')   -> 68.0 F
 ```
 
 Part (b) starts the server as a subprocess (0.03 s) and tees both pipes so every JSON-RPC line is printed as it passes. This is the handshake and the tool list:
@@ -236,7 +233,7 @@ Part (b) starts the server as a subprocess (0.03 s) and tees both pipes so every
 ✅ MCP spells the schema key inputSchema (camelCase)
 ```
 
-Look at the `id` fields: request 1 gets reply 1, the notification has no id and gets nothing, and the next request is id 2 (the ping). The tool list is the same `{name, description, schema}` triple as the Anthropic API's tool format with one spelling change, `inputSchema`. Then the three kinds of `tools/call`:
+Request 1 gets reply 1, the notification has no id and gets nothing, and the next request is id 2 (the ping). The tool list is the Anthropic API's `{name, description, schema}` triple with one spelling change, `inputSchema`. Then the three kinds of `tools/call`:
 
 ```
    -> {"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "calculator", "arguments": {"expression": "(2 + 3) * 4"}}, "id": 4}
@@ -245,12 +242,10 @@ Look at the `id` fields: request 1 gets reply 1, the notification has no id and 
    <- {"jsonrpc": "2.0", "id": 5, "result": {"content": [{"type": "text", "text": "Error calling calculator: ValueError: unsupported syntax: Call"}], "isError": true}}
    -> {"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "teleport", "arguments": {}}, "id": 6}
    <- {"jsonrpc": "2.0", "id": 6, "error": {"code": -32602, "message": "Unknown tool: teleport"}}
-   -> {"jsonrpc": "2.0", "method": "resources/list", "params": {}, "id": 7}
-   <- {"jsonrpc": "2.0", "id": 7, "error": {"code": -32601, "message": "Method not found: resources/list"}}
 ✅ 7 requests got 7 replies; the notification got none
 ```
 
-A success and a tool error look alike on the wire (both are `result`s, the flag differs); a protocol error has no `result` at all. The client raises `RuntimeError("MCP error -32602: Unknown tool: teleport")` for the third, because a model asking for a tool the server never listed is a harness bug.
+A success and a tool error look alike on the wire (both are `result`s; the flag differs); a protocol error has no `result` at all, and the client raises `RuntimeError("MCP error -32602: ...")`, because a model asking for a tool the server never listed is a harness bug. (`resources/list` gets `-32601`, method not found: our server does not implement resources.)
 
 Part (c) plugs the registry into an `Agent`:
 
@@ -258,19 +253,15 @@ Part (c) plugs the registry into an `Agent`:
    read_only flags: {'read_file': False, 'write_file': False, 'list_dir': False, 'search': False, 'calculator': False, ...}
    under allow_read_only: Permission denied: 'calculator' is not allowed under policy 'allow_read_only'. Try a diffe
 ✅ with the conservative default (read_only=False) even the calculator is denied under allow_read_only
-USER: What is 6 * 7?
-ASSISTANT:
   -> call calculator({"expression": "6 * 7"})
   <- result: 42
-ASSISTANT: 42.
-[done after 2 turns, 1 tool calls]
 ✅ allow_all: the tool result 42 came back through the subprocess
 ✅ read_only=True registry: allowed under allow_read_only
    (and write_file is now wrongly marked read-only too: the flag is per-registry, not per-tool -- see the chapter)
 ✅ server exited cleanly (return code 0) when stdin closed
 ```
 
-The last two lines are a real limitation of the library: `read_only=True` marks *every* tool on the server read-only, including `write_file`. The fix is a per-tool allowlist (exercise 3).
+The parenthetical line is a real limitation of the library: `read_only=True` marks *every* tool on the server read-only, including `write_file`. The fix is a per-tool allowlist (exercise 3).
 
 Part (d) is the schema-cost sweep (the `--full` lines are the last two):
 
@@ -319,7 +310,7 @@ Settled: MCP is the de-facto standard for agent-to-tool connections, supported b
 
 Open, with evidence accumulating:
 
-- **Security.** A February 2026 threat-modelling paper on MCP and A2A (arXiv 2602.11327) catalogues tool poisoning (malicious descriptions), rug-pulls (a server changing a tool's behaviour after approval), cross-server injection and credential exfiltration through results; a June 2026 analysis (arXiv 2606.31498) argues the governance model (who vets a server, who revokes it) lags the protocol. Neither has a settled fix; the practical defences are the ones in the lab plus vetting and pinning servers.
+- **Security.** A February 2026 threat-modelling paper on MCP and A2A (arXiv 2602.11327) catalogues tool poisoning (malicious descriptions), rug-pulls (a server changing a tool after approval), cross-server injection and credential exfiltration through results; a June 2026 analysis (arXiv 2606.31498) argues governance (who vets and revokes a server) lags the protocol. Neither has a settled fix; the practical defences are the lab's plus vetting and pinning servers.
 - **Agent-to-agent.** A2A v1.0 is reported to have broad backing, but the current evidence on when multi-agent systems beat a single well-equipped agent is mixed (Chapter 28). The protocols are ahead of the evidence.
 - **Whether the defences belong in the model.** Provenance markers and search cost tokens and turns; training models to treat fenced content as data by default (Chapter 22) may reduce the need for them. Whether it removes it is not known; the safe assumption is that it does not.
 
@@ -330,7 +321,7 @@ Open, with evidence accumulating:
 3. **Per-tool read-only.** Write `mcp_tools_to_registry_safe(client, read_only_names: set[str])` that marks only the named tools read-only, and add a check that `write_file` stays `read_only=False` under `allow_read_only`.
 4. **Break a tool, then fix it.** Take `search` from `make_builtin_tools`, remove its description and rename it `s`, and script the turns a plausible model would waste before finding it. Restore the description and count again.
 5. **A better tool search.** Replace the keyword scorer with cosine similarity over bag-of-words vectors (or the embeddings of Chapter 3) and measure precision on ten queries against the 120-tool catalogue.
-6. **Injection variants.** Write three more injections that the lab's regex does not catch (a different phrasing, an instruction hidden in a code comment, one in a CSV cell) and confirm that the permission gate still prevents the write in every case. Then write one that the gate does *not* prevent (hint: a read-only tool that leaks data by *what it searches for*) and explain what would stop it.
+6. **Injection variants.** Write three injections the lab's regex does not catch (a different phrasing, a code comment, a CSV cell) and confirm the gate still prevents the write. Then write one the gate does *not* prevent (hint: a read-only tool that leaks data by *what it searches for*) and say what would stop it.
 7. **Interactive** 🎛️: open `interactive/27_harness_anatomy.html` and play the MCP handshake panel; compare each message with the lab's `->`/`<-` lines, and then find the two kinds of error at the end of the sequence.
 
 ## Check yourself ✅

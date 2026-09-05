@@ -239,7 +239,35 @@ Three numbers to look at. First, the two ranks end with **bit-identical** weight
 
 The gradient vector is 1.52 MB, and with N = 2 the ring formula gives exactly that per device per step. Scale the same arithmetic to a 70B model and each device moves 245 GB per step; at 1.6T parameters it is 5.6 TB, which is why ZeRO-3 sharding, overlapped communication and multi-hundred-GB/s links are not optional. The speed-up line is printed for honesty rather than as evidence: on a busy shared machine it is noise (2.5× from two workers is not possible in a clean measurement; the single-process reference happened to run during a busier moment).
 
-<!-- LAB11_FULL -->
+**Full mode (`--full`: 40 steps, global batch 32 × 128; 1,323 s on the same loaded machine):**
+
+```text
+world=2 workers, 40 steps, global batch 32 x 128 tokens (16 rows per worker)
+
+--- 1. 2 processes, gradients averaged with all-reduce (gloo backend) ---
+   platform Linux, torch 2.14.0+cu130, gloo available: True
+   rank 0: first loss 6.8050 -> last loss 3.4737 | train wall 77.9s | time inside all-reduce 6.41s
+   rank 1: first loss 6.8085 -> last loss 3.4708 | train wall 77.9s | time inside all-reduce 8.75s
+   whole launch incl. process start-up: 113.1s  (torch.distributed)
+✅ both workers hold identical weights after training (max |diff| = 0.00e+00)
+
+--- 2. reference: ONE process, the whole global batch every step ---
+   first loss 6.8067 -> last loss 3.4723 | wall 606.7s
+   step | rank0 loss | rank1 loss | mean(ranks) | single-process
+      0 |     6.8050 |     6.8085 |      6.8067 |         6.8067
+     10 |     5.6779 |     5.6414 |      5.6596 |         5.6596
+     20 |     4.7141 |     4.7175 |      4.7158 |         4.7158
+     30 |     4.0496 |     4.0251 |      4.0374 |         4.0374
+✅ mean of the ranks' losses == single-process loss at every step (max gap 9.5e-07)
+   max |w_dp - w_single| = 9.15e-06
+
+--- 3. control: rank 0 alone on its half of the data, NO all-reduce ---
+   max |w_solo - w_single| = 7.41e-02  (this is how different a *different* run looks)
+✅ data-parallel weights match the single-process weights (9.1e-06 < 1e-4)
+✅ ...and are >100x closer than the no-all-reduce control (7.4e-02)
+```
+
+Five times as many steps and eight times as many tokens per step change nothing about the agreement: the ranks' loss means match the single process to 10⁻⁶ at every logged step, the weights agree to 9 × 10⁻⁶, and the control run has drifted to 7 × 10⁻² (further than in quick mode, because forty diverging steps compound). The loss itself falls from 6.81 to 3.47 in 40 steps at a global batch of 4,096 tokens. With 8.2% of worker wall-clock inside all-reduce for a 1.5 MB gradient over local sockets, this toy already shows the shape of the real problem: at 140 GB of gradients per step, that fraction would be catastrophic without overlap, which is why DDP starts reducing early buckets while the backward pass is still running.
 
 ## Try it yourself ✍️
 

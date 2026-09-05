@@ -210,7 +210,72 @@ The training objective, the residual-stream-plus-sub-layer skeleton, the embeddi
 
 `python3 labs/lab12_moe.py` trains four nano models for the same number of steps (dense, MoE, MoE without the balancing loss, dense with an MTP head), reads `blocks[i].mlp.last_expert_counts` to plot expert utilisation, evaluates the pretrained base model with sliding windows of ∞/32/8, and prints the KV-cache table. Quick mode uses 120 steps at batch 16 × 64 tokens; `--full` uses 400 steps at 32 × 128.
 
-<!-- LAB12_OUTPUT -->
+**Quick mode (120 steps at 16 × 64 tokens per variant; 1,596 s on a shared 4-core machine at load ≈ 15–20, `OMP_NUM_THREADS=2`; under a minute on a quiet laptop):**
+
+```text
+--- 1. dense vs MoE (nano, 120 steps, batch 16x64) ---
+[dense] total params 379,200 | active 379,200
+   val loss 2.4438  (perplexity 11.5)
+[moe] total params 1,265,088 | active 601,536
+   val loss 2.0972  (perplexity 8.1)
+
+   variant       total     active  val loss  val ppl    tok/s
+   dense       379,200    379,200     2.444     11.5      166
+   moe       1,265,088    601,536     2.097      8.1      302
+   MoE stores 2.10x more parameters than it uses per token
+✅ MoE has >2x the TOTAL parameters of the dense model
+✅ dense and MoE reach comparable val loss (2.444 vs 2.097)
+```
+
+The MoE reaches a lower validation loss (2.10 versus 2.44) for the same steps, but read the parameter columns before drawing the per-FLOP conclusion: with one routed expert plus one shared expert it has 1.6× the dense model's *active* parameters and 3.3× its total, so this is "more capacity at the same step count", not "same compute". Exercise 2 makes the active counts equal. The tokens-per-second column is what a Python `for` loop over experts costs on a contended CPU; production MoE kernels group tokens by expert and run one matrix multiply per expert, and on a quiet machine the dense model is the faster of the two per step.
+
+```text
+--- 2. expert utilisation per layer, with and without the load-balancing loss ---
+[moe-noaux] total params 1,265,088 | active 601,536
+   val loss 2.0724  (perplexity 7.9)
+   ideal share per expert = 1/4 = 0.25
+   layer 0: aux=0.01 ['0.24', '0.25', '0.26', '0.24']   aux=0 ['0.27', '0.26', '0.19', '0.29']
+   layer 1: aux=0.01 ['0.25', '0.26', '0.22', '0.27']   aux=0 ['0.44', '0.22', '0.20', '0.14']
+   layer 2: aux=0.01 ['0.25', '0.27', '0.26', '0.22']   aux=0 ['0.18', '0.44', '0.10', '0.28']
+   least-used expert share: with aux 0.219, without aux 0.101
+   val loss: with aux 2.097, without aux 2.072
+✅ with the aux loss every expert gets >5% of tokens in every layer (min 0.219)
+   -> without the aux loss the router still spread tokens out at this scale (collapse is a risk, not a certainty)
+```
+
+With the balancing loss on, every expert in every layer takes 22–27% of the tokens, within 3 points of the ideal 25%. With it off, the router skews: one expert takes 44% in layers 1 and 2 and the least-used expert in layer 2 gets 10%. That is a real imbalance, not a collapse; at four experts and 120 steps the router had no time to starve anyone, and the validation loss without the aux term is in fact slightly *better* (2.072 versus 2.097), the cost of a balancing objective competing with the language-modelling objective. The collapse risk grows with more experts, higher learning rates and longer training, which exercise 3 explores, and it is why DeepSeek-V3 moved the balancing pressure out of the loss entirely.
+
+```text
+--- 3. multi-token prediction (mtp_heads=1: an extra head predicts token t+2) ---
+[mtp] total params 462,816 | active 462,816
+   val loss 3.8082  (perplexity 45.1)
+   next-token val loss: dense 2.444 | with MTP head 2.712 (the model's training loss also includes 0.3 x the t+2 loss)
+   the t+2 head's own loss: 3.654 (predicting two tokens ahead is harder than one)
+✅ predicting t+2 is harder than predicting t+1
+✅ the MTP head does not wreck next-token prediction
+```
+
+Honest reporting: at this scale the MTP head *hurts* next-token prediction (2.71 versus 2.44 after the same 120 steps). A 0.38M-parameter model has little spare capacity, the extra head's gradient (weight 0.3) competes for it, and the run is far too short for the "plan ahead" benefit to appear. The reported gains for MTP come from billion-parameter models trained for trillions of tokens with a dedicated MTP block; the lab shows the mechanism and the cost, not the payoff. The t+2 head's own loss (3.65) being well above the t+1 loss is the expected ordering: two tokens ahead is harder than one.
+
+```text
+--- 4. sliding-window attention on the pretrained base model (trained with FULL attention) ---
+   window None: val loss 1.069 | perplexity   2.91
+   window   32: val loss 1.070 | perplexity   2.92
+   window    8: val loss 1.082 | perplexity   2.95
+✅ a window of 8 tokens hurts a model trained with full attention
+✅ a window of 32 is no better than full attention
+
+--- 5. KV-cache bytes per token (bf16): dense MHA vs GQA vs MLA-style latent ---
+   model                     MHA        GQA    MLA-ish   at 128k tokens: MHA / GQA / MLA
+   TinyLM small            4.6KB      1.5KB      1.0KB      0.6 /   0.2 /  0.1 GB
+   Llama-3-70B-like     2621.4KB    327.7KB     92.2KB    343.6 /  42.9 / 12.1 GB
+   DeepSeek-V3-like     3997.7KB   3997.7KB     70.3KB    524.0 / 524.0 /  9.2 GB
+✅ GQA with 8 kv-heads is 8x smaller than 64-head MHA
+```
+
+Part 4 is the "trained in, not bolted on" point: forcing an 8-token window on a model trained with full attention raises its loss (1.069 → 1.082). The effect is small because Storyland documents are about 80 tokens long, so most useful keys are close anyway; a window of 32 costs almost nothing here, and a model trained *with* a window (exercise 4) pays nothing at all. Part 5 is the arithmetic behind long context: the same 80-layer model needs 344 GB of KV cache at 128k tokens with plain multi-head attention, 43 GB with GQA, and 12 GB with an MLA-style latent, and for a DeepSeek-V3-shaped model (128 heads, no GQA) the MLA latent is the difference between 524 GB and 9 GB.
+
+<!-- LAB12_FULL -->
 
 ## Try it yourself ✍️
 

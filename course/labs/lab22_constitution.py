@@ -39,10 +39,10 @@ from llm.tasks import TaskExample
 
 args = setup("Lab 22: a toy constitution -> AI feedback -> DPO")
 
-SFT_STEPS = 800                            # one-time messy warm-start (cached)
+SFT_STEPS = 200                            # one-time messy style SFT on top of a competent model (cached)
 N_PROMPTS = 24 if args.quick else 80       # prompts sampled for preference pairs
 K_SAMPLES = 4                              # samples per prompt
-SL_STEPS = 30 if args.quick else 60           # stage-1 SFT on revisions
+SL_STEPS = 40 if args.quick else 80           # stage-1 SFT on revisions
 DPO_STEPS = 40 if args.quick else 60
 N_EVAL = 30 if args.quick else 60
 MAX_NEW = 24
@@ -139,15 +139,24 @@ if os.path.exists(sft_path):
     policy = TinyLM.load(sft_path)
     print(f"   loaded cached warm-start {sft_path}")
 else:
-    section("(a) one-time warm-start: SFT on messy answers")
+    section("(a) one-time warm-start: a competent `small` model, then a short SFT on messy answers")
+    # Start from a small TinyLM that can already add (Lab 20's teacher, or train one), so that the
+    # policy's *content* is mostly right and only its *style* violates the constitution.
+    start = next((run_path(n) for n in ("lab20_teacher_strong.pt", "lab20_teacher_sft_small.pt", "grpo_small.pt")
+                  if os.path.exists(run_path(n))), None)
+    if start is None:
+        print("   no small addition model found; training one (about 15 minutes, once)")
+        policy = TinyLM.load(run_path("base_small.pt"))
+        sft_train(policy, tok, tasks.make_examples(400, seed=20, tasks=["add"], max_value=20),
+                  SFTConfig(steps=800, batch_size=16, lr=1e-3, log_every=200), verbose=True)
+    else:
+        print(f"   starting from {os.path.basename(start)}")
+        policy = TinyLM.load(start)
     rng = random.Random(args.seed)
-    sft_examples = []
-    for ex in make_prompts(600, seed=100):
-        sft_examples.append(TaskExample(ex.task, ex.prompt, messy_answer(ex, rng), ex.meta))
+    sft_examples = [TaskExample(ex.task, ex.prompt, messy_answer(ex, rng), ex.meta) for ex in make_prompts(600, seed=100)]
     print("   three training answers:", [e.answer for e in sft_examples[:3]])
-    policy = TinyLM.load(run_path("base_nano.pt"))
     t0 = time.perf_counter()
-    sft_train(policy, tok, sft_examples, SFTConfig(steps=SFT_STEPS, batch_size=16, lr=1e-3, log_every=100), verbose=True)
+    sft_train(policy, tok, sft_examples, SFTConfig(steps=SFT_STEPS, batch_size=16, lr=3e-4, log_every=50), verbose=True)
     policy.save(sft_path, TOKENIZER_PATH, extra={"stage": "sft-messy", "steps": SFT_STEPS})
     print(f"   saved {sft_path} after {time.perf_counter() - t0:.0f}s")
 policy.eval()
@@ -216,7 +225,9 @@ for ex in pair_prompts:
     n_changed += revision.strip() != best.strip()
     n_refusals += revision == REFUSAL
     revisions.append(TaskExample(ex.task, ex.prompt, revision if critique else best, ex.meta))
-print(f"   {len(revisions)} revisions ({n_changed} differ from the best sample, {n_refusals} are refusals)")
+    if revision == REFUSAL:                                     # rare behaviour: repeat it so SFT sees it
+        revisions += [revisions[-1]] * 2
+print(f"   {len(revisions)} revision examples ({n_changed} differ from the best sample, {n_refusals} refusals, each repeated 3x)")
 t0 = time.perf_counter()
 sft_train(policy, tok, revisions, SFTConfig(steps=SL_STEPS, batch_size=16, lr=3e-4, warmup_steps=5, log_every=1000), verbose=False)
 print(f"   SFT on revisions: {SL_STEPS} steps in {time.perf_counter() - t0:.0f}s")
@@ -253,7 +264,7 @@ for p in pairs[:4]:
 check(len(pairs) >= 5, "the judge produced ranking information on the policy's own samples")
 
 ref = make_reference(policy)
-dcfg = DPOConfig(steps=DPO_STEPS, batch_size=8, lr=1e-4, beta=0.1, log_every=max(1, DPO_STEPS // 5), seed=args.seed)
+dcfg = DPOConfig(steps=DPO_STEPS, batch_size=8, lr=5e-5, beta=0.1, log_every=max(1, DPO_STEPS // 5), seed=args.seed)
 t0 = time.perf_counter()
 hist = dpo_train(policy, ref, tok, pairs, dcfg, verbose=True)
 print(f"   DPO {DPO_STEPS} steps in {time.perf_counter() - t0:.0f}s | final pair accuracy {hist.accuracy[-1]:.2f} | margin {hist.margin[-1]:+.3f}")

@@ -210,7 +210,7 @@ The lab builds a sandbox with a small `config.txt` (containing the planted fact 
 ✅ past its window the model returns an EMPTY reply, which the loop would read as 'done'
 ```
 
-Ninety-two per cent of the history is tool results. The TinyLM lines are the honest version of "what happens when the window overflows": `generate` in `llm/generate.py` computes `max_seq_len − prompt_length` as its token budget, which is negative, so it generates zero tokens and the backend returns `''`; the loop sees a reply with no tool calls and stops with `stop_reason="done"` and an empty answer. A real API returns an error instead, which is better, but the lesson is the same: overflow is silent unless the harness checks for it. In `--full` the 90-turn episode ends at 25,089 tokens, three times the window.
+Ninety-two per cent of the history is tool results. The TinyLM lines are the honest version of "what happens when the window overflows": `generate` in `llm/generate.py` computes `max_seq_len − prompt_length` as its token budget, which is negative, so it generates zero tokens (with a Python `UserWarning` on stderr that nothing in the loop reads) and the backend returns `''`; the loop sees a reply with no tool calls and stops with `stop_reason="done"` and an empty answer. A real API returns an error instead, which is better, but the lesson is the same: overflow is silent unless the harness checks for it. In `--full` the 90-turn episode ends at 25,089 tokens, three times the window.
 
 Part (b) is the same script with the default budget:
 
@@ -296,7 +296,7 @@ The *content* of older results is lost: the lab's `db_port=4242`, read at turn 1
 
 <details><summary>3. Why does the TinyLM backend return an empty string when the context is too long, and why is that dangerous for the loop?</summary>
 
-`generate` computes its token budget as `max_seq_len − prompt_length`, which is negative for an over-long prompt, so it generates nothing and returns `''`. The loop treats a reply with no tool calls as the final answer and stops with `stop_reason="done"`, so the run looks finished with an empty answer. The harness must check for overflow (or the API must reject it) rather than trust the stop condition.
+`generate` computes its token budget as `max_seq_len − prompt_length`, which is negative for an over-long prompt, so it generates nothing (a `UserWarning` goes to stderr, which the loop never reads) and returns `''`. The loop treats a reply with no tool calls as the final answer and stops with `stop_reason="done"`, so the run looks finished with an empty answer. The harness must check for overflow (or the API must reject it) rather than trust the stop condition.
 </details>
 
 <details><summary>4. A sub-agent shares the parent's backend and hooks. What does it <em>not</em> share, and why is that the point?</summary>

@@ -19,7 +19,7 @@ import time
 
 import torch
 
-from llm.chat import render, build_sft_example, collate, parse_tool_call, ROLE_TOKENS, END, BOS
+from llm.chat import render, build_sft_example, encode_chat, collate, parse_tool_call, ROLE_TOKENS, END, BOS
 from llm.sft import describe_mask, respond
 from llm.generate import generate
 from llm.model import TinyLM
@@ -92,6 +92,12 @@ n_trusted = tok.encode(evil[0]["content"], allowed_special=True).count(asst_id)
 print(f"occurrences of id {asst_id} (<|assistant|>): {n_fake} via build_sft_example, {n_trusted} if the text were trusted")
 check(n_fake == 0 and n_trusted == 1, "the fake <|assistant|> is spelled out as 11 ordinary tokens; the real id never appears")
 check(sum(e_mask) == 0, "and nothing in a user turn is trainable, whatever it says")
+gen_ids = encode_chat(tok, evil, add_generation_prompt=True)
+naive_ids = tok.encode(render(evil), allowed_special=True)
+print(f"encode_chat (what respond uses): {gen_ids.count(asst_id)} real <|assistant|> id(s), the trailing generation prompt only; "
+      f"render+encode(allowed_special=True): {naive_ids.count(asst_id)}")
+check(gen_ids.count(asst_id) == 1 and gen_ids[-1] == asst_id and naive_ids.count(asst_id) == 2,
+      "encode_chat emits exactly one <|assistant|> (the harness's), where render+encode would leak the user's fake one too")
 
 # ------------------------------------------------------------ 5. collate
 section("5. collate: right-pad a batch and shift by one (mask aligned to targets)")
@@ -127,12 +133,14 @@ sft_path = run_path("sft_nano.pt" if args.quick else "sft_small.pt")
 if os.path.exists(sft_path):
     sft_model = TinyLM.load(sft_path)
     print(f"found {os.path.relpath(sft_path)} (saved by Lab 15): same questions after SFT")
-    hits = 0
+    hits, formatted = 0, 0
     for q, want in zip(questions, ["KITE", "pmal", "23 + 45 = 68"]):
         a = respond(sft_model, tok, q, max_new_tokens=16)
         hits += a == want
+        formatted += 0 < len(tok.encode(a, allowed_special=False)) < 16      # short, one answer, then <|end|>
         print(f"  SFT    | {q!r:<28} -> {a!r}   {'✓' if a == want else '✗'} (want {want!r})")
-    check(hits >= 1, f"the SFT model follows the format on {hits}/3 questions (Lab 15 shows how)")
+    print(f"  correct: {hits}/3 | in the format (an answer, then <|end|>): {formatted}/3")
+    check(formatted == 3, "the SFT model answers in the format: a short reply then <|end|> (accuracy is Lab 15's business)")
 else:
     print(f"no {os.path.relpath(sft_path)} yet — run labs/lab15_sft.py{'' if args.quick else ' --full'} and re-run this lab to see the after-SFT answers")
 

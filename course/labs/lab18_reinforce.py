@@ -27,6 +27,7 @@ import torch
 
 from llm import chat, rl, tasks
 from llm.dpo import sequence_logprob
+from llm.evals import eval_tasks
 from llm.generate import sample_group
 from llm.model import TinyLM
 from llm.pipeline import TOKENIZER_PATH, get_base_model, get_tokenizer, run_path
@@ -112,12 +113,16 @@ TRAIN_SET = [add_example(a, b) for a, b in ALL_PAIRS[100:]]
 
 def warm_start(size: str) -> TinyLM:
     """Load an SFT checkpoint (Lab 15's, or Lab 17's), or train one and save it."""
-    for name in (f"sft_{size}.pt", f"lab17_sft_{size}.pt"):
+    for name in (f"lab17_sft_{size}.pt", f"sft_{size}.pt"):
         if os.path.exists(run_path(name)):
-            print(f"   loading SFT warm start {run_path(name)}")
-            return TinyLM.load(run_path(name))
+            m = TinyLM.load(run_path(name))
+            acc = eval_tasks(m, tok, EVAL_SET[:20], max_new_tokens=MAX_NEW).accuracy
+            if acc >= 0.10 or name.startswith("lab17"):
+                print(f"   loading SFT warm start {run_path(name)} (greedy accuracy on 20 sums: {acc:.2f})")
+                return m
+            print(f"   {run_path(name)} cannot add (accuracy {acc:.2f} on 20 sums; Lab 15's model may be multi-task) -> training our own")
     model, _ = get_base_model(quick=(size == "nano"), verbose=True)
-    cfg = SFTConfig(steps=450 if size == "nano" else 400, batch_size=16, lr=1e-3 if size == "nano" else 3e-4,
+    cfg = SFTConfig(steps=450 if size == "nano" else 700, batch_size=16, lr=1e-3 if size == "nano" else 3e-4,
                     log_every=100, eval_every=150)
     print(f"   no SFT checkpoint found: SFT on {len(TRAIN_SET)} 'add' examples, {cfg.steps} steps, lr {cfg.lr}")
     sft_train(model, tok, TRAIN_SET, cfg, val_examples=EVAL_SET[:30], verbose=True)

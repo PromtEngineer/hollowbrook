@@ -213,15 +213,24 @@ ENGLISH_STOPWORDS = set("the a an and or but of to in on at for with was were is
 
 
 def english_score(text: str) -> float:
+    """Fraction of alphabetic words that are common English stopwords (0..1)."""
     words = re.findall(r"[a-zA-Z']+", text.lower())
     if not words:
         return 0.0
     return sum(w in ENGLISH_STOPWORDS for w in words) / len(words)
 
 
-def language_filter(docs: list[dict], min_score: float = 0.08, report: Optional[CurationReport] = None) -> list[dict]:
-    return _run_stage("language_filter", docs,
-                      lambda d: None if english_score(d["text"]) >= min_score else "not_english", report)
+def language_filter(docs: list[dict], min_score: float = 0.08, min_alpha_words: int = 3,
+                    report: Optional[CurationReport] = None) -> list[dict]:
+    """Keep documents that look English. Documents with fewer than ``min_alpha_words``
+    alphabetic words (e.g. a bare equation ``75 + 80 = 155``) carry no language signal
+    and are passed through — a real fastText-based filter makes the same exception."""
+    def keep(d: dict) -> Optional[str]:
+        n_alpha = len(re.findall(r"[a-zA-Z']+", d["text"]))
+        if n_alpha < min_alpha_words:
+            return None
+        return None if english_score(d["text"]) >= min_score else "not_english"
+    return _run_stage("language_filter", docs, keep, report)
 
 
 # 3. heuristic quality rules (Gopher / C4 style) ----------------------------
@@ -252,8 +261,17 @@ def gopher_reason(text: str, min_words: int = 5, max_words: int = 2000,
     return None
 
 
-def heuristic_filter(docs: list[dict], report: Optional[CurationReport] = None, **kw) -> list[dict]:
-    return _run_stage("heuristic_filter", docs, lambda d: gopher_reason(d["text"], **kw), report)
+def heuristic_filter(docs: list[dict], report: Optional[CurationReport] = None,
+                     skip_sources: Sequence[str] = ("math", "code"), **kw) -> list[dict]:
+    """Apply the prose heuristics. Documents whose ``source`` is in ``skip_sources`` are
+    passed through untouched: rules written for prose (mean word length 2–12, symbol
+    ratio) reject bare equations and code, which is exactly why real pipelines curate
+    math and code with their own dedicated filters."""
+    def keep(d: dict) -> Optional[str]:
+        if d.get("source") in skip_sources:
+            return None
+        return gopher_reason(d["text"], **kw)
+    return _run_stage("heuristic_filter", docs, keep, report)
 
 
 # 4. PII scrubbing ----------------------------------------------------------
@@ -368,7 +386,8 @@ class QualityClassifier:
 
     This is the miniature of FineWeb-Edu's "educational value" classifier: label a few
     hundred documents (here: clean Storyland = good, planted junk = bad), train, and
-    score everything. Real pipelines use an LLM to label ~500k documents, then train a
+    score everything. Balance the two classes when you build the label set: an
+    unbalanced set (few "good", many "bad") shifts the bias and rejects clean documents. Real pipelines use an LLM to label ~500k documents, then train a
     small model to imitate it (that is *distillation of a labeling function*).
     """
 
