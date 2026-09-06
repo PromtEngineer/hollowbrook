@@ -35,10 +35,11 @@ class RoutedBackend:
     """A *thread-safe* scripted backend: the reply script is chosen by which route key
     appears in the first user message, and each route keeps its own position.
 
-    ``ScriptedBackend`` replays one list in call order, which is fine for one agent
-    but a race when several worker threads share it: whichever thread asks first gets
-    the next line, whoever it was meant for. Routing by task fixes that. Each call also
-    sleeps ``latency`` seconds and records (route, start, end) so we can draw the overlap.
+    ``ScriptedBackend`` replays one list in call order. Its index is guarded by a lock,
+    so several worker threads sharing it will not corrupt it — but they still get replies
+    in *arrival* order, whoever each line was meant for. Routing by task makes each
+    worker's script its own. Each call also sleeps ``latency`` seconds and records
+    (route, start, end) so we can draw the overlap.
     """
 
     def __init__(self, routes: dict, latency: float = 0.0) -> None:
@@ -114,7 +115,7 @@ secs = time.perf_counter() - t0
 n, toks = cost_of(orch, workers)
 summary["orchestrator–workers"] = (n, toks, secs)
 print(f"merged answer: {out!r}  | {n} model calls, ≈{toks} input tokens, {secs:.2f}s")
-print("worker timeline (each worker = 2 model calls of 0.25 s):")
+print("worker timeline (each worker = 2 model calls of 0.25 s; replies routed by subtask, not by arrival order):")
 gantt(workers.timeline)
 busy = sum(t1 - t0_ for _, t0_, t1 in workers.timeline)
 span = max(t1 for _, _, t1 in workers.timeline) - min(t0_ for _, t0_, _ in workers.timeline)

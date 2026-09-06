@@ -26,7 +26,9 @@ import time
 
 from llm.agent import (Agent, AgentConfig, Hooks, MiniHarness, ScriptedBackend, TinyLMBackend,
                        estimate_tokens, make_builtin_tools)
+from llm.agent.backends import ContextTooLongError
 from llm.agent.context import message_text
+from llm.chat import encode_chat
 from llm.pipeline import get_base_model, run_path
 
 args = setup("Lab 27: harness engineering — MiniHarness fixes a failing test")
@@ -176,22 +178,17 @@ check(honest.calls[3]["messages"][0]["content"].startswith("PLAN.md:"), "the cod
 section("2. an agent that claims success without evidence — and a resume() that finishes the job")
 
 
-class GuardedHarness(MiniHarness):
-    """MiniHarness plus one more pre-tool hook: the agent may not edit the tests."""
-
-    def _hooks(self) -> Hooks:
-        hooks = super()._hooks()
-
-        def protect_tests(call_):
-            target = os.path.normpath(call_.arguments.get("path", ""))
-            if call_.name == "write_file" and target.split(os.sep)[0] == "tests":
-                return "tests/ is read-only for the agent: fix the code, not the tests"
-            return None
-
-        hooks.pre_tool.insert(0, protect_tests)
-        return hooks
+def protect_tests(call_):
+    """One more pre-tool hook: the agent may not edit the tests (deleting a failing test is
+    the cheapest way to make it pass). MiniHarness merges caller hooks via ``extra_hooks``."""
+    target = os.path.normpath(call_.arguments.get("path", ""))
+    if call_.name == "write_file" and target.split(os.sep)[0] == "tests":
+        return "tests/ is read-only for the agent: fix the code, not the tests"
+    return None
 
 
+guard = Hooks()
+guard.pre_tool.append(protect_tests)
 box = fresh_sandbox()
 liar = ScriptedBackend([
     # --- planner: does not even look
@@ -206,7 +203,7 @@ liar = ScriptedBackend([
     call("run_tests"),
     "median() now averages the two middle values for even n; run_tests reports 3 passed.",
 ])
-g = GuardedHarness(liar, box, AgentConfig(max_turns=6))
+g = MiniHarness(liar, box, AgentConfig(max_turns=6), extra_hooks=guard)
 s1 = g.run_session(task=TASK)
 ok1, report1 = g.verify()
 print(f"session 1: stop_reason={s1.stop_reason}, the model's last words: {s1.final_text!r}")
@@ -230,15 +227,16 @@ show(box, "PROGRESS.md", max_lines=60)
 
 # --------------------------------------------- resuming from a *new process*
 section("2b. resuming from a new process: the files are the checkpoint")
-g2 = GuardedHarness(ScriptedBackend(["Nothing left to do: PROGRESS.md says verification passed."]), box,
-                    AgentConfig(max_turns=3))
+g2 = MiniHarness(ScriptedBackend(["Nothing left to do: PROGRESS.md says verification passed."]), box,
+                 AgentConfig(max_turns=3), extra_hooks=guard)
 s3 = g2.resume()
 print(f"a brand-new harness object on the same directory: has_plan={g2.has_plan()}, session stop={s3.stop_reason}, "
       f"verify={'PASS' if g2.verify()[0] else 'FAIL'}")
 headings = [l for l in open(os.path.join(box, "PROGRESS.md")).read().splitlines() if l.startswith("## Session")]
 print("PROGRESS.md session headings now:", headings)
-print("(note: the new object numbered its session from its own counter, not from the file — see the chapter)")
+print("(the new object never saw sessions 1 and 2; it numbered its session by counting headings in the file)")
 check(s3.stop_reason == "done" and g2.verify()[0], "a fresh process resumes from the files alone")
+check(len(headings) == 3 and headings[-1].startswith("## Session 3"), "the session count continues from PROGRESS.md, not from the object")
 
 # ============================================================ 3. observability
 section("3. observability: the event stream and the cost of every session")
@@ -267,11 +265,20 @@ from llm.chat import render
 from llm.agent.miniharness import SESSION_SYSTEM
 schemas = make_builtin_tools(box).schemas()
 chat_msgs = TinyLMBackend.to_chat_messages([{"role": "user", "content": TASK}], schemas, SESSION_SYSTEM)
-n_prompt = len(tok.encode(render(chat_msgs)))
-print(f"the session prompt (system + {len(schemas)} tool schemas + task) is {n_prompt} tokens; "
-      f"the {'nano' if args.quick else 'small'} model's window is {model.cfg.max_seq_len}")
-print(f"-> with no room to decode, TinyLMBackend returns {TinyLMBackend(model, tok).complete([{'role': 'user', 'content': TASK}], schemas, SESSION_SYSTEM).raw!r} (silently)")
-model.extend_context(2048)                    # positions it was never trained on; babble is the point
+n_prompt = len(encode_chat(tok, chat_msgs))
+n_full = len(encode_chat(tok, TinyLMBackend.to_chat_messages([{"role": "user", "content": TASK}], schemas,
+                                                             SESSION_SYSTEM, compact_tools=False)))
+print(f"the session prompt (system + {len(schemas)} tools listed compactly + task) is {n_prompt} tokens "
+      f"({n_full} with full JSON schemas); the {'nano' if args.quick else 'small'} model's window is {model.cfg.max_seq_len}")
+try:
+    probe = TinyLMBackend(model, tok, max_new_tokens=20).complete([{"role": "user", "content": TASK}], schemas, SESSION_SYSTEM)
+    print(f"-> it fits; the base model replies {probe.raw[:60]!r}")
+except ContextTooLongError as e:
+    print(f"-> ContextTooLongError: {e}")
+    check(n_prompt + 4 > model.cfg.max_seq_len, "a prompt that does not fit raises ContextTooLongError instead of an empty reply")
+if n_prompt + 40 > model.cfg.max_seq_len:
+    model.extend_context(2048)                # positions it was never trained on; babble is the point
+    print("   (window extended to 2048 so the harness sessions below can run at all)")
 
 
 class RecordingTinyLM(TinyLMBackend):
@@ -293,7 +300,7 @@ for i, tr in enumerate(hr.sessions, 1):
     print(f"session {i}: stop={tr.stop_reason}, turns={tr.turns}, tool calls={tr.tool_calls_made}, "
           f"said: {tr.final_text[:70]!r}")
 print(f"raw generation of session 1: {real.raws[1][:110]!r}")
-print(f"loop() -> {ok_real} in {secs_real:.1f}s (window extended to 2048 so the model could answer at all)")
+print(f"loop() -> {ok_real} in {secs_real:.1f}s")
 check(not ok_real and all(tr.tool_calls_made == 0 for tr in hr.sessions),
       "a base model produces no tool calls; the harness records two failed sessions and stops")
 check("Verification: FAIL" in open(os.path.join(box, "PROGRESS.md")).read(), "PROGRESS.md says FAIL, not the model")
