@@ -200,7 +200,7 @@ def make_preference_pairs_from_model(model: TinyLM, tok: BPETokenizer, examples:
     stop_ids = {end_id, pad_id, tok.special_tokens["<|eos|>"]}
     pairs, n_all_right, n_all_wrong, n_correct_total = [], 0, 0, 0
     for i, ex in enumerate(examples):
-        prompt_ids = tok.encode(chat.render(ex.messages(with_answer=False), add_generation_prompt=True))
+        prompt_ids = chat.encode_chat(tok, ex.messages(with_answer=False), add_generation_prompt=True)
         budget = model.cfg.max_seq_len - len(prompt_ids)
         if budget <= 1:
             continue                                                   # prompt too long for the model
@@ -235,7 +235,7 @@ def encode_response(tok: BPETokenizer, prompt_messages: Sequence[dict], response
     the response (its text plus the closing ``<|end|>``); the rendered prompt, including
     the ``<|assistant|>`` tag, is 0. DPO and the reward model both need this split.
     """
-    prompt_ids = tok.encode(chat.render(prompt_messages, add_generation_prompt=True))
+    prompt_ids = chat.encode_chat(tok, prompt_messages, add_generation_prompt=True)
     response_ids = tok.encode(response, allowed_special=False) + [tok.special_tokens[chat.END]]
     ids = prompt_ids + response_ids
     mask = [0] * len(prompt_ids) + [1] * len(response_ids)

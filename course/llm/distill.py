@@ -96,7 +96,7 @@ def on_policy_distill_step(student: TinyLM, teacher: TinyLM, tok: BPETokenizer,
     student.eval()
     with torch.no_grad():
         for ex in examples:
-            prompt_ids = tok.encode(chat.render(ex.messages(with_answer=False)))
+            prompt_ids = chat.encode_chat(tok, ex.messages(with_answer=False))
             ids = sample_group(student, prompt_ids, cfg.group_size, cfg.max_new_tokens, cfg.temperature,
                                stop_ids=[end_id], pad_id=pad_id)                    # (G, T)
             P = len(prompt_ids)
@@ -202,7 +202,7 @@ def offline_distill(student: TinyLM, teacher: TinyLM, tok: BPETokenizer, example
     n_total = 0
     with torch.no_grad():
         for ex in examples:
-            prompt_ids = tok.encode(chat.render(ex.messages(with_answer=False)))
+            prompt_ids = chat.encode_chat(tok, ex.messages(with_answer=False))
             ids = sample_group(teacher, prompt_ids, n_samples, max_new_tokens, temperature,
                                stop_ids=[end_id], pad_id=pad_id)
             for row in ids.tolist():
