@@ -121,7 +121,8 @@ ro = rl.rollout_group(sft_model, tok, ex, cfg, seed=args.seed)
 adv = rl.grpo_advantages(ro.rewards)
 print(f"   prompt {ex.prompt!r}: G={cfg.group_size} rollouts, ids {tuple(ro.ids.shape)}, mask {tuple(ro.mask.shape)}, prompt_len {ro.prompt_len}")
 for c, r, a, L in zip(ro.completions, ro.rewards.tolist(), adv.tolist(), ro.mask.sum(-1).tolist()):
-    print(f"      {c!r:22} reward {r:.1f}  advantage {a:+.2f}  ({int(L)} answer tokens incl. <|end|>)")
+    lenient = "  <- strict_verify: 0 (operands misquoted)" if r >= 1.0 and tasks.strict_verify(ex, c) < 1.0 else ""
+    print(f"      {c!r:22} reward {r:.1f}  advantage {a:+.2f}  ({int(L)} answer tokens incl. <|end|>){lenient}")
 print(f"   mean {ro.rewards.mean():.3f}, std {ro.rewards.std(unbiased=False):.3f}; advantages sum to {adv.sum():+.1e}; "
       f"Dr. GRPO would use {[round(x, 2) for x in rl.grpo_advantages(ro.rewards, normalize_std=False).tolist()]}")
 check(abs(adv.sum().item()) < 1e-4, "group-relative advantages sum to zero")

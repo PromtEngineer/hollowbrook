@@ -171,6 +171,12 @@ print(f"   rubric exploit: rubric_reward({fake!r}) = {rubric_reward(fake, ARITHM
       f"(the rubric checks shape, never the number); verify = {tasks.verify(ex, fake):.1f}")
 check(rubric_reward(fake, ARITHMETIC_RUBRIC)[0] == 1.0 and tasks.verify(ex, lenient) == 1.0,
       "both graders can be satisfied by an answer that is not an answer")
+# the closed grader: strict_verify also requires the restated operands to match the question
+misquoted = f"0 + 0 = {ex.meta['answer']}"
+print(f"   strict_verify: {lenient!r} -> {tasks.strict_verify(ex, lenient):.1f}, {misquoted!r} -> {tasks.strict_verify(ex, misquoted):.1f} "
+      f"(verify gives {tasks.verify(ex, misquoted):.1f}), {ex.answer!r} -> {tasks.strict_verify(ex, ex.answer):.1f}")
+check(tasks.strict_verify(ex, lenient) == 0.0 and tasks.strict_verify(ex, misquoted) == 0.0 and tasks.strict_verify(ex, ex.answer) == 1.0,
+      "tasks.strict_verify closes both holes (and still accepts the real answer)")
 
 # ---------------------------------------------------------------- (d) on-policy pairs
 section("(d) on-policy pairs: sample from the SFT model, grade, pair right vs wrong")

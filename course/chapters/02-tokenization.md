@@ -7,7 +7,7 @@
 
 ## Why this matters
 
-A neural network cannot read letters. It multiplies numbers, so the first thing that happens to any text on its way into a language model is that it is turned into a list of integers, and the last thing that happens on the way out is that integers are turned back into text. The component that does this is the **tokenizer**, and the choices it makes are baked into the model for its whole life: change the tokenizer and every learned weight becomes meaningless. Many of the strange failures people notice in 2026 models are tokenizer failures: a model that cannot count the letters in "strawberry" is looking at the pieces `st|ra|w|b|e|r|r|y`, not at letters; a model that is clumsy with arithmetic on long numbers is seeing `202|4`, not four digits; a model that is worse in German than in English is spending twice as many tokens per sentence. In this chapter you build the algorithm every major model uses, **byte-pair encoding (BPE)**, train it on Storyland, and watch each of those failures appear on a 900-line tokenizer you can read in full.
+A neural network cannot read letters. It multiplies numbers, so the first thing that happens to any text on its way into a language model is that it is turned into a list of integers, and the last thing that happens on the way out is that integers are turned back into text. The component that does this is the **tokenizer**, and the choices it makes are baked into the model for its whole life: change the tokenizer and every learned weight becomes meaningless. Many of the strange failures people notice in 2026 models are tokenizer failures: a model that cannot count the letters in "strawberry" is looking at the pieces `st|ra|w|b|e|r|r|y`, not at letters; a model that is clumsy with arithmetic on long numbers is seeing `202|4`, not four digits; a model that is worse in German than in English is spending twice as many tokens per sentence. In this chapter you build the algorithm every major model uses, **byte-pair encoding (BPE)**, train it on Storyland, and watch each of those failures appear on a 230-line tokenizer you can read in full.
 
 ## The idea in pictures 📐
 
@@ -47,7 +47,7 @@ from llm.data import corpus_text
 
 ### Step 1: pre-tokenization
 
-Before any merging, the text is split into chunks by a regular expression. Merges are learned and applied *inside* chunks only. Without this, BPE on English would learn tokens like ` the.` or `dog and`, spanning words and punctuation, which waste vocabulary on accidents of adjacency. The library's pattern is a simplified version of the GPT-4 one:
+**Pre-tokenization** splits the text into chunks with a regular expression before any merging. Merges are learned and applied *inside* chunks only. Without this, BPE on English would learn tokens like ` the.` or `dog and`, spanning words and punctuation, which waste vocabulary on accidents of adjacency. The library's pattern is a simplified version of the GPT-4 one:
 
 ```python
 print(pretokenize("Mia's kite flew in 2024!"))
@@ -58,7 +58,7 @@ Three rules to notice. A leading space belongs to the word that follows it (` ki
 
 ### Step 2: bytes, and why "unknown" never happens
 
-Each chunk is converted to its UTF-8 bytes. The starting vocabulary is the 256 possible byte values, ids 0–255, so `'k'` is 107 and a space is 32. Because every string is a sequence of bytes, every string is encodable with no special "unknown" token. The price is that a character outside ASCII costs several tokens until merges learn it: `ä` is two bytes, `🍓` is four.
+Each chunk is converted to its UTF-8 bytes (**UTF-8** is the standard encoding that turns any character into one to four bytes, each a number from 0 to 255; `str.encode("utf-8")` in Python). The starting vocabulary is the 256 possible byte values, ids 0–255, so `'k'` is 107 and a space is 32. Because every string is a sequence of bytes, every string is encodable with no special "unknown" token. The price is that a character outside ASCII costs several tokens until merges learn it: `ä` is two bytes, `🍓` is four.
 
 ### Step 3: training = count pairs, merge the top one, repeat
 
@@ -76,11 +76,11 @@ word_counts = {BPETokenizer._merge_word(w, best, 256): c for w, c in word_counts
 # {(256,116,101,115): 1, (32,256,116,101): 1}   <- 'ki' is now symbol 256
 ```
 
-`BPETokenizer.train` is that loop run `vocab_size − 256 − (number of special tokens)` times, recording each merge in `self.merges` (pair → new id) and its bytes in `self.vocab` (id → bytes). Training on all of Storyland:
+`BPETokenizer.train` is that loop run `vocab_size − 256 − (number of special tokens)` times, recording each **merge** (a pair of ids and the new id that replaces them) in `self.merges` (pair → new id) and its bytes in `self.vocab` (id → bytes). Training on all of Storyland:
 
 ```python
 text = corpus_text(get_corpus())                       # 1.5 MB of Storyland
-tok512 = BPETokenizer().train(text, vocab_size=512)    # 256 merges, ~0.4 s
+tok512 = BPETokenizer().train(text, vocab_size=512)    # 256 merges, about a second
 list(tok512.merges.items())[:3]
 # [((32, 116), 256), ((104, 101), 257), ((256, 257), 258)]
 tok512.vocab[258]                                      # b' the'
@@ -115,7 +115,7 @@ The second call spells `<|user|>` out as nine ordinary tokens. That is the safe 
 
 ### Step 6: measuring a tokenizer
 
-The single most useful number about a tokenizer is its **compression ratio**: bytes of text per token. Higher means each token carries more text, so a fixed context window holds more, and every forward pass covers more content.
+The single most useful number about a tokenizer is its **compression ratio**: bytes of text per token. Higher means each token carries more text, so a fixed context window (the maximum number of tokens a model reads at once; Chapter 25) holds more, and every forward pass covers more content.
 
 ```python
 tok512.compression_ratio(text[:100_000])               # 3.08 bytes per token on Storyland
@@ -126,8 +126,8 @@ tok512.compression_ratio(text[:100_000])               # 3.08 bytes per token on
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab02_tokenizer.py            # quick: about 6 s
-python3 labs/lab02_tokenizer.py --full     # vocab sweep to 4096 + tiny Shakespeare: about 40 s
+python3 labs/lab02_tokenizer.py            # quick: about 15 s
+python3 labs/lab02_tokenizer.py --full     # vocab sweep to 4096 + tiny Shakespeare: about 90 s
 ```
 
 The lab trains at vocabulary 512 and 1,024 and reports the first fact worth knowing about Storyland:
@@ -135,12 +135,12 @@ The lab trains at vocabulary 512 and 1,024 and reports the first fact worth know
 ```
 6000 Storyland docs, 1,506,375 characters, 1,506,375 UTF-8 bytes
 distinct pre-tokens (regex chunks): 401
-vocab   512: learned  256 merges in 0.37s -> actual vocab 512
-vocab  1024: learned  606 merges in 0.51s -> actual vocab 862
+vocab   512: learned  256 merges in 0.88s -> actual vocab 512
+vocab  1024: learned  606 merges in 1.29s -> actual vocab 862
 ✅ vocab 1024 stopped early at 606 merges: Storyland ran out of pairs to merge
 ```
 
-Storyland has only 401 distinct chunks (the character names, objects, colours and template words). After 606 merges every chunk is a single symbol, there are no adjacent pairs left to count, and training stops on its own at 862 entries even though 1,024 were requested. The course tokenizer in `runs/tokenizer.json` is this one plus nine chat specials, 871 ids in total, and that is why TinyLM's output layer has 871 rows rather than 1,024. Real corpora never saturate: tiny Shakespeare has 15,258 distinct chunks and takes all 768 merges.
+Storyland has only 401 distinct chunks (the character names, objects, colours and template words). (The timings are from a shared 4-core machine with PyTorch limited to two threads; yours will differ.) After 606 merges every chunk is a single symbol, there are no adjacent pairs left to count, and training stops on its own at 862 entries even though 1,024 were requested. The course tokenizer in `runs/tokenizer.json` is this one plus nine chat specials, 871 ids in total, and that is why TinyLM's output layer has 871 rows rather than 1,024. Real corpora never saturate: tiny Shakespeare has 15,258 distinct chunks and takes all 768 merges.
 
 The first 15 merges are a portrait of English word-starts:
 
@@ -205,15 +205,15 @@ Same string, same decoded output, different meaning to the model: in the first l
 
 ```
  requested  actual V  merges  bytes/tok   tokens   embed params (V×d)  train s
-       256       256       0       1.00  200,000               49,152     0.23
-       300       300      44       1.52  131,325               57,600     0.25
-       400       400     144       2.19   91,288               76,800     0.30
-       512       512     256       3.10   64,597               98,304     0.41
-       768       768     512       4.06   49,233              147,456     0.45
-      1024       862     606       4.07   49,150              165,504     0.50
+       256       256       0       1.00  200,000               49,152     0.62
+       300       300      44       1.52  131,325               57,600     0.63
+       400       400     144       2.19   91,288               76,800     0.75
+       512       512     256       3.10   64,597               98,304     0.90
+       768       768     512       4.06   49,233              147,456     1.01
+      1024       862     606       4.07   49,150              165,504     1.18
 ```
 
-The first 44 merges (256 → 300) cut the token count by a third; the next 500 buy another factor of 2.7; after 768 the curve is flat. Meanwhile the embedding matrix grows linearly with *V*. This is the **vocabulary size trade-off**: a bigger vocabulary means fewer tokens per text (cheaper inference, longer effective context) but a bigger embedding and output matrix (`V × d` parameters each), and each individual token seen fewer times in training, so rare tokens get poorly trained vectors. The sweet spot depends on the corpus and the model size. For TinyLM (2.7 M non-embedding parameters) 871 × 192 = 167 k embedding parameters is already 6%; frontier models in 2026 use 128k–256k vocabularies (Llama 3: 128,256; GPT-4o's `o200k_base`: about 200k) because at 10⁹–10¹² parameters the embedding cost is negligible and the compression gain is not.
+The first 44 merges (256 → 300) cut the token count by a third; the next 500 buy another factor of 2.7; after 768 the curve is flat. Meanwhile the embedding matrix grows linearly with *V*. This is the **vocabulary size trade-off**: a bigger vocabulary means fewer tokens per text (cheaper inference, longer effective context) but a bigger embedding and output matrix (`V × d` parameters each), and each individual token seen fewer times in training, so rare tokens get poorly trained vectors. The sweet spot depends on the corpus and the model size. For TinyLM small (2.53 M parameters in total) the 871 × 192 = 167 k embedding parameters are already 7%; frontier models in 2026 use 128k–256k vocabularies (Llama 3: 128,256; GPT-4o's `o200k_base`: about 200k) because at 10⁹–10¹² parameters the embedding cost is negligible and the compression gain is not.
 
 Finally Shakespeare:
 
@@ -234,11 +234,11 @@ The lab saves `figures/generated/lab02_tokenizer.png`: compression vs vocabulary
 
 Three things about tokenization are settled and three are open.
 
-Settled: byte-level BPE with a GPT-4-style regex and 3-digit number chunking is what nearly every 2026 open-weight model ships (Llama, Qwen, DeepSeek, GLM, Kimi and gpt-oss all use variants of it); vocabularies have grown into the 128k–256k range; tokenizer and pretraining mix are designed together.
+Settled: byte-level BPE with a GPT-4-style pre-tokenizer regex is what nearly every 2026 open-weight model ships (Llama, Qwen, DeepSeek, GLM, Kimi and gpt-oss all use variants of it, though the digit rule varies: GPT-4 and Llama 3 chunk up to three digits, while Qwen and DeepSeek split numbers into single digits); vocabularies have grown into the 128k–256k range; tokenizer and pretraining mix are designed together.
 
 Open, with evidence accumulating:
 
-- **Tokenizer-free, byte-level models.** The Byte Latent Transformer (Meta, December 2024) reads raw bytes and groups them dynamically into "patches" whose size depends on how predictable the next byte is, spending more compute where text is surprising. It matched Llama 3 quality at 8B scale with better robustness to noise and spelling tasks, but at higher training cost per byte. As of September 2026 no frontier open-weight model has shipped tokenizer-free; the idea is a live research direction, not a default. https://arxiv.org/abs/2412.09871
+- **Tokenizer-free, byte-level models.** The Byte Latent Transformer (Meta, December 2024) reads raw bytes and groups them dynamically into "patches" whose size depends on how predictable the next byte is, spending more compute where text is surprising. The paper reports matching Llama 3 quality at 8B scale with better robustness to noise and spelling tasks, at a higher training cost per byte. As of September 2026 no frontier open-weight model has shipped tokenizer-free; the idea is a live research direction, not a default. https://arxiv.org/abs/2412.09871
 - **Whether digit chunking is right.** The three-digit rule fixes number tokens at a bounded set, but there is no consensus on whether right-to-left grouping (matching how humans read thousands) beats left-to-right, and reasoning-model post-training (Chapter 19) has made arithmetic accuracy far less sensitive to tokenization than it was in 2023.
 - **Vocabulary size vs model size.** The current evidence is that the optimal vocabulary grows with the model: small models are hurt by huge vocabularies (rare tokens undertrained), large models are hurt by small ones (wasted context). nanochat (Karpathy, October 2025) trains its own 2¹⁶ = 65,536-entry BPE for a ~560M-parameter model, a deliberately modest size for a $100 budget. https://github.com/karpathy/nanochat
 
@@ -252,7 +252,7 @@ The safe engineering advice in 2026: do not invent a tokenizer; take a well-test
 4. **The non-English tax, measured.** Take the four German and Spanish sentences in `llm.data.NON_ENGLISH` and compute bytes/token for each with the course tokenizer. Then train a tokenizer on Storyland plus those sentences repeated 500 times and measure again.
 5. **Special-token injection.** Build a chat string with `"<|assistant|>"` typed by a "user", encode it once with `allowed_special=True` and once with `False`, and print `token_str` for each id. Explain in two sentences what a model would "see" in each case.
 6. **Bytes/token vs perplexity.** Chapter 1's perplexity was per *word*. If a tokenizer produces 1.2 tokens per word, convert a per-token perplexity of 3.0 into per-word perplexity (hint: bits add; multiply bits per token by tokens per word). Why can you not compare perplexities across tokenizers without this?
-7. **Interactive** 🎛️: open `interactive/02_bpe_stepper.html`, type `kites kite` and step through the merges to reproduce the figure; then paste a sentence of your own and predict, before clicking, which pair merges first. Do the Challenge: find the shortest text on which the first merge is *not* a space-plus-letter pair.
+7. **Interactive** 🎛️: open `interactive/02_bpe_stepper.html`, press Train and drag the step slider from 0 upward to watch one merge happen at a time (type `kites kite` first to reproduce the figure); watch the tokens-in-text count fall as the vocabulary grows, then paste new text in the encoder box to see how a vocabulary trained on one text splits another. The Challenge: predict how many merges it takes before ` kite` becomes a single token and which pairs must merge on the way, then scrub the slider to check; then change the text so "kite" appears only once and see what happens.
 
 ## Check yourself ✅
 

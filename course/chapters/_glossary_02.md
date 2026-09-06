@@ -11,3 +11,4 @@
 - **compression ratio** — bytes of text per token; higher means each token covers more text, and it depends on the corpus (Ch. 02)
 - **vocabulary size trade-off** — a bigger vocabulary gives fewer tokens per text but a bigger V × d embedding matrix and rarer, less well-trained tokens (Ch. 02)
 - **Byte Latent Transformer (BLT)** — a tokenizer-free model that reads bytes and groups them into variable-size patches based on next-byte predictability (Ch. 02)
+- **UTF-8** — the standard encoding of text as a sequence of bytes (0–255), one to four bytes per character; the base alphabet of a byte-level tokenizer (Ch. 02)

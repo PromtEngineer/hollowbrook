@@ -348,6 +348,9 @@ with Stage("9. a TinyLM agent answers with a calculator tool (Chapters 21, 24)")
 
     # (b) a tool-SFT'd TinyLM, reused if a checkpoint exists, else trained now from the GRPO model
     p = existing(f"tool_sft_{TAG}.pt", f"agent_sft_{TAG}.pt", f"capstone_tool_{TAG}.pt", d_model=D_MODEL, parent=paths["grpo"])
+    if p is not None and p.endswith(f"capstone_tool_{TAG}.pt") and \
+            torch.load(p, map_location="cpu").get("extra", {}).get("system_text") != system_text:
+        p = None                                           # trained under a different tool listing: retrain
     if p is None:
         model = TinyLM.load(paths["grpo"])
         model.extend_context(512)                          # the tool schema alone is ~130 tokens
@@ -361,10 +364,15 @@ with Stage("9. a TinyLM agent answers with a calculator tool (Chapters 21, 24)")
                           {"role": "tool_result", "content": str(a + b)},
                           {"role": "assistant", "content": f"{a} + {b} = {a + b}"}])
         n_tok = len(tok.encode(chat.render(convs[0], add_generation_prompt=False)))
-        steps = 60 if args.quick else 200
-        losses = distill.sft_steps(model, tok, convs, steps=steps, lr=1e-3, batch_size=4)
+        steps = 120 if args.quick else 200
+        # the ordinary SFT loop of Chapter 15 accepts raw conversations (tool_call / tool_result
+        # turns included); only the assistant's turns are in the loss
+        hist = sft_train(model, tok, convs, SFTConfig(steps=steps, batch_size=4, lr=1e-3, warmup_steps=5,
+                                                      log_every=max(1, steps // 4), max_len=512), verbose=True)
+        losses = hist.train_loss
         print(f"   tool-SFT: {len(convs)} traces of {n_tok} tokens, {steps} steps, loss {losses[0]:.3f} -> {losses[-1]:.3f}")
-        p = save_stage(model, f"capstone_tool_{TAG}.pt", "tool-sft", parent=paths["grpo"])
+        p = run_path(f"capstone_tool_{TAG}.pt")
+        model.save(p, TOKENIZER_PATH, extra={"stage": "tool-sft", "parent": _stamp(paths["grpo"]), "system_text": system_text})
         st.note = f"tool-SFT {steps} steps, loss {losses[0]:.2f} -> {losses[-1]:.2f}"
     else:
         model = TinyLM.load(p)

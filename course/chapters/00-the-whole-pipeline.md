@@ -7,7 +7,7 @@
 
 ## Why this matters
 
-When someone says "we trained a model", they are compressing a dozen distinct steps into three words. A 2026 frontier model starts as petabytes of web text, passes through a curation pipeline, is cut into tokens, is pretrained for weeks on thousands of GPUs, is then annealed, fine-tuned, preference-tuned, reinforcement-trained against verifiers, distilled, evaluated at every step, and finally wrapped in a harness that gives it tools and a memory. Each step has its own data, its own objective and its own failure modes, and the people who build models argue about each one separately. This chapter gives you the map before you walk the territory: every stage, what goes in, what comes out, and where in this course you will build it yourself. It also gets your machine ready, because from the next chapter on you run code. By the end you should be able to hear "Kimi K3 is a 2.8-trillion-parameter MoE trained with Muon and post-trained with RLVR" and know which boxes of the map are being named.
+When someone says "we trained a model", they are compressing a dozen distinct steps into three words. A 2026 frontier model starts as petabytes of web text, passes through a curation pipeline, is cut into tokens, is pretrained for weeks on thousands of GPUs, is then annealed (its learning rate wound down on better data), fine-tuned, preference-tuned, reinforcement-trained against verifiers, distilled, evaluated at every step, and finally wrapped in a harness that gives it tools and a memory. Each step has its own data, its own objective and its own failure modes, and the people who build models argue about each one separately. This chapter gives you the map before you walk the territory: every stage, what goes in, what comes out, and where in this course you will build it yourself. It also gets your machine ready, because from the next chapter on you run code. By the end you should be able to read a 2026 model-card line such as "a 2.8-trillion-parameter MoE, pretrained with Muon, post-trained with RLVR" (a mixture-of-experts model, Chapter 12; an optimizer, Chapter 10; a reinforcement-learning recipe, Chapter 19) and know which boxes of the map are being named.
 
 ## The idea in pictures 📐
 
@@ -50,7 +50,7 @@ flowchart LR
 
 ### Base, instruct, reasoning, agentic
 
-The four words you will hear most often name checkpoints at different depths of the pipeline. They are not different architectures: the same network, with different training after pretraining.
+The four words you will hear most often name **checkpoints** (a model's weights saved to disk at some point in training) at different depths of the pipeline. They are not different architectures: the same network, with different training after pretraining.
 
 | Kind | Made by | Given `"What is 12 + 7?"` it will... | Strength | Weakness | Course |
 |---|---|---|---|---|---|
@@ -59,7 +59,7 @@ The four words you will hear most often name checkpoints at different depths of 
 | **Reasoning model** | RLVR on top of instruct (or base) | write a hidden or visible chain of steps, then `"19"` | much better at maths, code, multi-step problems; can check its own work | slower, more tokens per answer; can over-think easy questions | Ch. 18–20 |
 | **Agentic model** | agentic RL + a harness | decide whether to call a calculator tool, call it, read the result, then answer | acts over many steps with tools, recovers from errors, completes long tasks | needs a harness, sandbox and permissions; failures compound over long runs | Ch. 21, 24–28 |
 
-The lab at the end of this chapter shows you a base model in the wild: TinyLM's nano checkpoint, prompted with `"What is 12 + 7?\nAnswer:"`, produces `" 78 + 78 = 78."`. It has learned the *shape* of Storyland arithmetic and nothing else yet. That gap between "knows the shape" and "gets it right" is what Chapters 15 through 21 close.
+The lab at the end of this chapter shows you a base model in the wild: TinyLM's nano checkpoint, prompted with `"What is 12 + 7?\nAnswer:"`, produces `" 78 + 78 = 78."` (the small checkpoint in `--full` mode produces `" 5 + 17 = 55."`). It has learned the *shape* of Storyland arithmetic and nothing else yet. That gap between "knows the shape" and "gets it right" is what Chapters 15 through 21 close.
 
 An analogy for the whole pipeline: pretraining is years of reading everything in a library; SFT is a short apprenticeship in how to answer questions politely; RLVR is practice with an answer key; the harness is being given a desk, a phone and a to-do list. The limit of the analogy: a human keeps learning at the desk, while a deployed model's weights are frozen, and everything it "remembers" during a task lives in its context window (Chapter 25).
 
@@ -89,7 +89,7 @@ import torch
 from llm.pipeline import get_corpus, get_tokenizer, get_base_model, device_summary
 from llm.generate import generate
 
-print(device_summary())                  # torch 2.14.0+cu130 | device cpu | threads 4
+print(device_summary())                  # e.g. torch 2.14.0+cu130 | device cpu | threads 2
 docs = get_corpus()                      # 6000 Storyland documents (dicts with "text")
 tok = get_tokenizer()                    # byte-level BPE, 871 ids, trained on Storyland
 model, tok = get_base_model(quick=True)  # loads runs/base_nano.pt (trains it the first time)
@@ -100,16 +100,18 @@ logits, _ = model(x)                     # (B, T, V)    a score for every vocab 
 probs = torch.softmax(logits[0, -1], -1) # (V,)         distribution over the token after "a"
 ```
 
-Read the shapes as the course's standing notation: `B` sequences in a batch, `T` tokens each, `V` vocabulary entries. Every model in this course, and every model in production, has this signature: ids in, one row of `V` scores per position out. The last row is the prediction for the next token:
+Read the shapes as the course's standing notation: `B` sequences in a batch, `T` tokens each, `V` vocabulary entries. Every model in this course, and every model in production, has this signature: ids in, one row of `V` scores per position out. The raw scores are called **logits**; `softmax` turns a row of them into probabilities that are positive and sum to 1 (Appendix A has the formula). The last row is the prediction for the next token:
 
 ```python
 top = torch.topk(probs, 3)
 [(tok.token_str(i), round(p, 3)) for p, i in zip(top.values.tolist(), top.indices.tolist())]
-# [(' blue', 0.11), (' orange', 0.108), (' pink', 0.099)]
+# [(' orange', 0.117), (' blue', 0.115), (' pink', 0.101)]
 
 generate(model, tok, "Mia had a", max_new_tokens=20, temperature=0.8, seed=0)
 # ' orange cake. One windy day Nora took the cup to the hill. The horse gave the cake back'
 ```
+
+The probabilities are what the checkpoint in `runs/base_nano.pt` computes; if you retrain it they will shift by a few thousandths. The completion is *sampled* (`temperature=0.8`), so a different seed, or the same seed on a machine whose floating-point arithmetic differs slightly, gives a different sentence.
 
 `generate` is the loop of Chapter 1's flow diagram: score, sample, append, repeat. Chapter 7 opens it up.
 
@@ -129,13 +131,13 @@ A 300k-parameter model learns it in a minute on a CPU, the arithmetic gives late
 
 ### TinyLM
 
-**TinyLM** is the model you build, a decoder-only Transformer with the 2026 defaults (RMSNorm, RoPE, grouped-query attention, SwiGLU, tied embeddings, optional MoE and multi-token prediction). Three presets in `llm/config.py`:
+**TinyLM** is the model you build, a decoder-only Transformer (the architecture of Chapters 5–6) with the 2026 defaults: RMSNorm, RoPE, grouped-query attention, SwiGLU (Chapters 5–6), tied embeddings (Chapter 3), optional MoE and multi-token prediction (Chapter 12). Three presets in `llm/config.py`:
 
-| Preset | `d_model` | layers | heads (kv) | non-embedding params | trains in |
+| Preset | `d_model` | layers | heads (kv) | non-embedding params (with the 871-id tokenizer) | trains in |
 |---|---|---|---|---|---|
-| `nano` | 96 | 3 | 3 (1) | 295,584 | ~1 min CPU (`--quick` labs) |
-| `small` | 192 | 6 | 6 (2) | ~2.7 M | ~5–10 min CPU (the course model) |
-| `medium` | 384 | 12 | 12 (4) | ~19 M | a GPU |
+| `nano` | 96 | 3 | 3 (1) | 295,584 (379,200 total) | ~1 min CPU (`--quick` labs) |
+| `small` | 192 | 6 | 6 (2) | 2,361,792 (2,529,024 total) | ~5–10 min CPU (the course model) |
+| `medium` | 384 | 12 | 12 (4) | ~18.9 M (~19.2 M total) | a GPU |
 
 The parameter counts are tiny by 2026 standards (a frontier model is a million times larger), but the *code path* is the same: the pretraining loop in Chapter 10 uses Muon, warmup and a WSD schedule; the RL loop in Chapter 19 is GRPO with the DAPO fixes. What changes at scale is the subject of Chapter 11 and the capstone.
 
@@ -146,7 +148,7 @@ python3 labs/lab00_setup.py            # quick: nano model, ~25 s once the check
 python3 labs/lab00_setup.py --full     # small model: trains it the first time (~5–10 min), then seconds
 ```
 
-The lab checks your environment, then walks the stack once. On the machine that produced this chapter (4 cores, no GPU, shared with other jobs) the quick run looked like this:
+The lab checks your environment, then walks the stack once. On the machine that produced this chapter (4 cores, no GPU, PyTorch limited to 2 threads because the machine was shared) the quick run looked like this:
 
 ```
 --- environment ---
@@ -155,13 +157,13 @@ python  3.11.15  (/usr/local/bin/python3)
 numpy 2.4.6 | matplotlib 3.11.1
 ✅ torch, numpy and matplotlib import
 regex   installed (the tokenizer uses the full GPT-4-style pattern)
-torch 2.14.0+cu130 | device cpu | threads 4
-cpu     x86_64 | 4 logical cores | torch using 4 threads
+torch 2.14.0+cu130 | device cpu | threads 2
+cpu     x86_64 | 4 logical cores | torch using 2 threads
 ✅ PyTorch can run on this CPU
-a 256x256 matmul takes 16544 µs  (2.0 GFLOP/s)
+a 256x256 matmul takes 230 µs  (145.8 GFLOP/s)
 ```
 
-The matmul line is your speed reference. A quiet laptop core does 20–100 GFLOP/s on this test; 2 GFLOP/s here means the machine was heavily shared, and every "minutes" figure in the course should be read against your own number. If `regex` is missing the lab says so; install it, because without it the tokenizer falls back to an ASCII-only pattern and Chapter 2's German and emoji examples will differ.
+The matmul line is your speed reference. A laptop core typically scores 20–150 GFLOP/s on this test, and on a busy shared machine the same test has scored as low as 2 GFLOP/s; every "minutes" figure in the course should be read against your own number. If `regex` is missing the lab says so; install it, because without it the tokenizer falls back to an ASCII-only pattern and Chapter 2's German and emoji examples will differ.
 
 ```
 --- corpus: Storyland ---
@@ -184,29 +186,29 @@ loading cached checkpoint runs/base_nano.pt
 ready in 0.0s | 295,584 non-embedding params, 379,200 total | config: d_model=96 layers=3 heads=3 kv_heads=1
 ✅ checkpoint saved to runs/
 logits shape (1, 3, 871) = (batch, tokens, vocab)
-P(next | 'Mia had a'): ' blue'=0.110, ' orange'=0.108, ' pink'=0.099, ' white'=0.094, ' red'=0.091
+P(next | 'Mia had a'): ' orange'=0.117, ' blue'=0.115, ' pink'=0.101, ' white'=0.094, ' red'=0.092
 ✅ next-token probabilities sum to 1
 ✅ logits have shape (B, T, V)
 ```
 
-The first time you run this there is no checkpoint, and `get_base_model` pretrains the nano model for 150 steps (about a minute on an idle laptop; the loss starts at 6.8, which is ln 871, the cost of a uniform guess over the vocabulary, and after 150 steps the checkpoint scores 1.08 per token on held-out Storyland, a perplexity of 2.9). After that it loads in a fraction of a second. The logits shape `(1, 3, 871)` is the signature described above, and the top-5 row is a base model doing its one job: after `Mia had a`, Storyland continues with a colour, and the model has learned the ten colours are roughly equally likely (Chapter 1 gets the same answer by counting).
+The first time you run this there is no checkpoint, and `get_base_model` pretrains the nano model for 150 steps (about a minute on an idle laptop; the loss starts at 6.8, which is ln 871, the cost of a uniform guess over the vocabulary, and after 150 steps the checkpoint scores 1.08 per token on held-out Storyland, a perplexity of 2.9; Chapter 1 defines both "held-out" and "perplexity"). After that it loads in a fraction of a second. The logits shape `(1, 3, 871)` is the signature described above, and the top-5 row is a base model doing its one job: after `Mia had a`, Storyland continues with a colour, and the model has learned the ten colours are roughly equally likely (Chapter 1 gets the same answer by counting).
 
 ```
 --- generate ---
 prompt: 'Mia had a'
-completion: ' orange cake. One windy day Nora took the cup to the hill. The horse gave the cake back. Nora was very calm and said thank you. Tom had a blue book. One sunny day Ella'
-40 tokens in 15.88s = 3 tokens/s
+completion: ' orange cake. One windy day Nora took the cup to the hill. The horse gave the cake back. Nora was very calm and said thank you. At the park, Jack met Mia. Ben was'
+40 tokens in 0.10s = 404 tokens/s
 ✅ model generated text
 prompt: 'What is 12 + 7?\nAnswer:' -> ' 78 + 78 = 78.'   (a base model may or may not get this right yet)
 📊 saved figures/generated/lab00_next_token.png
 
-10/10 checks passed in 24.1s
+10/10 checks passed in 2.5s
 ✅ checks passed
 ```
 
-Two things to notice. The story continuation is fluent Storyland, with the right template order and consistent characters within a sentence, from a model with 300k parameters and one minute of training: next-token prediction on repetitive data is not hard. And the arithmetic answer is wrong in the characteristic base-model way: the *form* `a + b = c.` is right, the *content* is copied from nowhere. A 150-step nano model has not seen enough arithmetic to learn it. Run `--full` and check whether the 700-step small model does any better on this prompt (exercise 3 asks you to record it); Chapter 19 is where TinyLM learns to add reliably, with a verifiable reward.
+Two things to notice. The story continuation is fluent Storyland, with the right template order and consistent characters within a sentence, from a model with 300k parameters and one minute of training: next-token prediction on repetitive data is not hard. And the arithmetic answer is wrong in the characteristic base-model way: the *form* `a + b = c.` is right, the *content* is copied from nowhere. A 150-step nano model has not seen enough arithmetic to learn it. Run `--full` and the 700-step small model answers `" 5 + 17 = 55."`: same shape, still wrong. Chapter 19 is where TinyLM learns to add reliably, with a verifiable reward.
 
-The 3 tokens/s is not a property of the model. Run the lab on a quiet machine and expect hundreds of tokens per second for nano; Chapter 7 measures this properly with and without a KV cache.
+The 404 tokens/s is a property of this machine, not of the model: the same lab on a heavily loaded shared machine has measured 3 tokens/s. Chapter 7 measures generation speed properly, with and without a KV cache.
 
 ## 🆕 The 2026 snapshot
 
@@ -214,7 +216,7 @@ To read this course's "what changes at scale" sections you need a rough picture 
 
 **Open-weight models.** The strongest open-weight models are mixture-of-experts (MoE) models with total parameter counts in the trillions but far fewer active per token: Kimi K3 (July 2026, about 2.8 T total / 104 B active, 1 M-token context), DeepSeek V4 (about 1.6 T, MIT licence, with a technical report on million-token context), GLM-5.2 (744 B / 40 B active, MIT), Qwen3.8 (a 2.4 T sparse model and a 27 B dense Apache-2.0 multimodal model), plus Gemma 4, Llama 4 and Mistral Medium 3.5. Sources: https://arxiv.org/abs/2606.19348 , https://wavect.io/blog/open-weight-llm-comparison-2026/ , https://www.morphllm.com/best-open-source-llm . The practical consequence for this course: the architecture you build in Chapters 5–6 and extend with MoE in Chapter 12 is the architecture these models use.
 
-**How they are trained.** The Muon optimizer, a 2024 research idea, is now mainstream in pretraining (Kimi K2/K2.5, GLM-5, DeepSeek-V4 report using it; a July 2026 paper reports it matching or beating AdamW on 30 B and 72 B hybrid MoE models: https://arxiv.org/abs/2607.20548 ). You implement it in Chapter 10. FP8 mixed precision is the default and FP4 pretraining is being validated ( https://arxiv.org/abs/2605.09825 ). Hybrid attention (sparse and compressed attention interleaved with sliding windows, or attention mixed with state-space layers) is how million-token contexts are made affordable (Chapter 12).
+**How they are trained.** The Muon optimizer, a 2024 research idea, is now mainstream in pretraining (Kimi K2/K2.5, GLM-5, DeepSeek-V4 report using it; a July 2026 paper reports it matching or beating AdamW on 30 B and 72 B hybrid MoE models: https://arxiv.org/abs/2607.20548 ). You implement it in Chapter 10. FP8 mixed precision (storing and multiplying numbers in 8 bits, Chapter 10) is the default and FP4 pretraining is being validated ( https://arxiv.org/abs/2605.09825 ). Hybrid attention (sparse and compressed attention interleaved with sliding windows, or attention mixed with state-space layers) is how million-token contexts are made affordable (Chapter 12).
 
 **How they are post-trained.** RLVR with the GRPO family (DAPO, Dr. GRPO, GSPO and 2026 variants: https://www.turingpost.com/p/reasoning-rl-in-2026 ) is the dominant recipe for reasoning; on-policy distillation is the cheap way to move those gains into smaller models ( https://thinkingmachines.ai/blog/on-policy-distillation/ , https://arxiv.org/abs/2604.13016 ); rubric-based rewards extend RL to tasks without a checkable answer ( https://aclanthology.org/2026.acl-long.791/ ); agentic RL trains multi-turn tool use directly ( https://arxiv.org/abs/2510.04206 ).
 
@@ -240,10 +242,10 @@ To read this course's "what changes at scale" sections you need a rough picture 
 
 1. **Draw the map.** Close this file and draw the pipeline from memory: eleven boxes, an input and an output for each. Then compare with the figure. Which boxes did you forget, and which chapter covers each?
 2. **Classify five models.** Pick five models you have heard of (open or closed) and put each in the base / instruct / reasoning / agentic row of the table. For each, name one piece of evidence for your classification (a model card line, a behaviour you observed).
-3. **Prompt a base model.** Run `generate(model, tok, "Question: Where did Mia take the kite?\nAnswer:", max_new_tokens=20, temperature=0.0)` on the nano model. Then run it with `"Mia took the kite to the"`. Which prompt works better, and what does that tell you about how a base model must be prompted?
+3. **Prompt a base model.** Run `generate(model, tok, "Question: Where did Mia take the kite?\nAnswer:", max_new_tokens=20, temperature=0.0)` on the nano model. Then run it with `"Mia took the kite to the"`. Which prompt works better, and what does that tell you about how a base model must be prompted? Then load the small model with `get_base_model(quick=False)` and try both prompts again.
 4. **Count the stages nanochat runs.** Read the nanochat README and list its stages in the order they run. Which boxes of the figure does it skip, and why do you think that is?
 5. **Timings.** Record your matmul GFLOP/s and quick-lab wall-clock from the lab output in `PROGRESS.md`. You will compare against them in Chapter 10.
-6. **Interactive** 🎛️: open `interactive/00_pipeline_map.html`. Click each stage to see its inputs, outputs and chapter; try the Challenge, which shows you a model-card sentence and asks you to click the stage it describes.
+6. **Interactive** 🎛️: open `interactive/00_pipeline_map.html`. Click each stage to see what goes in, what comes out and what changes inside the model, then use the base / instruct / reasoning / agentic buttons to highlight which stages each kind of model has been through. The Challenge asks, before you look: which stages does *every* model type share, and which is the first stage where the model is trained on a reward rather than a target token?
 
 ## Check yourself ✅
 

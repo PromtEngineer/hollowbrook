@@ -15,7 +15,7 @@ A **language model** is a function that takes a sequence of tokens and returns a
 
 ![A context, the probability bars for the next token, and the chain rule that scores a whole sentence](../figures/01_next_token.svg)
 
-In panel A the model has read the **context** `Mia had a` (everything that came before the position being predicted) and must produce a distribution over the fourth token. It does not commit to one answer. Panel B shows that distribution as bars: one bar per candidate token, with a length equal to its probability. In Storyland, `had a` is almost always followed by a colour, so eight colour words get about 0.1 each, and `kite`, which never followed `had a` in the training text, gets a bar so short it is invisible. The bars sum to 1.0. Panel C shows how a model that only ever predicts *one* token can nevertheless score a *whole sentence*: multiply the probability of each token given everything before it. That product rule is the chain rule, and we return to it below.
+In panel A the model has read the **context** `Mia had a` (everything that came before the position being predicted) and must produce a distribution over the fourth token. It does not commit to one answer. Panel B shows that distribution as bars: one bar per candidate token, with a length equal to its probability. In Storyland, `had a` is almost always followed by a colour, so each of the ten colour words gets about 0.1 (the figure draws eight of them and lumps `black` and `white` into the orange bar), and `kite`, which never followed `had a` in the training text, gets a bar so short it is invisible. The bars sum to 1.0. Panel C shows how a model that only ever predicts *one* token can nevertheless score a *whole sentence*: multiply the probability of each token given everything before it. That product rule is the chain rule, and we return to it below.
 
 Generation is the same picture run in a loop:
 
@@ -107,7 +107,7 @@ Read this as: add *k* to every count on top, and add *k* once per vocabulary ent
         return [(w, self.prob(ctx, w)) for w, _ in c.most_common(m)]
 ```
 
-Better smoothing methods (Kneser–Ney, in the reading list) were the state of the art for two decades. They matter less now because neural networks smooth in a much better way: they share statistics between *similar* contexts, which is what Chapter 3 (embeddings) is about.
+Better smoothing methods (Kneser–Ney, in the reading list below) were the state of the art for two decades. They matter less now because neural networks smooth in a much better way: they share statistics between *similar* contexts, which is what Chapter 3 (embeddings) is about.
 
 ### The chain rule: from one token to a whole sentence
 
@@ -117,7 +117,7 @@ $$P(w_1, w_2, \ldots, w_T) = \prod_{i=1}^{T} P(w_i \mid w_1, \ldots, w_{i-1})$$
 
 Read this as: the chance of the whole sentence equals the chance of the first token, times the chance of the second given the first, times the chance of the third given the first two, and so on to the end. An n-gram model plugs in its approximation *P*(*w*ᵢ | last *n* − 1 tokens) for each factor; a Transformer plugs in a factor that depends on the whole prefix. Either way, the model is defined by the factors.
 
-Products of many small numbers underflow (5.5 × 10⁻⁶ for a six-word sentence; a 1,000-token document would be 10⁻¹⁰⁰⁰ or smaller, which a float cannot hold). So in practice everyone works with the **log-probability**: the logarithm turns a product into a sum. Using log base 2 gives units of **bits**: −log₂ *P* is the **surprisal** of a token, how surprised the model was to see it. A token with probability ½ costs 1 bit; probability 1/1024 costs 10 bits; probability 1 costs 0 bits.
+Products of many small numbers **underflow**, meaning they become too small for a computer's floating-point numbers to represent (4.6 × 10⁻⁷ for a six-word sentence plus its end token, as panel C shows; a 1,000-token document would be around 10⁻¹⁰⁰⁰, which a float cannot hold). So in practice everyone works with the **log-probability**: the logarithm turns a product into a sum. Using log base 2 gives units of **bits**: −log₂ *P* is the **surprisal** of a token, how surprised the model was to see it. A token with probability ½ costs 1 bit; probability 1/1024 costs 10 bits; probability 1 costs 0 bits.
 
 ```python
     def log2_prob_doc(self, text: str) -> tuple[float, int]:
@@ -148,7 +148,7 @@ Read this as: take the average number of bits the model needs per token, and tur
         return 2 ** (-total_bits / total_n)
 ```
 
-One rule must never be broken: perplexity is measured on **held-out data**, text the model did not see during training. On the training text a trigram model with no smoothing has near-zero perplexity, because it memorised the counts, and that number says nothing about how it handles new text. The gap between training and held-out performance is the subject of **generalization**, and it appears in every chapter from here on.
+One rule must never be broken: perplexity is measured on **held-out data**, text the model did not see during training. A count table can memorise its training text: with almost no smoothing (*k* = 10⁻⁹) a trigram scores its own Shakespeare training paragraphs at perplexity 4.5 and the held-out paragraphs at 446,000, and the first number says nothing about how it handles new text. (On Storyland the gap is small, 3.4 against 4.4, because the slots in each template are filled at random and there is nothing to memorise; exercise 4 measures both.) The gap between training and held-out performance is the subject of **generalization**, and it appears in every chapter from here on.
 
 ### Sampling text from the distribution
 
@@ -180,8 +180,8 @@ This is **sampling**: choosing randomly according to the distribution, so the sa
 Run the lab:
 
 ```bash
-python3 labs/lab01_ngram.py            # quick: Storyland only, about 15 s
-python3 labs/lab01_ngram.py --full     # adds 4- and 5-grams, a data-size sweep, and Shakespeare (about 25 s)
+python3 labs/lab01_ngram.py            # quick: Storyland only, about 10 s
+python3 labs/lab01_ngram.py --full     # adds 4- and 5-grams, a data-size sweep, and Shakespeare (about 35 s)
 ```
 
 The lab splits the 6,000 Storyland documents into 5,400 for training and 600 held out, and fits unigram (*n* = 1, no context), bigram and trigram models. Look at the sizes first:
@@ -193,7 +193,7 @@ vocabulary: 389 distinct word-tokens (incl. <s> and </s>)
 3-gram:   2,835 distinct contexts,   11,179 distinct (context, next) pairs
 ```
 
-Each extra token of context multiplies the number of table rows. The trigram table is already 29 times bigger than the bigram table, and Storyland is a tiny, repetitive world of 389 words; the trigram table for English would have billions of rows, almost all empty.
+Each extra token of context multiplies the number of table rows. The trigram table already has seven times as many rows (contexts) as the bigram table, and Storyland is a tiny, repetitive world of 389 words; the trigram table for English would have billions of rows, almost all empty.
 
 The probability tables are where the model becomes legible. Every row is a distribution:
 
@@ -284,10 +284,10 @@ The lab saves `figures/generated/lab01_ngram.png`: the `had a` bar chart (ten co
 1. **Temperature.** Call `models[3].generate(30, seed=0, temperature=0.3)` and then `temperature=2.0`. Describe what changes and connect it to the shape of the bars in the figure.
 2. **Greedy decoding.** Add a `greedy=True` option that always picks the most common continuation. Generate 60 tokens from the bigram model. What happens, and why does a longer context reduce (but not remove) the problem?
 3. **Smoothing strength.** Re-run the held-out perplexity for the trigram with `k` = 1, 0.1, 0.01, 0.001. Which is best, and why does a very large *k* hurt? (Hint: what does the model believe about an unseen pair when *k* is huge?)
-4. **Train vs held-out.** Compute the trigram's perplexity on the *training* documents with `k = 1e-9`. Compare with the held-out number and explain the gap in one sentence about memorisation.
+4. **Train vs held-out.** Compute the trigram's perplexity with `k = 1e-9` on the *training* documents and on the held-out ones, first for Storyland and then (in `--full` mode) for Shakespeare. Explain in one sentence why the gap is small for Storyland and enormous for Shakespeare.
 5. **A 4-gram on Storyland.** In quick mode add `n = 4` to `orders`. At which training size does it overtake the trigram? Predict before running.
 6. **Character-level model.** Replace `words()` with `list(text)` so tokens are single characters. What is *V* now? Fit a 5-gram and compare its perplexity with the word trigram, then explain why the two numbers are not comparable (units!).
-7. **Interactive** 🎛️: open `interactive/01_ngram_playground.html`, paste a paragraph of your own writing, and watch the count table fill as you type. Try the Challenge: find the shortest text on which the trigram model generates a loop, then break the loop by adding one sentence.
+7. **Interactive** 🎛️: open `interactive/01_ngram_playground.html`, paste a paragraph of your own writing, and change *n* to watch the table of "what came next" shrink to a handful of rows as the context gets longer. Type a prefix to see the next-word distribution, press Generate with a few seeds, then put a sentence the model has never seen in the perplexity box. The Challenge: find an *n* at which Generate produces a loop and explain why, then find the *n* at which it replays the training text word for word.
 
 ## Check yourself ✅
 
@@ -296,9 +296,9 @@ The lab saves `figures/generated/lab01_ngram.png`: the `had a` bar chart (ten co
 Every probability is ≥ 0 and they sum to 1 over the vocabulary. The model did not pick anything: it assigned a number to every token. "Picking" happens afterwards, by sampling (random draw weighted by the bars) or greedy decoding (tallest bar). The same distribution can produce different tokens on different runs.
 </details>
 
-<details><summary>2. Write the chain rule for <code>P(the sun went down)</code> and say which factor a bigram model gets wrong first and why.</summary>
+<details><summary>2. Write the chain rule for <code>P(Mia had a red kite)</code> and say where a bigram model and a trigram model first disagree in the lab's table, and why.</summary>
 
-*P*(the) · *P*(sun | the) · *P*(went | the sun) · *P*(down | the sun went). A bigram model replaces the third factor with *P*(went | sun) and the fourth with *P*(down | went), throwing away all but the previous word. The first loss of information is at the third factor: `the sun` is a far more specific context than `sun` alone (0.998 vs a spread-out row in the lab).
+*P*(Mia) · *P*(had | Mia) · *P*(a | Mia had) · *P*(red | Mia had a) · *P*(kite | Mia had a red). A bigram model keeps only the previous word in every factor (*P*(a | had), *P*(red | a), ...), a trigram keeps two. In the lab's table they first disagree at `had`: the bigram gives *P*(had | Mia) = 0.054, because `Mia` is followed by `and`, `was`, `took` and so on anywhere in a story, while the trigram gives *P*(had | &lt;s&gt; Mia) = 0.157, because it knows the document has just started and "{name} had a ..." is one of the ten opening templates. More context turns a vague guess into a sharper one.
 </details>
 
 <details><summary>3. A model has an average surprisal of 2 bits per token on a held-out text. What is its perplexity, and what does that number mean in plain words?</summary>
@@ -308,7 +308,7 @@ Every probability is ≥ 0 and they sum to 1 over the vocabulary. The model did 
 
 <details><summary>4. Why must perplexity be measured on held-out text, and what would you see if you measured a trigram model with tiny <code>k</code> on its own training text?</summary>
 
-Because the goal is to predict *new* text, and a count table can memorise its training text perfectly. On the training set an unsmoothed trigram assigns high probability to every pair it counted, giving a perplexity close to 1 that says nothing about generalization. Exercise 4 measures this.
+Because the goal is to predict *new* text, and a count table can memorise its training text. With almost no smoothing a trigram assigns high probability to every (context, next) pair it counted, so on text where most two-word contexts occur once (Shakespeare) its training perplexity is tiny (4.5) while its held-out perplexity is astronomical (446,000). The training number says nothing about generalization. Exercise 4 measures this.
 </details>
 
 <details><summary>5. On tiny Shakespeare the trigram model (perplexity 3,800) is much worse than the bigram (696), while on Storyland the trigram wins (3.8 vs 6.8). What single quantity explains both results?</summary>

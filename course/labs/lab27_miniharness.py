@@ -261,7 +261,7 @@ check(n_msgs[4] == 1 and n_msgs[3] > 1, "a new session starts from one message: 
 section("4. the real TinyLM base model in the same harness (it has never seen a tool call)")
 model, tok = get_base_model(quick=args.quick, verbose=False)
 box = fresh_sandbox(run_path("lab27_sandbox_tinylm"))
-from llm.chat import render
+
 from llm.agent.miniharness import SESSION_SYSTEM
 schemas = make_builtin_tools(box).schemas()
 chat_msgs = TinyLMBackend.to_chat_messages([{"role": "user", "content": TASK}], schemas, SESSION_SYSTEM)
@@ -292,7 +292,7 @@ class RecordingTinyLM(TinyLMBackend):
 
 
 real = RecordingTinyLM(model, tok, max_new_tokens=40)
-hr = GuardedHarness(real, box, AgentConfig(max_turns=3))
+hr = MiniHarness(real, box, AgentConfig(max_turns=3), extra_hooks=guard)
 t0 = time.perf_counter()
 ok_real = hr.loop(TASK, max_sessions=2)
 secs_real = time.perf_counter() - t0

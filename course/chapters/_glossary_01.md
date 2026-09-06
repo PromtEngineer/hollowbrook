@@ -22,3 +22,4 @@
 - **temperature** — a knob that reshapes the distribution before sampling: below 1 sharpens it toward the top token, above 1 flattens it (Ch. 01)
 - **greedy decoding** — always choosing the highest-probability next token; deterministic and prone to loops (Ch. 01)
 - **sparsity** — the problem that the number of possible contexts grows exponentially with context length, so most are never observed in training (Ch. 01)
+- **underflow** — a product of many small probabilities becoming too small for floating-point numbers to represent; the reason log-probabilities are used (Ch. 01)

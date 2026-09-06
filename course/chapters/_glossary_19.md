@@ -21,3 +21,4 @@
 - **test-time compute** — spending more inference compute per question (more samples, longer or parallel reasoning) to raise accuracy (Ch. 19)
 - **parallel thinking** — producing several reasoning paths in one inference pass and merging them, reported to beat one long chain at equal token budget (Ch. 19)
 - **pass@N** — the fraction of prompts for which at least one of N samples is correct; an upper bound on best-of-N selection and the standard probe for whether RL added capability or only sharpened (Ch. 19)
+- **adaptive rollout** — a 2026 budget-aware form of dynamic sampling that allocates more samples to prompts whose groups are informative and fewer to saturated ones (Ch. 19)

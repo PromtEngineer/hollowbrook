@@ -14,3 +14,4 @@
 - **Proximal Policy Optimization (PPO)** — a policy-gradient method that clips the per-token probability ratio to a window around 1 so one update cannot move the policy too far from the sampler (Ch. 18)
 - **importance weight** — the ratio π_θ/π_old that corrects a gradient computed under the current policy for samples drawn from an older one, allowing sample re-use (Ch. 18)
 - **contextual bandit** — an RL problem with one decision per episode and a context (the prompt); the structure of single-answer LLM RL (Ch. 18)
+- **environment dynamics** — how the state changes after an action; for a language model, deterministic: the chosen token is appended to the prefix (Ch. 18)

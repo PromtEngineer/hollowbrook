@@ -119,14 +119,14 @@ for p in make_preference_pairs(examples, n_wrong_styles=1, seed=0):
 pairs = make_preference_pairs(tasks.make_examples(120, seed=0, tasks=["add"], max_value=20), n_wrong_styles=2)
 print(reward_accuracy(rm, tok, pairs))                     # 0.0 before training: every margin is exactly 0
 hist = train_reward_model(rm, tok, pairs, RMConfig(steps=60, batch_size=8, lr=1e-4, log_every=20))
-# [rm] step    0 | loss 0.6931 | pair acc 0.00 | margin +0.000 | 0.6s
-# [rm] step   20 | loss 0.6348 | pair acc 0.75 | margin +0.123 | 9.2s
-# [rm] step   40 | loss 0.6162 | pair acc 0.75 | margin +0.174 | 18.3s
-# [rm] step   59 | loss 0.5346 | pair acc 0.88 | margin +0.371 | 26.2s
-print(reward_accuracy(rm, tok, pairs))                     # 0.85 on the training pairs after 60 steps
+# [rm] step    0 | loss 0.6931 | pair acc 0.00 | margin +0.000 | ...
+# [rm] step   20 | loss 0.6253 | pair acc 0.88 | margin +0.144 | ...
+# [rm] step   40 | loss 0.6351 | pair acc 0.88 | margin +0.133 | ...
+# [rm] step   59 | loss 0.5260 | pair acc 0.75 | margin +0.396 | ...
+print(reward_accuracy(rm, tok, pairs))                     # 0.84 on the training pairs after 60 steps
 ```
 
-The first loss is exactly log 2, because the zero head gives every pair a margin of 0. `score_completions(rm, tok, prompt_messages, [c1, c2, c3])` scores several candidates for one prompt, which is all a best-of-N sampler needs.
+The first loss is exactly log 2, because the zero head gives every pair a margin of 0. The later lines are noisy (a batch of 8 pairs; the exact values shift a little between machines) and will not match yours to the last digit: read the trend, loss down and margin up. About 25 s on an idle laptop CPU; the timing column is omitted. `score_completions(rm, tok, prompt_messages, [c1, c2, c3])` scores several candidates for one prompt, which is all a best-of-N sampler needs.
 
 ### Step 5: DPO, derived in plain language
 
@@ -222,7 +222,19 @@ print(score, per)
 print(rubric_reward("I think maybe\nit is 68", ARITHMETIC_RUBRIC)[0])       # 0.4
 ```
 
-Rubrics are the 2025–2026 answer to "how do we reward answers with no single right string?": an LLM or a person writes the checklist once (for a medical answer: "mentions the contraindication", "does not invent a dosage"), and any grader, from a regex to a large model, applies it. OpenRubrics (ACL 2026) builds large rubric datasets and trains rubric-following reward models; "Many Voices, One Reward" (2026) generates rubrics from several role-perspectives and reports that the diversity of criteria matters more than their number; alternating RL for rubric-based reward models (2026) trains the grader and the policy in turns. Note what the demo rubric does *not* check: the number. That is deliberate, and the lab exploits it.
+Rubrics are the 2025–2026 answer to "how do we reward answers with no single right string?": an LLM or a person writes the checklist once (for a medical answer: "mentions the contraindication", "does not invent a dosage"), and any grader, from a regex to a large model, applies it. OpenRubrics (ACL 2026) builds large rubric datasets and trains rubric-following reward models; "Many Voices, One Reward" (2026) generates rubrics from several role-perspectives and reports that the diversity of criteria matters more than their number; alternating RL for rubric-based reward models (2026) trains the grader and the policy in turns. Note what the demo rubric does *not* check: the number. That is deliberate (the library's `ARITHMETIC_RUBRIC` carries a warning comment saying so), and the lab exploits it. The general rule: every reward has an exploit until you look for it, and the fix is another grader. Even the verifier has one. `tasks.verify` reads only the *last* number after `=`, so a misquoted equation such as `8 + 8 = 10` is a rewarded answer to "What is 2 + 8?"; `tasks.strict_verify` also requires the restated operands and operator to match the question, and is what a rubric should pair with its style criteria:
+
+```python
+ex = tasks.TaskExample("add", "What is 2 + 8?", "2 + 8 = 10", {"answer": 10})
+for c in ("2 + 8 = 10", "8 + 8 = 10", "2 + 8 = 1 2 3 10", "the answer is 10"):
+    print(f"{c!r:20} verify {tasks.verify(ex, c):.1f}  strict_verify {tasks.strict_verify(ex, c):.1f}  rubric {rubric_reward(c, ARITHMETIC_RUBRIC)[0]:.1f}")
+# '2 + 8 = 10'         verify 1.0  strict_verify 1.0  rubric 1.0
+# '8 + 8 = 10'         verify 1.0  strict_verify 0.0  rubric 1.0   <- the exploit Labs 18-19 see RL discover
+# '2 + 8 = 1 2 3 10'   verify 1.0  strict_verify 0.0  rubric 1.0
+# 'the answer is 10'   verify 1.0  strict_verify 0.0  rubric 0.8
+```
+
+Read the table column by column: the lenient verifier accepts all four (it grades the last number), the strict one accepts only the real answer, and the rubric is happiest with anything that *looks* like an equation, right or wrong. No single column is "the" reward; Chapter 18's lab shows REINFORCE finding the second row on its own.
 
 Two related 2026 ideas. A **generative reward model** (also *critic model*) is an LLM that writes a critique and then a verdict instead of emitting a scalar; the reasoning trace makes the judgement more accurate on hard cases and easier to audit, at the cost of one generation per grade. **LLM-as-judge as reward** uses an off-the-shelf model with a prompt ("which answer is more helpful?") as the reward source; Chapter 23's `judge_pairwise` and `position_bias_check` are the evaluation-side tools, and the same biases (position, length, self-preference) become reward-hacking targets when a judge is used for training.
 
@@ -233,7 +245,7 @@ python3 labs/lab17_reward_dpo.py            # quick: nano model, 324 s including
 python3 labs/lab17_reward_dpo.py --full     # small model, see the timing note below
 ```
 
-The lab needs a model that can *sometimes* add. It first looks for an SFT checkpoint that can (Lab 15's `sft_nano.pt` is multi-task and scores 0.00 on sums, so it is rejected and reported) and otherwise trains its own on 400 random "What is a + b?" draws with a, b ≤ 20. Only 441 such sums exist, so the 100 fresh draws used for every evaluation in Chapters 17–19 overlap the SFT prompts (52 of the 100 in this run); the numbers measure accuracy on the task distribution, not generalisation to unseen sums, and the lab prints the overlap so this is never hidden. (With a strict 341/100 split the small model memorises its training sums and scores 0.05–0.09 on the rest; that experiment is Chapter 19's exercise 8.) All numbers below are pasted from the runs.
+The lab needs a model that can *sometimes* add. It first looks for an SFT checkpoint that can (Lab 15's `sft_nano.pt` is multi-task and scores 0.00 on sums, so it is rejected and reported) and otherwise trains its own on 400 random "What is a + b?" draws with a, b ≤ 20. Only 441 such sums exist, so the 100 fresh draws used for every evaluation in Chapters 17–19 overlap the SFT prompts (52 of the 100 in this run); the numbers measure accuracy on the task distribution, not generalisation to unseen sums, and the lab prints the overlap so this is never hidden. (With a strict 341/100 split the small model memorises its training sums and scores 0.05–0.09 on the rest; that experiment is Chapter 19's exercise 7.) All numbers below are pasted from the runs.
 
 ### Quick mode (nano, 295k parameters)
 

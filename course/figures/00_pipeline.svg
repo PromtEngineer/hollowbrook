@@ -101,6 +101,6 @@
 <text x="462" y="578" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start">evaluation</text>
 <rect x="560" y="566" width="16" height="16" rx="3" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
 <text x="582" y="578" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start">deployment</text>
-<text x="14" y="604" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">Checkpoints you can ship: base (after 5), instruct (after 6–7), reasoning (after 8–9). The tokenizer (3) is fixed before pretraining and never changes afterwards.</text>
-<text x="14" y="622" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">Everything after stage 5 is &#x27;post-training&#x27;. Stages 6–9 are run in this order in 2026, often more than once, sometimes with 7 and 8 swapped or merged.</text>
+<text x="14" y="604" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">Checkpoints you can ship: base (after 4), instruct (after 6), reasoning (after 8). The tokenizer (2) is fixed before pretraining and never changes.</text>
+<text x="14" y="622" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">Stages 5–8 are &#x27;post-training&#x27;, run in this order in 2026, often more than once, sometimes with 6 and 7 swapped or merged. Evals (9) follow every stage.</text>
 </svg>

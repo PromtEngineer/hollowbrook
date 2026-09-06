@@ -1,4 +1,4 @@
-# Chapter 04: How neural networks learn (the minimum you need)
+# Chapter 4: How neural networks learn (the minimum you need)
 
 **Part I · ~2 hours · Prerequisites: Chapters 1, 3**
 
@@ -7,7 +7,7 @@
 
 ## Why this matters
 
-Chapter 3 ended with a promise: the embedding matrix, and every other number in TinyLM, is "just a parameter that gets learned". This chapter pays that promise. TinyLM has about 2.5 million parameters; the largest open-weight models of 2026 are reported at 1.6 trillion or more. Nobody sets a single one of them by hand. One mechanism sets all of them: measure how wrong the model is, work out for every parameter which direction would make it less wrong, nudge every parameter a little in that direction, and repeat. That loop is the whole of pretraining (Chapter 10), fine-tuning (Chapter 15) and reinforcement learning (Chapters 18–21); only the definition of "wrong" changes. The concrete example we use is XOR — a function so small you can write it as a four-row table, yet one that a single neuron provably cannot represent. A network with 17 parameters learns it from random weights in 200 steps, and by the end of the chapter you will have watched every gradient of that network being computed by a 120-line engine you can read in full.
+Chapter 3 ended with a promise: the embedding matrix, and every other number in TinyLM, is "just a parameter that gets learned". This chapter pays that promise. TinyLM has about 2.5 million parameters; the largest open-weight models of 2026 are reported at 1.6 trillion (DeepSeek-V4) to 2.8 trillion (Kimi K3). Nobody sets a single one of them by hand. One mechanism sets all of them: measure how wrong the model is, work out for every parameter which direction would make it less wrong, nudge every parameter a little in that direction, and repeat. That loop is the whole of pretraining (Chapter 10), fine-tuning (Chapter 15) and reinforcement learning (Chapters 18–21); only the definition of "wrong" changes. The concrete example we use is XOR — a function so small you can write it as a four-row table, yet one that a single neuron provably cannot represent. A network with 17 parameters learns it from random weights in 200 steps, and by the end of the chapter you will have watched every gradient of that network being computed by an engine of about 100 lines (`Value` in `llm/microautograd.py`) that you can read in full.
 
 ## The idea in pictures 📐
 
@@ -28,7 +28,7 @@ In the diagram, the parameters feed a **forward pass** — running the model on 
 
 ### A neuron and a layer
 
-A **neuron** is the smallest unit: it multiplies each input by a **weight**, adds the products and a **bias**, and pushes the sum through a **activation function** — a fixed non-linear curve such as `tanh` or `relu` that lets stacks of neurons represent bends and corners, not only straight lines.
+A **neuron** is the smallest unit: it multiplies each input by a **weight**, adds the products and a **bias**, and pushes the sum through an **activation function** — a fixed non-linear curve such as `tanh` or `relu` that lets stacks of neurons represent bends and corners, not only straight lines.
 
 $$
 o = \tanh\big(x_1 w_1 + x_2 w_2 + b\big)
@@ -90,7 +90,7 @@ $$
 
 Read this as: "remember a smoothed gradient and a smoothed squared gradient; step by the ratio, so that the step size is about η in every direction". The hats denote a small correction for the first few steps, when the averages start at zero.
 
-🆕 In 2025–2026 a newer optimizer, **Muon**, became the default for the largest open pretraining runs (Kimi K2, GLM-5, DeepSeek-V4 are reported to use it). Muon treats each weight *matrix* as a unit and replaces its momentum-averaged gradient by the nearest orthogonal matrix before stepping; the commonly cited figure is about 2× the compute-efficiency of AdamW (Moonshot, "Muon is Scalable", 2025; the 2026 study at https://arxiv.org/abs/2607.20548 reports it matching or beating AdamW on hybrid MoE models up to 3T tokens). `llm/optim.py` contains a from-scratch Muon; Chapter 10 uses it. Everything in this chapter still applies: Muon is one more way to turn a gradient into a step.
+🆕 In 2025–2026 a newer optimizer, **Muon**, became the default for the largest open pretraining runs (Kimi K2, GLM-5, DeepSeek-V4 are reported to use it). Muon treats each weight *matrix* as a unit and replaces its momentum-averaged gradient by the nearest orthogonal matrix (one whose columns all have length 1 and are mutually perpendicular, so every direction gets an equal-sized push) before stepping; the commonly cited figure is about 2× the compute-efficiency of AdamW (Moonshot, "Muon is Scalable", 2025; the 2026 study at https://arxiv.org/abs/2607.20548 reports it matching or beating AdamW on hybrid MoE models up to 3T tokens). `llm/optim.py` contains a from-scratch Muon; Chapter 10 uses it. Everything in this chapter still applies: Muon is one more way to turn a gradient into a step.
 
 ### Learning rate: the one knob you must get right
 
@@ -98,11 +98,11 @@ On `loss = y²` each gradient step multiplies `y` by `(1 − 2·lr)`. At lr = 0.
 
 ![Three learning rates on y²: too low creeps, about right converges, too high diverges](../figures/generated/lab04_learning_rate.png)
 
-Real losses are not this clean, but the pattern is the same: too low wastes compute, too high diverges, and the safe window depends on the curvature of the loss, which changes during training. That is why real runs use a **learning-rate schedule** — warm up from zero so the first noisy steps are small, hold, then decay (`llm.optim.lr_at`, Chapter 10).
+Real losses are not this clean, but the pattern is the same: too low wastes compute, too high diverges, and the safe window depends on the curvature of the loss (how quickly the slope itself changes; 2 for `y²`), which changes during training. That is why real runs use a **learning-rate schedule** — warm up from zero so the first noisy steps are small, hold, then decay (`llm.optim.lr_at`, Chapter 10).
 
 ### Batch size
 
-The gradient on a minibatch of B examples is the average of B per-example gradients. Larger B means a less noisy estimate of the true gradient but more compute per step; smaller B means more steps per unit of compute but noisier ones. Language models in 2026 train on batches of millions of tokens; TinyLM uses 32 sequences × 128 tokens = 4,096 tokens per step. Chapter 9 gives the rule of thumb for choosing B.
+The gradient on a minibatch of B examples is the average of B per-example gradients. Larger B means a less noisy estimate of the true gradient but more compute per step; smaller B means more steps per unit of compute but noisier ones. Language models in 2026 train on batches of millions of tokens; TinyLM uses 32 sequences × 128 tokens = 4,096 tokens per step (Chapter 10's `TrainConfig`). Steps × tokens per step is the training-token budget *D* of Chapter 9.
 
 ### Overfitting and the validation split
 
@@ -123,7 +123,7 @@ from llm.microautograd import Value, MLP, sgd_step, train_xor
 
 ### A number that remembers how it was made
 
-`Value` wraps one float. Every arithmetic operation returns a new `Value` that remembers its parents and a closure that knows the local slope. Here is multiplication, the whole idea in twelve lines (from `llm/microautograd.py`):
+`Value` wraps one float. Every arithmetic operation returns a new `Value` that remembers its parents and a closure (a small inner function that keeps access to the variables around it) that knows the local slope. Here is multiplication, the whole idea in twelve lines (from `llm/microautograd.py`):
 
 ```python
 def __mul__(self, other):
@@ -225,7 +225,7 @@ from llm.optim import lr_at
 
 ## Worked example 🧪
 
-Run `python3 labs/lab04_autograd.py` (about 10 seconds) and then `--full` (about 10 seconds; longer XOR runs and more seeds). The lab has six sections; the excerpts below are its actual output.
+Run `python3 labs/lab04_autograd.py` (about 15 seconds) and then `--full` (about 25 seconds; longer XOR runs and more seeds). The lab has six sections; the excerpts below are its actual output.
 
 **Section 1 — one neuron.** The gradients match the figure and match PyTorch to floating-point precision:
 
@@ -249,13 +249,13 @@ Look at `w2`: its gradient is exactly 0 because `x2 = 0`. Look at `n` and `o`: t
 
 ```
   microautograd loss: step 0: 1.0429  step 25: 0.9611  step 50: 0.8747  step 100: 0.4770  step 199: 0.0049
-  200 steps in 0.26s (1.3 ms/step)
+  200 steps in 0.60s (3.0 ms/step)
   torch          loss: step 0: 1.0759  step 25: 0.9486  step 50: 0.8622  step 100: 0.5953  step 199: 0.0297
-  200 steps in 0.15s (0.7 ms/step)
+  200 steps in 0.36s (1.8 ms/step)
   torch predictions: [-0.89, 0.86, 0.85, -0.76]  targets: [-1.0, 1.0, 1.0, -1.0]
 ```
 
-Both curves have the same shape: a long plateau near loss 1 (the network outputs about 0 for everything) followed by a sudden drop once the hidden layer finds a useful bend. The two runs differ in their random initial weights, which is why the numbers are not identical. In `--full` mode (1,000 steps) both reach `0.0000` and the PyTorch predictions are `[-1.0, 1.0, 1.0, -1.0]`. Note the timing: the pure-Python engine is only about 2× slower than PyTorch at this size, because with 17 parameters the cost is Python overhead either way. At TinyLM's size PyTorch's tensor kernels are thousands of times faster.
+Both curves have the same shape: a long plateau near loss 1 (the network outputs about 0 for everything) followed by a sudden drop once the hidden layer finds a useful bend. The two runs differ in their random initial weights, which is why the numbers are not identical. In `--full` mode (1,000 steps) both reach `0.0000` and the PyTorch predictions are `[-1.0, 1.0, 1.0, -1.0]`. Note the timing (from a shared machine; yours will differ): the pure-Python engine is only about 2× slower than PyTorch at this size, because with 17 parameters the cost is Python overhead either way. At TinyLM's size PyTorch's tensor kernels are thousands of times faster.
 
 ![XOR loss for the 120-line engine and PyTorch](../figures/generated/lab04_xor_loss.png)
 
@@ -300,10 +300,10 @@ The lab ends with `8/8 checks passed`.
 2. **Break the engine.** Remove the `+=` in `__add__`'s `_backward` and replace it with `=`. Build `y = x + x` and call `y.backward()`. What does `x.grad` become, and what should it be?
 3. **Adam wins.** In Section 4 change Adam's learning rate to 0.5 and momentum's β to 0.95. Which reaches `loss < 1e-3` first now? Then start all three at `(−9, 0.1)` instead of `(−9, 3)` — why does SGD look so much worse?
 4. **Find the edge.** For `loss = y²` the divergence threshold is lr = 1.0. Change the landscape to `loss = 3y²` and find the new threshold by experiment, then derive it. (Hint: the step multiplies `y` by `1 − 2·3·lr`.)
-5. **Early stopping.** In Section 6 fit degree 15 with gradient descent instead of least squares (a few hundred steps of `sgd_step` on the coefficients) and print validation error every 20 steps. Does validation error go down and then up? Stopping at the minimum is called early stopping and is a form of regularisation.
+5. **Early stopping.** In Section 6 fit degree 15 with gradient descent instead of least squares (the closed-form fit the lab uses; a few hundred steps of `sgd_step` on the coefficients instead) and print validation error every 20 steps. Does validation error go down and then up? Stopping at the minimum is called early stopping and is a form of regularisation (any technique that limits overfitting).
 6. **Weight decay.** Add `p.data -= lr * 0.01 * p.data` to `sgd_step` and re-run XOR. Does it still converge? Print the sum of squared parameters with and without decay.
 
-🎛️ In `interactive/04_gradient_descent.html` you can pick a loss landscape, choose SGD, momentum or Adam, drag a learning-rate slider and drop a ball. Try the "valley" landscape with SGD at the largest learning rate that does not diverge, then switch to Adam at the same rate. The challenge asks you to find, for each optimizer, the learning rate at which the ball first escapes the landscape.
+🎛️ In `interactive/04_gradient_descent.html` you pick a landscape (a stretched bowl, the Rosenbrock "valley", or a saddle), choose SGD, momentum or Adam, set a learning rate, click anywhere on the map to drop a start point, and press Step or Run; each run keeps its colour so you can compare trajectories. The valley is the classic hard case: SGD either crawls or explodes, momentum overshoots, Adam adapts its step per coordinate. The Challenge: on the bowl with plain SGD, find a learning rate at which the ball diverges and the largest one at which it still converges, and explain why the threshold is so sharp (the answer is the same `|1 − lr·curvature| < 1` argument as Section 5); then, on the valley, find any optimizer and learning rate that reaches the minimum (1, 1) within 300 steps.
 
 ## Check yourself ✅
 
@@ -336,7 +336,7 @@ The model overfit: it has enough capacity to reproduce the training points (and 
 
 - Learning = repeat {forward, loss, backward, optimizer step}. Every stage of the LLM pipeline is this loop with a different loss.
 - A derivative is a slope; the gradient is one slope per parameter; the chain rule multiplies slopes along a path; backpropagation does that for every path at once by walking the computation graph backwards.
-- `llm/microautograd.py` is the whole idea in 120 lines; `torch.autograd` is the same idea on tensors.
+- `llm/microautograd.py` is the whole idea in under 200 lines; `torch.autograd` is the same idea on tensors.
 - Optimizers differ in what they do with the gradient: SGD steps along it, momentum averages it over time, Adam/AdamW also normalises each coordinate; Muon (2025–2026) orthogonalises whole matrices.
 - The learning rate must be neither too low (slow) nor too high (divergence); real runs use warmup and decay schedules.
 - Always hold out validation data and watch its loss; training loss alone will tell you to overfit.
@@ -354,4 +354,4 @@ The model overfit: it has enough capacity to reproduce the training points (and 
 
 ---
 
-← [Chapter 03](03-embeddings.md) · [Course home](../README.md) · [Chapter 05](05-attention.md) →
+← [Chapter 3](03-embeddings.md) · [Course home](../README.md) · [Chapter 5](05-attention.md) →

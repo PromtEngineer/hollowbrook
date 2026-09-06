@@ -12,6 +12,7 @@
 - **DPO** — direct preference optimization: shifting the policy toward preferred answers without a separate reward model (Ch. 00)
 - **reinforcement learning with verifiable rewards (RLVR)** — RL where the reward comes from an automatic checker (tests, answer keys); the recipe behind reasoning models (Ch. 00)
 - **reasoning model** — a model trained with RLVR to produce intermediate steps before its answer (Ch. 00)
+- **agentic model** — a model post-trained with agentic RL to act over many steps with tools inside a harness (Ch. 00)
 - **on-policy distillation** — transferring a teacher's skills to a student by having the student sample and the teacher grade each token (Ch. 00)
 - **agentic RL** — RL over multi-turn interactions with tools and environments (Ch. 00)
 - **safety training** — post-training that shapes refusals, honesty and behaviour under autonomy (Ch. 00)
@@ -19,3 +20,5 @@
 - **agent harness** — the program around a model that supplies tools, manages context, enforces permissions and loops until a task is done (Ch. 00)
 - **Storyland** — the course's synthetic corpus: templated stories about a fixed cast plus two-digit arithmetic and Q&A (Ch. 00)
 - **TinyLM** — the decoder-only Transformer you build and train through every stage of the course (Ch. 00)
+- **checkpoint** — a model's weights saved to disk at some point in training; base, instruct and reasoning models are checkpoints at different depths of the pipeline (Ch. 00)
+- **logits** — the raw scores a model outputs, one per vocabulary entry per position; softmax turns them into probabilities (Ch. 00)

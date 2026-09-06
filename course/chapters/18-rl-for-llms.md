@@ -60,7 +60,7 @@ An analogy: REINFORCE is a coach who watches an athlete attempt a routine, hears
 
 ## The idea in code
 
-The library file is `llm/rl.py` (Chapter 18 uses its first 200 lines). Imports for this chapter:
+The library file is `llm/rl.py` (Chapter 18 uses its first 210 lines). Imports for this chapter:
 
 ```python
 import torch
@@ -111,7 +111,7 @@ print(ids.shape)                                                              # 
 logps = token_logprobs(model, ids)                                            # (4, 66), gradients flow
 mask = response_mask(ids, len(prompt_ids), pad_id, end_id)                    # (4, 66), 1.0 on answer tokens
 print(mask.sum(-1))                                                           # tensor([8., 8., 12., 8.]): "a + b = c" + <|end|>, one ran to the limit
-print((logps * mask).sum(-1))                                                 # tensor([-6.37, -5.75, -45.30, -8.83]) = log π(answer)
+print((logps * mask).sum(-1))                                                 # tensor([-5.98, -1.37, -44.89, -10.10]) = log π(answer)
 ```
 
 The shift by one is the usual next-token alignment: position t−1 of `logps` scores token t of `ids`. The mask includes `<|end|>` because the model must learn to stop.
@@ -125,13 +125,15 @@ $$\mathcal{L}_{\text{REINFORCE}} = -\frac{1}{B}\sum_{b=1}^{B} (R_b - b)\sum_t \t
 Read this as: "for each sampled answer, add up its tokens' log-probabilities, multiply by how much better than the baseline its reward was, and minimise the negative of the batch mean." Minimising this with gradient descent is the same as ascending the policy gradient.
 
 ```python
-rewards = torch.tensor([tasks.verify(ex, tok.decode(rl.split_completion(r, len(prompt_ids), pad_id, end_id)))
-                        for r in ids.tolist()])                               # tensor([0., 0., 0., 0.]) for this seed
-loss = reinforce_loss(logps, mask, rewards, baseline=rewards.mean())         # tensor(-0.) : all rewards equal -> A = 0
-loss.backward()                                                               # every gradient is exactly zero
+answers = [tok.decode(rl.split_completion(r, len(prompt_ids), pad_id, end_id)) for r in ids.tolist()]
+print(answers)                            # ['2 + 9 = 10', '2 + 8 = 10', 'y and rope orange cake ...', '1 + 7 = 13']
+rewards = torch.tensor([tasks.verify(ex, a) for a in answers])               # tensor([1., 1., 0., 0.])
+loss = reinforce_loss(logps, mask, rewards, baseline=rewards.mean())         # tensor(-5.96): A = [+.5, +.5, -.5, -.5]
+loss.backward()                                                               # pushes answers 0 and 1 up, 2 and 3 down
+print([tasks.strict_verify(ex, a) for a in answers])                          # [0.0, 1.0, 0.0, 0.0]
 ```
 
-For this seed the four samples were `'2 + 9 = 13'`, `'2 + 6 = 9'`, a 12-token ramble and `'1 + 7 = 13'`, all wrong, so every advantage is 0 and the step teaches nothing. A batch with no variation in reward carries no information about *which* answers are better; Chapter 19's dynamic sampling exists to skip such batches rather than spend an update on them.
+The prompt was "What is 2 + 8?". Two of the four samples are rewarded, so with the batch-mean baseline of 0.5 the two correct answers get advantage +0.5 and the two wrong ones −0.5, and the loss is the advantage-weighted sum of the four log-probabilities: −0.5·(−5.98 − 1.37) + 0.5·(−44.89 − 10.10), divided by 4. Look at the first rewarded answer, though: `'2 + 9 = 10'` misquotes the question. `tasks.verify` grades only the last number, so it pays 1.0 for it, and REINFORCE will now push that string up as hard as the genuine `'2 + 8 = 10'`. `tasks.strict_verify` also requires the restated operands to match the question and rejects it. Which grader you plug in *is* the reward function, and the lab below shows the policy learning to exploit the lenient one. One more thing to notice: had all four samples been wrong (as they are for other seeds), every advantage would be 0, the loss exactly 0 and the step would teach nothing. A batch with no variation in reward carries no information about *which* answers are better; Chapter 19's dynamic sampling exists to skip such batches rather than spend an update on them.
 
 Why is subtracting a baseline allowed? Because the expected value of b·∇log π_θ(y) is zero for any constant b:
 

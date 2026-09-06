@@ -87,7 +87,7 @@ out = offline_distill(student, teacher, tok, examples, n_samples=4, sft_steps_n=
 print(out["keep_rate"], len(out["sft_losses"]))   # fraction of teacher samples that were correct; 50 losses
 ```
 
-`offline_distill` does the three steps in ten lines: `sample_group` from the teacher, `tasks.verify` to reject, then `sft_steps` (a compact copy of `sft_train`) on the kept conversations. Two things to notice. If the teacher's keep rate is low, most of the sampling budget is wasted, and the student still never trains on its own mistakes.
+`offline_distill` does the three steps in ten lines: `sample_group` from the teacher, `tasks.verify` to reject, then `sft_steps` (a compact copy of `sft_train`, with the same warmup-then-cosine learning-rate schedule from `llm.optim.lr_at`) on the kept conversations. Two things to notice. If the teacher's keep rate is low, most of the sampling budget is wasted, and the student still never trains on its own mistakes.
 
 ### Recipe 3: on-policy distillation
 
@@ -114,11 +114,14 @@ with torch.no_grad():
     logp_t = token_logprobs(teacher, ids)        # (N, T-1) the teacher grades
 logp_s = token_logprobs(student, ids)            # (N, T-1) the student, with gradient
 adv = (logp_t - logp_s).detach()                 # (N, T-1) per-token advantage
+adv = adv.clamp(-cfg.adv_clip, cfg.adv_clip)     # OPDConfig.adv_clip = 5.0 nats (see below)
 loss = -masked_mean(adv * logp_s, mask)          # scalar
-reverse_kl = masked_mean(-adv, mask)             # what the run reports
+reverse_kl = masked_mean(-adv, mask)             # what the run reports (unclipped)
 ```
 
-Three properties follow directly from this code. **Dense signal**: `adv` has one entry per generated token, against one entry per *answer* in GRPO. **No verifier**: nothing in the step checks whether the answer is right; the teacher's log-probabilities are the only supervision, so OPD works on tasks with no checkable answer. **Cheap teacher**: the teacher does one forward pass over text the student already produced, never a decode loop, so a teacher ten times the student's size costs roughly one student-sized training step of extra compute per batch rather than ten decode passes. The price is the one property GRPO does not have: the student can only become as good as the teacher, and it will copy the teacher's mistakes.
+The `clamp` is a practical detail with a lesson in it. A confident teacher can assign a wrong token a log-probability of −13 while the student gave it −5, an advantage of −8 nats; one such token then outweighs the dozens of small positive advantages in the batch, and the update becomes a noisy lurch driven by a handful of tokens. `OPDConfig.adv_clip = 5.0` caps every per-token advantage at ±5 nats before it multiplies the gradient (the reported reverse KL uses the unclipped values, so the curve you read is the true divergence). This is the same reasoning as PPO's clip in Chapter 18, applied to the advantage rather than the ratio.
+
+Three properties follow directly from this code. *Dense signal*: `adv` has one entry per generated token, against one entry per *answer* in GRPO. *No verifier*: nothing in the step checks whether the answer is right; the teacher's log-probabilities are the only supervision, so OPD works on tasks with no checkable answer. *Cheap teacher*: the teacher does one forward pass over text the student already produced, never a decode loop, so a teacher ten times the student's size costs roughly one student-sized training step of extra compute per batch rather than ten decode passes. The price is the one property GRPO does not have: the student can only become as good as the teacher, and it will copy the teacher's mistakes.
 
 Running it is one call:
 
@@ -235,7 +238,7 @@ Three findings, all from 2026, with the level of evidence stated.
 3. **Break the teacher.** Run `opd_train` with `teacher = student` (a copy). What does the reverse-KL curve do? Then use `base_small.pt` (the *base*, not SFT) as teacher. Does accuracy rise?
 4. **Compute accounting.** Count forward passes per step for `on_policy_distill_step` (student sampling, teacher scoring, student scoring) and for `grpo_step` with the same group size. Which is cheaper, and what changes if the teacher is 10× the student's size?
 5. **Two-stage recipe.** Run `offline_distill` for 100 SFT steps and then `opd_train` for 20 steps, and compare with 40 steps of OPD alone at the same wall-clock. The lab's `--full` mode prints the numbers you need to check your prediction.
-6. **Interactive** 🎛️: in `interactive/19_grpo_simulator.html`, set every rollout's reward to the same value and watch the advantages vanish; then imagine each token having its own reward, as in OPD. Which of the simulator's failure modes (all-equal groups, entropy collapse) can OPD not have, and which can it still have?
+6. **Interactive** 🎛️: in `interactive/19_grpo_simulator.html`, slide P(correct) to 0.9 and resample until every rollout has the same reward and the advantages vanish; then imagine each token having its own reward, as in OPD. Which of the simulator's failure modes (all-equal groups, entropy collapse) can OPD not have, and which can it still have?
 
 ## Check yourself ✅
 

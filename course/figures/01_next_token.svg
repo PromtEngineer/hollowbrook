@@ -49,17 +49,17 @@
 <text x="400" y="264" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="end">kite</text>
 <rect x="408" y="252" width="2" height="16" fill="#dc2626" fill-opacity="0.8"/>
 <text x="414.0" y="264" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">≈ 0 (never seen in training)</text>
-<text x="400" y="285" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="end">… 380 more</text>
+<text x="400" y="285" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="end">black, white</text>
 <rect x="408" y="273" width="252.0" height="16" fill="#f59e0b" fill-opacity="0.8"/>
-<text x="666.0" y="285" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">0.18 (all the rest, together)</text>
+<text x="666.0" y="285" font-size="11" fill="#0f172a" font-weight="normal" text-anchor="start">0.18 together (the other 378 tokens: ≈ 0)</text>
 <text x="330" y="304" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">All bars add up to 1.0: it is a probability distribution over the vocabulary.</text>
 <text x="330" y="319" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">Sampling = pick a bar at random, in proportion to its length.</text>
 <line x1="20" y1="338" x2="880" y2="338" stroke="#64748b" stroke-width="0.8"/>
 <text x="20" y="356" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="start">C. The chain rule: the probability of a whole sentence is a product of next-token probabilities</text>
 <text x="20" y="382" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">P(Mia had a red kite .) = P(Mia) · P(had | Mia) · P(a | Mia had) · P(red | Mia had a)</text>
-<text x="196" y="400" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">· P(kite | Mia had a red) · P(. | Mia had a red kite)</text>
-<text x="20" y="426" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">Storyland trigram (Lab 1):  0.028 · 0.157 · 0.971 · 0.110 · 0.026 · 0.456  ≈  5.5 × 10⁻⁶</text>
-<text x="20" y="444" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">= 21 bits of surprise in total = 3.0 bits per token  →  perplexity 2^3.0 ≈ 8 (as if choosing among 8 equally likely tokens each step)</text>
+<text x="196" y="400" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">· P(kite | Mia had a red) · P(. | Mia had a red kite) · P(&lt;/s&gt; | Mia had a red kite .)</text>
+<text x="20" y="426" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">Storyland trigram (Lab 1):  0.028 · 0.157 · 0.971 · 0.110 · 0.026 · 0.456 · 0.084 (for &lt;/s&gt;)  ≈  4.6 × 10⁻⁷</text>
+<text x="20" y="444" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start" font-family="ui-monospace, monospace">= 21 bits of surprise over 7 tokens = 3.0 bits/token  →  perplexity 2^3.0 ≈ 8 (like choosing among 8 equally likely tokens at each step)</text>
 <text x="20" y="470" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">Read this as: to score a sentence, walk left to right and at each step ask &#x27;how likely was THIS token given everything before it?&#x27;, then multiply.</text>
 <text x="20" y="485" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">Every LLM, from a bigram to a trillion-parameter model, is a better and better estimate of each factor P(next | context).</text>
 </svg>

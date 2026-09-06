@@ -1,4 +1,4 @@
-# Chapter 03: Embeddings — words as vectors
+# Chapter 3: Embeddings — words as vectors
 
 **Part I · ~1.5 hours · Prerequisites: Chapters 1, 2**
 
@@ -7,7 +7,7 @@
 
 ## Why this matters
 
-Chapter 2 turned text into integers: in the course tokenizer `" red"` is 504, `" blue"` is 480 and `" Mia"` is 359. Those integers are labels, not quantities — 504 is not "closer" to 480 than to 359 in any sense that matters, and a model that did arithmetic on them would be learning from noise. A language model needs a representation in which *similar things are near each other* and in which arithmetic is meaningful, because everything that follows (attention in Chapter 5, the Transformer block in Chapter 6) is arithmetic. That representation is the **embedding**: a table that maps each token id to a list of `d` numbers, learned along with the rest of the model. This chapter shows what the table is, how to measure "near", and what a trained TinyLM's table looks like. The headline: after a minute of training on Storyland, nobody told the model that `" red"` is a colour, yet its five nearest tokens are `" orange"`, `" purple"`, `" green"`, `" white"` and `" black"`, and `" Mia"`'s neighbours are all names.
+Chapter 2 turned text into integers: in the course tokenizer `" red"` is 504, `" blue"` is 480 and `" Mia"` is 359. Those integers are labels, not quantities — 504 is not "closer" to 480 than to 359 in any sense that matters, and a model that did arithmetic on them would be learning from noise. A language model needs a representation in which *similar things are near each other* and in which arithmetic is meaningful, because everything that follows (attention in Chapter 5, the Transformer block in Chapter 6) is arithmetic. That representation is the **embedding**: a table that maps each token id to a list of `d` numbers, learned along with the rest of the model. This chapter shows what the table is, how to measure "near", and what a trained TinyLM's table looks like. The headline: after a minute of training on Storyland, nobody told the model that `" red"` is a colour, yet its five nearest tokens are `" purple"`, `" blue"`, `" white"`, `" orange"` and `" black"`, and `" Mia"`'s neighbours are all names.
 
 ## The idea in pictures 📐
 
@@ -43,7 +43,7 @@ Read this as: "the dot product divided by both lengths — the cosine of the ang
 | `a` vs `c = (4, −3)` (right angle) | 0 | 0.00 |
 | `a` vs `−a` | −25 | −1.00 |
 
-The dot product is the single most common operation in a Transformer: attention scores (Chapter 5) are dot products between queries and keys, and the model's output logits are dot products between a hidden state and the embedding rows (below).
+The dot product is the single most common operation in a Transformer: attention scores (Chapter 5) are dot products between queries and keys, and the model's output **logits** (the raw, un-normalised score for each possible next token, which `softmax` turns into probabilities; Chapter 0) are dot products between a hidden state and the embedding rows (below).
 
 ### Where the vectors come from: they are learned
 
@@ -62,11 +62,11 @@ flowchart LR
     L --> S["softmax → probability<br/>of each next token"]
 ```
 
-The input side looks up a row of `E`. The output side computes a score for every possible next token — and in TinyLM (and GPT-2, Gemma, and most small models) that score is the dot product of the hidden state with the *same* row of `E`. This is **tied embeddings** (weight tying): `model.lm_head.weight` and `model.embed.weight` are one tensor. It saves `V × d` parameters (167,232 for TinyLM small — 7% of the model; over a billion for a 128k-vocabulary model), and it forces the input and output spaces to agree: a hidden state that "means red" is close to the row for `" red"`, so it produces a high logit for `" red"`. The largest models often untie the two matrices because at their scale the parameter saving is negligible and separate matrices give a little extra capacity; whether to tie is a size-dependent engineering choice, not a settled rule.
+The input side looks up a row of `E`. The Transformer blocks turn that row into the **hidden state** `h`, a vector of `d` numbers that summarises the position and its context. The output side computes a score for every possible next token — and in TinyLM (and GPT-2, Gemma, and most small models) that score is the dot product of the hidden state with the *same* row of `E`. This is **tied embeddings** (weight tying): `model.lm_head.weight` and `model.embed.weight` are one tensor. It saves `V × d` parameters (167,232 for TinyLM small — 7% of the model; over a billion for a 128k-vocabulary model), and it forces the input and output spaces to agree: a hidden state that "means red" is close to the row for `" red"`, so it produces a high logit for `" red"`. The largest models often untie the two matrices because at their scale the parameter saving is negligible and separate matrices give a little extra capacity; whether to tie is a size-dependent engineering choice, not a settled rule.
 
 ### Seeing 96 dimensions in two
 
-To draw the space we need to throw away dimensions. **Principal component analysis (PCA)** finds the two directions along which a set of points is most spread out and projects every point onto them. The lab does it with a singular value decomposition in numpy — no library needed — and reports how much of the total spread the two directions capture (46% for the small model in the figure below, 61% for the nano model — faithful, but not complete).
+To draw the space we need to throw away dimensions. **Principal component analysis (PCA)** finds the two directions along which a set of points is most spread out and projects every point onto them. The lab does it with a singular value decomposition (SVD, a standard matrix factorisation that numpy provides; only the two lines that use it matter here) — no extra library needed — and reports how much of the total spread the two directions capture (46% for the small model in the figure below, 61% for the nano model — faithful, but not complete).
 
 ![PCA of the small model's embeddings (the figure on disk is from whichever mode you ran last): colours, names, numbers and animals form separate clusters](../figures/generated/lab03_pca.png)
 
@@ -112,7 +112,7 @@ def neighbours(word, k=5):
     top = sims.topk(k)
     return [(tok.token_str(j), round(s, 2)) for s, j in zip(top.values.tolist(), top.indices.tolist())]
 
-neighbours(" red")   # [(' orange', 0.94), (' purple', 0.94), (' green', 0.93), (' white', 0.93), (' black', 0.93)]
+neighbours(" red")   # [(' purple', 0.95), (' blue', 0.95), (' white', 0.94), (' orange', 0.94), (' black', 0.93)]
 ```
 
 `F.normalize` turns every row into a unit vector, so one matrix–vector product gives the cosine of `" red"` with all 871 tokens at once. (The lab additionally skips control bytes and special tokens as candidates.)
@@ -150,7 +150,7 @@ assert torch.allclose(logits[0, -1], manual, atol=1e-4)      # logit for token t
 
 ## Worked example 🧪
 
-Run `python3 labs/lab03_embeddings.py` (quick mode: the nano base model, `runs/base_nano.pt`; a few seconds if the checkpoint exists, about a minute if it has to train one) and then `--full` (the small base model, `runs/base_small.pt`; 5–10 minutes if it has to train one). If another lab is already training the checkpoint, the lab waits for it (polling every 30 s for up to 10 minutes) rather than training a duplicate. The excerpts below are real output.
+Run `python3 labs/lab03_embeddings.py` (quick mode: the nano base model, `runs/base_nano.pt`; a few seconds if the checkpoint exists, about a minute if it has to train one) and then `--full` (the small base model, `runs/base_small.pt`; 5–10 minutes if it has to train one). If another lab is already training the checkpoint, the lab waits for it (polling every 30 s for up to 10 minutes) rather than training a duplicate. The excerpts below are real output from the checkpoints in `runs/`; if you retrain a base model, the exact cosines and orderings will shift (the *pattern* will not).
 
 **Section 1 — the lookup.**
 
@@ -166,47 +166,47 @@ a one-hot vector stores 871 numbers per token (all but one zero); the embedding 
 
 ```
 model: 3 layers, d_model=96, vocab=871; embedding matrix (871, 96) = 83,616 parameters (22% of the model)
-E[' red'][:6] = [0.023, -0.079, 0.085, -0.118, -0.001, 0.081] ...
-row norms: mean 0.710, min 0.513, max 0.946
+E[' red'][:6] = [-0.007, 0.012, -0.08, -0.074, -0.051, 0.096] ...
+row norms: mean 0.699, min 0.520, max 0.950
 
 nearest neighbours (cosine) in the TRAINED embedding matrix:
-  ' red'     -> ' orange' 0.94, ' purple' 0.94, ' green' 0.93, ' white' 0.93, ' black' 0.93
-  ' kite'    -> ' map' 0.94, ' pear' 0.94, ' drum' 0.93, ' key' 0.93, ' cup' 0.92
-  ' Mia'     -> ' Tom' 0.95, ' Finn' 0.94, ' Max' 0.94, ' Ella' 0.94, ' Leo' 0.93
-  '7'        -> '65' 0.93, '19' 0.92, '81' 0.92, '89' 0.92, '2' 0.92
-  ' three'   -> ',' 0.44, ' two' 0.41, ' were' 0.33, ' on' 0.22, ':' 0.20
+  ' red'     -> ' purple' 0.95, ' blue' 0.95, ' white' 0.94, ' orange' 0.94, ' black' 0.93
+  ' kite'    -> ' lamp' 0.93, ' ring' 0.92, ' drum' 0.92, ' boat' 0.92, ' shell' 0.92
+  ' Mia'     -> ' Ruby' 0.93, ' Finn' 0.92, ' Lily' 0.91, ' Sam' 0.91, ' Ava' 0.91
+  '7'        -> '77' 0.94, '22' 0.93, '48' 0.93, '60' 0.92, '62' 0.92
+  ' three'   -> ' two' 0.45, ' were' 0.43, ',' 0.28, ' down' 0.24, '!' 0.19
 (note: ' 7' is two tokens in this tokenizer — ' ' and '7' — so we probe the digit '7')
 
 for contrast, neighbours of ' red' in an UNTRAINED model:
   ' k' 0.36, ' O' 0.29, '196' 0.28, ' pro' 0.26, ' sit' 0.26
 ```
 
-Three things to look at. First, the categories: colours near colours, objects near objects, names near names, numbers near numbers, with cosines above 0.9. Second, the *untrained* model: the same code on random rows gives arbitrary neighbours with cosines around 0.3 — the structure is entirely learned. Third, `" three"`: its neighbours are a comma and `" two"`, because in Storyland the word only occurs inside "one, two, three", so the company it keeps is punctuation. An embedding is a summary of the contexts a token was seen in; it cannot know more than the data showed it. Note also the tokenizer detail: `" 7"` is not one token (numbers were pre-tokenized separately from the space in Chapter 2), so the lab probes the digit `"7"` — which sits with other numbers from the arithmetic documents.
+Three things to look at. First, the categories: colours near colours, objects near objects, names near names, numbers near numbers, with cosines above 0.9. Second, the *untrained* model: the same code on random rows gives arbitrary neighbours with cosines around 0.3 — the structure is entirely learned. Third, `" three"`: its neighbours are `" two"`, `" were"` and a comma, because in Storyland the word only occurs in "one, two, three. There were three ...", so the company it keeps is that one template. An embedding is a summary of the contexts a token was seen in; it cannot know more than the data showed it. Note also the tokenizer detail: `" 7"` is not one token (numbers were pre-tokenized separately from the space in Chapter 2), so the lab probes the digit `"7"` — which sits with other numbers from the arithmetic documents.
 
 **Section 4 — group structure.** The mean cosine between every pair of categories (nano model):
 
 ```
 mean cosine between groups (rows/cols: colour, name, object, animal, number):
-  colour    0.92  -0.32   0.37   0.03  -0.06
-  name     -0.32   0.92  -0.29  -0.06  -0.23
-  object    0.37  -0.29   0.83  -0.11  -0.06
-  animal    0.03  -0.06  -0.11   0.92   0.14
-  number   -0.06  -0.23  -0.06   0.14   0.48
-mean within-group cosine 0.817 vs across-group -0.058
+  colour    0.92  -0.11   0.35  -0.12  -0.06
+  name     -0.11   0.91  -0.31  -0.07  -0.24
+  object    0.35  -0.31   0.83  -0.05  -0.07
+  animal   -0.12  -0.07  -0.05   0.93   0.10
+  number   -0.06  -0.24  -0.07   0.10   0.47
+mean within-group cosine 0.812 vs across-group -0.057
 ✅ tokens are closer to their own category than to others
 ```
 
-Within-group cosines of 0.92 are remarkably high: the nano model has learned that colours are interchangeable, which in Storyland they are. Colours and objects are mildly similar (0.37) — both appear as "a {colour} {object}"; colours and names are *anti*-correlated (−0.32) — they never appear in the same slot.
+Within-group cosines of 0.92 are remarkably high: the nano model has learned that colours are interchangeable, which in Storyland they are. Colours and objects are mildly similar (0.35) — both appear as "a {colour} {object}"; names and objects are *anti*-correlated (−0.31) — they never fill the same slot.
 
-**Section 5 — PCA.** `top-2 principal axes explain 37% + 24% = 61% of the variance in 96 dimensions`, and the figure above.
+**Section 5 — PCA.** `top-2 principal axes explain 34% + 27% = 61% of the variance in 96 dimensions`, and the figure above.
 
 **Section 6 — tied embeddings.**
 
 ```
 ✅ model.lm_head.weight IS model.embed.weight (one tensor, two jobs)
-logits shape (1, 3, 871); max |logits - h·Eᵀ| = 4.8e-07
+logits shape (1, 3, 871); max |logits - h·Eᵀ| = 9.5e-07
 ✅ next-token logits = hidden state · embedding rows
-after 'Mia had a', top next tokens: ' blue' 0.11, ' orange' 0.11, ' pink' 0.10, ' white' 0.09, ' red' 0.09
+after 'Mia had a', top next tokens: ' orange' 0.12, ' blue' 0.11, ' pink' 0.10, ' white' 0.09, ' red' 0.09
 parameters: tied 379,200 vs untied 462,816 -> tying saves 83,616 (= V x d = 871 x 96)
 ```
 
@@ -238,7 +238,7 @@ after 'Mia had a', top next tokens: ' blue' 0.11, ' brown' 0.11, ' red' 0.11, ' 
 parameters: tied 2,529,024 vs untied 2,696,256 -> tying saves 167,232 (= V x d = 871 x 192)
 ```
 
-The categories are the same, but the bigger model, trained longer, keeps its names *apart*: the within-name cosine drops from 0.92 (nano) to 0.47, and `" Mia"`'s nearest name is only 0.60 away. Colours and animals stay near-interchangeable (0.91, 0.90) because Storyland never distinguishes them, while names appear in more varied slots (subject, object, possessive `Mia's`) and the Q&A lines ask *which* name did what, so telling names apart pays off in the loss. The embedding matrix has also spread out: row norms now range from 0.50 to 2.34 (mean 1.56) against a mean of 0.71 in the nano model, and two principal axes capture only 46% of the variance instead of 61% — the extra dimensions are being used. This is a preview of a theme that recurs through the course: what a model learns is exactly what the data rewards, and more capacity is spent where the loss cares.
+The categories are the same, but the bigger model, trained longer, keeps its names *apart*: the within-name cosine drops from 0.91 (nano) to 0.47, and `" Mia"`'s nearest name is only 0.60 away. Colours and animals stay near-interchangeable (0.91, 0.90) because Storyland never distinguishes them, while names appear in more varied slots (subject, object, possessive `Mia's`) and the Q&A lines ask *which* name did what, so telling names apart pays off in the loss. The embedding matrix has also spread out: row norms now range from 0.50 to 2.34 (mean 1.56) against a mean of 0.70 in the nano model, and two principal axes capture only 46% of the variance instead of 61% — the extra dimensions are being used. This is a preview of a theme that recurs through the course: what a model learns is exactly what the data rewards, and more capacity is spent where the loss cares.
 
 
 The lab ends with `8/8 checks passed`.
@@ -252,7 +252,7 @@ The lab ends with `8/8 checks passed`.
 5. **Dimension.** Train a nano model with `d_model=32` (Chapter 10's `train()`; about a minute) and compare the within-/across-group table. Does a narrower embedding still separate the categories?
 6. **Untie.** Build `TinyLM(preset("nano", vocab_size=tok.vocab_size, tie_embeddings=False))`, confirm `num_params` grows by `V × d`, and train it for the same 150 steps as the quick base model. Compare final validation loss with the tied model. (Expect a small difference in either direction; the point is to see the size of the effect.)
 
-🎛️ In `interactive/03_vector_playground.html` you drag two 2-D arrows and watch their dot product, lengths and cosine update live, then switch to a panel of real TinyLM embeddings projected to 2-D. Try dragging one arrow to twice its length and note that the dot product doubles while the cosine does not move; then rotate it until the cosine reads 0 and check the angle. The challenge asks you to place three arrows so that every pair has cosine −0.5.
+🎛️ In `interactive/03_vector_playground.html` you drag the tips of two 2-D arrows **a** and **b** and watch their dot product, lengths and cosine update live. Make them point the same way, opposite ways and at right angles, and notice that the dot product changes sign while the cosine stays between −1 and 1; drag one arrow to twice its length and note that the dot product doubles while the cosine does not move. The word panel below does 2-D word arithmetic: compute *two − one + three* and check which word is the nearest neighbour of the result. The Challenge asks you to make **a** and **b** orthogonal (dot product 0) without making either the zero vector, in two different ways, and to say why an embedding model might want two unrelated words to end up like that.
 
 ## Check yourself ✅
 
@@ -302,4 +302,4 @@ Because their contexts differ: the number words appear only in the counting temp
 
 ---
 
-← [Chapter 02](02-tokenization.md) · [Course home](../README.md) · [Chapter 04](04-how-networks-learn.md) →
+← [Chapter 2](02-tokenization.md) · [Course home](../README.md) · [Chapter 4](04-how-networks-learn.md) →

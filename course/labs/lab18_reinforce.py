@@ -184,11 +184,14 @@ for step in range(RL_STEPS):
     if step % max(1, RL_STEPS // 6) == 0 or step == RL_STEPS - 1:
         print(f"   step {step:3d} | mean reward {r_mean:.3f} | log pi(reference answer) {lp:6.2f} | grad norm {gnorm:.2f} | {time.perf_counter() - t0:.0f}s")
 first, last = np.mean(hist_r[:3]), np.mean(hist_r[-3:])
-rewarded = [tok.decode(rl.split_completion(r, P, pad_id, end_id)) for ids_, P, _, rw in batch for r, x in zip(ids_.tolist(), rw.tolist()) if x > 0]
+rewarded = [(ex, tok.decode(rl.split_completion(r, P, pad_id, end_id)))
+            for ex, (ids_, P, _, rw) in zip(rl_prompts, batch) for r, x in zip(ids_.tolist(), rw.tolist()) if x > 0]
+n_strict = sum(tasks.strict_verify(ex, c) for ex, c in rewarded)
 print(f"   mean reward, first 3 steps {first:.3f} -> last 3 steps {last:.3f}; log pi(reference answer) {lp0:.2f} -> {hist_lp[-1]:.2f}")
-print(f"   rewarded samples in the last batch (what REINFORCE actually pushed up): {rewarded[:5]}")
-print("   note: the verifier grades only the last number, so 'a + b' can be misquoted and still be rewarded; RL raises the")
-print("         probability of ITS OWN rewarded samples, which need not be the reference string")
+print(f"   rewarded samples in the last batch (what REINFORCE actually pushed up): {[c for _, c in rewarded[:5]]}")
+print(f"   of the {len(rewarded)} rewarded samples, tasks.strict_verify (operands must match the question) accepts {int(n_strict)}")
+print("   note: tasks.verify grades only the last number, so 'a + b' can be misquoted and still be rewarded; RL raises the")
+print("         probability of ITS OWN rewarded samples, which need not be the reference string (strict_verify closes that hole)")
 check(last >= first, "the sampled reward on the training prompts went up (noisy: 48 samples per step)")
 check(all(np.isfinite(hist_lp)) and all(np.isfinite(hist_r)), "every step produced finite log-probs and rewards")
 

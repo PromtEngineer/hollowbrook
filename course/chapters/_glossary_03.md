@@ -8,3 +8,5 @@
 - **norm** — the length of a vector, the square root of its dot product with itself (Ch. 03)
 - **tied embeddings** — using the embedding matrix as the output projection too, so logits are dot products with token rows; saves V × d parameters (Ch. 03)
 - **principal component analysis (PCA)** — projecting points onto the directions of greatest spread, used to draw high-dimensional vectors in 2-D (Ch. 03)
+- **logits** — the raw, un-normalised score for each possible next token; in TinyLM the dot product of the hidden state with each embedding row (Ch. 03)
+- **hidden state** — the d-dimensional vector the Transformer blocks produce for a position, summarising it and its context; the input to the output layer (Ch. 03)

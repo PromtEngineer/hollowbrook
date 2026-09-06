@@ -43,7 +43,7 @@ An analogy: GRPO grades on a curve, per question. A student's mark on a question
 
 ## The idea in code
 
-The library file is `llm/rl.py`, lines 211–445. Imports for this chapter:
+The library file is `llm/rl.py`, lines 211–447. Imports for this chapter:
 
 ```python
 import torch
@@ -136,7 +136,7 @@ The failure modes these address have names. **Entropy collapse** is the policy's
 
 ### Step 7: test-time compute 🆕
 
-RLVR made models better at *one* sample. A second axis is to spend more compute at inference: sample several answers and combine them. **Majority voting** (also *self-consistency*) extracts the final answer from each sample and returns the most common one; it needs no verifier and is the cheapest form of **test-time compute**. **Best-of-N** with a verifier returns any correct sample and is an upper bound (pass@N) that only a perfect grader reaches. The 2025–2026 work on **parallel thinking** trains the model to produce several reasoning paths in one pass and merge them (ParaThinker, 2025; parallel test-time scaling for latent reasoning, ACL 2026; Fork-Think with Confidence, 2026), and reports that at an equal token budget several short chains with voting beat one long chain, which is the "wider, not longer" lesson. The lab measures majority-vote and pass@N accuracy against N for the SFT model and the GRPO'd model, and the two curves together answer Step 8's question at toy scale.
+RLVR made models better at *one* sample. A second axis is to spend more compute at inference: sample several answers and combine them. **Majority voting** (also *self-consistency*) extracts the final answer from each sample and returns the most common one; it needs no verifier and is the cheapest form of **test-time compute**. Best-of-N (Chapter 17) with a verifier returns any correct sample and is an upper bound (pass@N) that only a perfect grader reaches. The 2025–2026 work on **parallel thinking** trains the model to produce several reasoning paths in one pass and merge them (ParaThinker, 2025; parallel test-time scaling for latent reasoning, ACL 2026; Fork-Think with Confidence, 2026), and reports that at an equal token budget several short chains with voting beat one long chain, which is the "wider, not longer" lesson. The lab measures majority-vote and pass@N accuracy against N for the SFT model and the GRPO'd model, and the two curves together answer Step 8's question at toy scale.
 
 ### Step 8: what RLVR does and does not teach (open)
 
