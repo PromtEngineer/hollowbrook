@@ -101,19 +101,17 @@ def log(call: ToolCall, result: str) -> None:
                                             "args": call.arguments, "result": result[:200]}))
 ```
 
-The first is the rule that the plan is the human's contract; the second is observability. Adding your own is a subclass away, and the lab adds one that refuses edits under `tests/`, because the cheapest way to make a failing test pass is to delete it:
+The first is the rule that the plan is the human's contract; the second is observability. Your own hooks go in through the `extra_hooks` argument, and the lab adds one that refuses edits under `tests/`, because the cheapest way to make a failing test pass is to delete it:
 
 ```python
-class GuardedHarness(MiniHarness):
-    def _hooks(self) -> Hooks:
-        hooks = super()._hooks()
-        def protect_tests(call_):
-            target = os.path.normpath(call_.arguments.get("path", ""))
-            if call_.name == "write_file" and target.split(os.sep)[0] == "tests":
-                return "tests/ is read-only for the agent: fix the code, not the tests"
-            return None
-        hooks.pre_tool.insert(0, protect_tests)
-        return hooks
+def protect_tests(call_):
+    target = os.path.normpath(call_.arguments.get("path", ""))
+    if call_.name == "write_file" and target.split(os.sep)[0] == "tests":
+        return "tests/ is read-only for the agent: fix the code, not the tests"
+    return None
+guard = Hooks()
+guard.pre_tool.append(protect_tests)
+h = MiniHarness(backend, box, AgentConfig(max_turns=6), extra_hooks=guard)   # merged before the built-in hooks
 ```
 
 A blocked call still costs a turn and still produces a tool result (`Blocked by hook: ...`), so the model learns the rule from inside the conversation. The post-tool hook runs even for blocked calls, which is why `harness.log` records the attempt.
@@ -184,7 +182,7 @@ def resume(self, max_turns=None) -> Transcript:
     return self.run_session(max_turns)
 ```
 
-This is deliberate. Any state that lives only in the `MiniHarness` object, or only in the model's context, is state that a crash loses. The lab makes this concrete by creating a *second* `MiniHarness` on the same directory and resuming: it works, because the files were the state all along. It also exposes one thing that does live in the object: the session counter (`n = len(self.sessions)`), so a new process numbers its first session "Session 1" again. That is a real bug of exactly the kind this design is meant to prevent, and a good exercise (below) is to fix it by counting headings in `PROGRESS.md`.
+This is deliberate. Any state that lives only in the `MiniHarness` object, or only in the model's context, is state that a crash loses. The lab makes this concrete by creating a *second* `MiniHarness` on the same directory and resuming: it works, because the files were the state all along. Even the session number follows the rule: `run_session` counts the `## Session` headings already in `PROGRESS.md` rather than keeping a counter in the object, so a new process continues at "Session 3" instead of restarting at 1. (An earlier version kept `len(self.sessions)` and numbered wrongly after a restart; that is the kind of bug this design exists to prevent, and the file-based count is the fix.)
 
 The two files are also why long tasks survive the **context budget**: a session's window fills up with tool results and gets compacted (Chapter 25), but nothing the next session needs was ever *only* in the window. Compaction deletes; files remember.
 
@@ -228,8 +226,8 @@ A few findings that recur in 2025–2026 reports, stated with the confidence the
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab27_miniharness.py            # quick: scripted runs + the nano model, about 16 s
-python3 labs/lab27_miniharness.py --full     # the same with the small model, about 25 s
+python3 labs/lab27_miniharness.py            # quick: scripted runs + the nano model, about 30 s
+python3 labs/lab27_miniharness.py --full     # the same with the small model, about 40 s
 ```
 
 The lab builds a sandbox repository with `mathlib.py` (a `mean` that divides by `len(xs) - 1` and no `median`) and `tests/test_math.py` (three tests, two of which fail at import). Section 1 is the honest run:
@@ -292,7 +290,15 @@ Read the three lines of session 1 together: the model said "all tests pass", the
 │ Verification: PASS
 ```
 
-The failing assertion, with its expected and actual values, arrived in session 2 through a file. Section 2b creates a brand-new `GuardedHarness` object on the same directory and calls `resume()`; it works, and it exposes the numbering wart: the headings read `Session 1, Session 2, Session 1`.
+The failing assertion, with its expected and actual values, arrived in session 2 through a file. Section 2b creates a brand-new `MiniHarness` object on the same directory and calls `resume()`:
+
+```
+a brand-new harness object on the same directory: has_plan=True, session stop=done, verify=PASS
+PROGRESS.md session headings now: ['## Session 1 (done, 3 turns, 2 tool calls)', '## Session 2 (done, 4 turns, 3 tool calls)', '## Session 3 (done, 1 turns, 0 tool calls)']
+✅ the session count continues from PROGRESS.md, not from the object
+```
+
+The new object never saw sessions 1 and 2; it read them.
 
 Section 3 is the bill. The planner call and the two sessions are visible in the per-call context sizes:
 
@@ -304,12 +310,20 @@ total: 8 model calls, ≈5,771 estimated input tokens
 
 Session 2's first call is *larger* than session 1's last, because `PROGRESS.md` now carries the whole `pytest` report. What resets is the history (one message), and the files bound how much comes back; a design that fed the full transcript forward would grow without bound. The lab's figure `figures/generated/lab27_context_per_call.png` plots these eight bars.
 
-Section 4 puts the real TinyLM base model behind the same harness, and finds two things. First, the session prompt is 1,833 tokens (the system prompt plus seven tool schemas as JSON) while the nano model's window is 128 tokens, so `generate()` has no room to decode and `TinyLMBackend` returns an empty reply, silently; the harness still terminates cleanly, records `Verification: FAIL` twice and stops. Second, with the window extended to 2,048 so the model can answer at all:
+Section 4 puts the real TinyLM base model behind the same harness, and finds two things. First, the session prompt does not fit: even with the seven tools listed compactly (`TinyLMBackend`'s default; the full JSON schemas would cost 1,848 tokens) it is 657 tokens against a 128-token (nano) or 256-token (small) window, and the backend refuses rather than decoding into no room:
 
 ```
-session 1: stop=done, turns=1, tool calls=0, said: '=  +  +  +  +  +  +  +  +  +  +  +  +  +  +  +  +  +  +  +'   (nano, quick)
-session 1: stop=done, turns=1, tool calls=0, said: 'one, two, three.'                                          (small, --full)
-loop() -> False in 7.3s
+the session prompt (system + 7 tools listed compactly + task) is 657 tokens (1848 with full JSON schemas); the nano model's window is 128
+-> ContextTooLongError: prompt is 657 tokens but the model's window is 128; compact the context (Chapter 25)
+✅ a prompt that does not fit raises ContextTooLongError instead of an empty reply
+```
+
+An earlier version of the backend returned an empty string here, silently; a loud error is the right behaviour, because an empty reply looks exactly like a model that chose to stop. Second, with the window extended to 2,048 so the model can answer at all:
+
+```
+session 1: stop=done, turns=1, tool calls=0, said: '=  +  =  =  =  =  +  +  +  +  +  +  +  +  +  +  +  +  +  +'   (nano, quick)
+session 1: stop=done, turns=1, tool calls=0, said: 'and Nora looked for the drum?\nAnswer: Jack was hat is red book.'   (small, --full)
+loop() -> False in 20.0s
 ✅ a base model produces no tool calls; the harness records two failed sessions and stops
 ✅ PROGRESS.md says FAIL, not the model
 ```
@@ -320,7 +334,7 @@ The interactive `interactive/27_harness_anatomy.html` draws the same anatomy as 
 
 ## Try it yourself ✍️
 
-1. **Fix the numbering.** Subclass `MiniHarness` so that the session number is the count of `## Session` headings already in `PROGRESS.md` plus one. Re-run section 2b of the lab and confirm the headings read 1, 2, 3.
+1. **A scoped write hook.** Add an `extra_hooks` pre-tool hook that allows `write_file` only for paths named in `PLAN.md`. Script an agent that writes a file the plan does not mention and confirm the block is recorded in `harness.log` and in the session's tool results.
 2. **A stricter verifier.** Change `verify()` to require both `run_tests` and a `run_python` call that imports the module and checks `mean([1]) == 1`. Write a scripted agent whose code passes the tests but fails the extra check, and watch `loop()` return `False`.
 3. **A post-tool redaction hook.** Add a hook that replaces anything matching `sk-[A-Za-z0-9]{8,}` in a tool result with `[REDACTED]`. Plant a fake key in a file, have a scripted agent `read_file` it, and confirm the model's context never contains the key while `harness.log` records the call.
 4. **Clean git state per session.** Run `git init` in the sandbox and add hooks so that a session begins from a clean tree (`git status --porcelain` empty) and the harness commits after a `PASS`. What should happen after a `FAIL`?
@@ -342,7 +356,7 @@ Both stop the call and both produce a tool-result message the model can read. A 
 
 <details><summary>3. Why is <code>resume()</code> just a call to <code>run_session()</code>? What kind of state would break this design?</summary>
 
-Because every session starts from an empty context and is given only `PLAN.md` and `PROGRESS.md`, resuming after a crash needs nothing beyond the files. State that lives only in the Python object breaks it; the lab's example is the session counter `len(self.sessions)`, which restarts at 1 in a new process even though the file already has two sessions.
+Because every session starts from an empty context and is given only `PLAN.md` and `PROGRESS.md`, resuming after a crash needs nothing beyond the files. State that lives only in the Python object would break it; that is why even the session number is derived from the file (counting `## Session` headings) rather than from a counter in the object, so a new process continues at 3 rather than restarting at 1.
 </details>
 
 <details><summary>4. Session 2's first model call had a <em>larger</em> context than session 1's last. Why is that not a contradiction of "sessions reset the context"?</summary>

@@ -10,3 +10,4 @@
 - **catastrophic forgetting** — the loss of pretrained abilities (measured here as rising Storyland perplexity) when a model is fine-tuned on a narrow distribution (Ch. 15)
 - **replay** — mixing a slice of pretraining or previous-stage data into the fine-tuning set to limit forgetting (Ch. 15)
 - **cold start** — a short SFT stage on a small set of well-formatted examples, run before RL so that the policy starts in a readable format (Ch. 15)
+- **bootstrap confidence interval** — an interval for a measured accuracy obtained by resampling the evaluated items with replacement many times and reading off the spread of the resampled means; `EvalResult.table()` prints a 95% one (Ch. 15)

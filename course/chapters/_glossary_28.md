@@ -10,7 +10,7 @@
 - **sycophantic evaluator** — an evaluator that accepts whatever it is shown; the pattern's characteristic failure, defended against by a program judge or a rubric (Ch. 28)
 - **debate** — several agents answer, then see each other's answers and revise; demonstrates that agreement is not correctness (Ch. 28)
 - **shared state** — any store more than one agent reads and writes (a file, a git branch, a task object); files are the default on one machine (Ch. 28)
-- **Agent2Agent protocol (A2A)** — a standard (Google, 2025; v1.0 reported 2026) for agents handing tasks to peer agents via agent cards, tasks, messages and artifacts (Ch. 28)
+- **Agent2Agent protocol (A2A)** — a standard (Google, April 2025; v1.0 reported April 2026) for agents handing tasks to peer agents via agent cards, tasks, messages and artifacts (Ch. 28)
 - **duplicated work** — the failure where a vague split makes workers investigate the same thing; symptom: overlapping reports (Ch. 28)
 - **lost context** — the failure where a later stage never learned what an earlier one knew because it lived in a context, not a document (Ch. 28)
 - **runaway cost** — the failure where every extra agent adds a context that is re-read each turn, doubling the bill without moving the score (Ch. 28)

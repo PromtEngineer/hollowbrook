@@ -13,7 +13,7 @@ Chapter 15 trained on demonstrations with a verifiable answer, so nobody had to 
 
 ![A labeling and curation workflow for post-training data](../figures/16_labeling_workflow.svg)
 
-The figure's top row is the workflow, and the loop from box 2 back to box 1 is the part most teams skip. First you **design the task**: write **annotation guidelines**, a document that tells the labeler what wins and why, with worked examples of every trap; choose a **rubric**, a checklist of yes/no properties (is the final answer correct? does it follow the length instruction?) that turns a gut feeling into something two people can compare; and pick a format. Then you **pilot**: two or more annotators label the same 50–200 items, you compute kappa between every pair of them, and you read every disagreement. Disagreements are of two kinds. Some are slips (an annotator did not recompute `17 × 24`), which better tooling and attention checks fix. Others are ambiguities in the guidelines (the guidelines never said whether a correct-but-longer answer beats a correct-and-minimal one), which only rewriting the guidelines fixes. Only when kappa is "substantial" (above about 0.6 by the usual convention) do you **label at scale**, with **gold items**, questions whose answer is known, mixed in blind so that each annotator's accuracy is measured continuously, and **attention checks**, items designed so that a labeler who is not reading gets them wrong. Then you **curate** the result the way Chapter 8 curated web text: drop items with low agreement or from annotators who failed gold, deduplicate the prompts, decontaminate against your evals, and mix by task and source. The output is a file of preference records, one JSON object per line.
+The figure's top row is the workflow, and the loop from box 2 back to box 1 is the part most teams skip. First you **design the task**: write **annotation guidelines**, a document that tells the labeler what wins and why, with worked examples of every trap; choose a **rubric**, a checklist of yes/no properties (is the final answer correct? does it follow the length instruction?) that turns a gut feeling into something two people can compare; and pick a format. Then you **pilot**: two or more annotators label the same 50–200 items, you compute kappa between every pair of them, and you read every disagreement. Disagreements are of two kinds. Some are slips (an annotator did not recompute `17 × 24`), which better tooling and attention checks fix. Others are ambiguities in the guidelines (the guidelines never said whether a correct-but-longer answer beats a correct-and-minimal one), which only rewriting the guidelines fixes. Only when kappa is "substantial" (above about 0.6 by the usual convention) do you **label at scale**, with **gold items**, questions whose answer is known, mixed in blind so that each annotator's accuracy is measured continuously, and **attention checks**, items designed so that a labeler who is not reading gets them wrong. Then you **curate** the result the way Chapter 8 curated web text: drop items with low agreement or from annotators who failed gold, deduplicate the prompts, decontaminate against your evals (Chapter 8), and mix by task and source. The output is a file of preference records, one JSON object per line.
 
 The two panels below the workflow are the chapter's two measurement tools. The left one lists the three known biases of an LLM labeler and the check for each. The right one is Cohen's kappa in one line. The bottom panel ranks the sources of preference pairs by cost, and is the reason this chapter's lab can run without a single human: for tasks with a checker, the pairs come from the checker.
 
@@ -33,7 +33,7 @@ A worked example by hand, using the interactive's built-in data. The reference l
 
 ## The idea in code
 
-There is no `llm/labeling.py`; the tools this chapter uses are spread over `llm/reward.py` (pairs), `llm/evals.py` (judges and the bias check) and `llm/data.py` (dedup and mixing), because labeling is glue between stages rather than a stage of its own. The imports:
+There is no labeling module in `llm/`; the tools this chapter uses are spread over `llm/reward.py` (pairs), `llm/evals.py` (judges and the bias check) and `llm/data.py` (dedup and mixing), because labeling is glue between stages rather than a stage of its own. The imports:
 
 ```python
 import json, random
@@ -83,7 +83,7 @@ noisy = "B B A A A B A A A A B B".split()
 cohens_kappa(ref, noisy)          # (0.360, 0.667, 0.479)
 ```
 
-The lab simulates its annotators rather than employing them: the *perfect* annotator returns the gold label, and the *noisy* annotator returns the gold label with probability $1 - f$ and otherwise the other answer (or, a quarter of the time, a tie). Because a labeling tool shows the two answers in a random order, the gold label is `A` or `B` per item, not always "chosen", and that randomisation is itself a defence against position bias in the *annotators*.
+The lab simulates its annotators rather than employing them: the *perfect* annotator returns the gold label, and the *noisy* annotator returns the gold label with probability $1 - f$ and otherwise the other answer (or, a quarter of the time, a tie). Because a labeling tool shows the two answers in a random order, the gold label is `A` or `B` per item, not always "chosen", and that randomisation is itself a defence against **position bias**, the tendency to prefer whichever answer is shown first, in the *annotators*.
 
 ### Step 3: the swap test for judges
 
@@ -131,11 +131,11 @@ Keeping `seconds` and `annotator` in the record is not bureaucracy: items labell
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab16_labeling.py            # quick: 30 prompts, about 5 s on an idle CPU
-python3 labs/lab16_labeling.py --full     # 150 prompts, a finer flip-rate sweep, 40 on-policy prompts: about 5 s more
+python3 labs/lab16_labeling.py            # quick: 30 prompts, about 15 s
+python3 labs/lab16_labeling.py --full     # 150 prompts, a finer flip-rate sweep, 40 on-policy prompts from the small SFT model
 ```
 
-(Nothing here trains a model, so both modes are fast; the only slow case is section 7 before Lab 15 has run, when the base model runs every sample to the token limit.)
+(Nothing here trains a model. Sections 1 to 6 take a few seconds; section 7 samples from a model, and its time depends on how busy the CPU is: on the shared machine used for the final review it took 6 s in quick mode and about four minutes for the full run's 40 prompts with the small model, and a few seconds each on an idle CPU.)
 
 Section 1 builds the set. Thirty prompts on four tasks, two failure styles each:
 
@@ -164,7 +164,7 @@ the interactive's 12-item example: p_o = 0.667 (8/12), p_e = 0.479 (69/144), kap
 flip rate -> kappa: 0.00->1.00, 0.10->0.68, 0.20->0.52, 0.30->0.62, 0.50->0.21
 ```
 
-Read the confusion matrix: 51 of 60 items on the diagonal, and the off-diagonal entries are the nine flips (four of them to `tie`). Raw agreement 0.85 becomes kappa 0.72, because two annotators who both say `B` a little over half the time would agree on 47% of items by chance. The flip-rate line is noisy at 60 items (0.20 gives 0.52 and 0.30 gives 0.62, in the wrong order), which is itself a lesson: with a pilot of 60 items the standard error on kappa is about ±0.1, and you cannot tell a 20% annotator from a 30% one. The `--full` run uses 300 items and the curve comes out monotonic:
+Read the confusion matrix: 51 of 60 items on the diagonal, and the off-diagonal entries are the nine flips (four of them to `tie`). Raw agreement 0.85 becomes kappa 0.72, because two annotators who both say `B` a little over half the time would agree on 47% of items by chance. The flip-rate line is noisy at 60 items (0.20 gives 0.52 and 0.30 gives 0.62, in the wrong order), which is itself a lesson: with a pilot of 60 items the standard error on kappa (the typical sampling wobble of the estimate) is about ±0.1, and you cannot tell a 20% annotator from a 30% one. The `--full` run uses 300 items and the curve comes out monotonic:
 
 ```
 n = 300 items | raw agreement p_o = 0.783 | chance agreement p_e = 0.471 | kappa = 0.591
@@ -217,7 +217,7 @@ stats: {'n_prompts': 8, 'n_pairs': 0, 'n_all_correct': 0, 'n_all_wrong': 8, 'sam
 Once `runs/sft_nano.pt` exists, the quick run samples four answers per prompt from it at temperature 1:
 
 ```
-sampling 4 answers x 8 prompts from runs/sft_nano.pt: 0.3s
+sampling 4 answers x 8 prompts from runs/sft_nano.pt: 6.2s
 stats: {'n_prompts': 8, 'n_pairs': 2, 'n_all_correct': 0, 'n_all_wrong': 6, 'sample_accuracy': 0.1875}
   'Write in capitals: boat': chosen 'BOAT' | rejected 'WOAT'
   'Write in capitals: lake': chosen 'LAKE' | rejected 'OXar'
@@ -226,7 +226,7 @@ stats: {'n_prompts': 8, 'n_pairs': 2, 'n_all_correct': 0, 'n_all_wrong': 6, 'sam
 Six of eight prompts had four wrong samples and produced nothing; two had at least one right and one wrong, and those give pairs whose rejected answer (`WOAT`) is a mistake this model actually makes, not one we invented. That is the difference between on-policy and synthetic preference data, and why the rejected side of a good preference set looks like the model's own near-misses. With `runs/sft_small.pt` from the `--full` run of Lab 15, the `--full` run samples 40 prompts:
 
 ```
-sampling 4 answers x 40 prompts from runs/sft_small.pt: 2.4s
+sampling 4 answers x 40 prompts from runs/sft_small.pt: 229.6s
 stats: {'n_prompts': 40, 'n_pairs': 7, 'n_all_correct': 24, 'n_all_wrong': 9, 'sample_accuracy': 0.7}
   'Reverse the word: rope': chosen 'epor' | rejected 'ypor'
   'How many words: flag small hat black': chosen '4' | rejected '6'
@@ -242,9 +242,9 @@ The lab saves `figures/generated/lab16_labeling.png`: kappa against flip rate on
 
 Three developments since 2025 change who writes the labels.
 
-- **Generated rubrics.** Instead of a human writing a rubric per task, a model writes one per *prompt*: OpenRubrics (ACL 2026) generates contrastive rubrics from a chosen/rejected pair and trains a rubric-following reward model on them, and "Many Voices, One Reward" (arXiv 2607.01830) generates rubrics from several simulated reviewer roles and aggregates them. A rubric-graded judge is reported to be less susceptible to verbosity and position effects than a free-form "which is better?" prompt, because each criterion is checked separately. Kimi K2's self-critique rubric reward (Chapter 14) is the same idea inside the RL loop. https://aclanthology.org/2026.acl-long.791/ · https://arxiv.org/abs/2607.01830
-- **Failure-driven data.** SENTINEL (arXiv 2606.12908) mines the failures of a tool-using agent, clusters them, and synthesises new training prompts that target each failure mode, closing the loop from evals back to data that Chapter 14's figure drew as a dashed arrow. The reported gains come from labelling what the model gets *wrong*, not from more of what it gets right. https://arxiv.org/abs/2606.12908
-- **Online data synthesis.** RODS (arXiv 2606.19047) generates multi-turn tool-use training data *during* RL from the current policy's trajectories, so the prompt distribution tracks the policy. It is the on-policy principle applied to the prompts themselves. https://arxiv.org/abs/2606.19047
+- **Generated rubrics.** Instead of a human writing a rubric per task, a model writes one per *prompt*: OpenRubrics (ACL 2026) is reported to generate contrastive rubrics from a chosen/rejected pair and to train a rubric-following reward model on them; "Many Voices, One Reward" (arXiv 2607.01830) is described as generating rubrics from several simulated reviewer roles and aggregating them. A rubric-graded judge is reported to be less susceptible to verbosity and position effects than a free-form "which is better?" prompt, because each criterion is checked separately. Kimi K2's self-critique rubric reward (Chapter 14) is the same idea inside the RL loop. https://aclanthology.org/2026.acl-long.791/ · https://arxiv.org/abs/2607.01830
+- **Failure-driven data.** SENTINEL (arXiv 2606.12908) describes failure-driven RL for tool agents: as reported, it mines a tool-using agent's failures and synthesises training data that targets each failure mode, closing the loop from evals back to data that Chapter 14's figure drew as a dashed arrow. The reported gains come from labelling what the model gets *wrong*, not from more of what it gets right. https://arxiv.org/abs/2606.12908
+- **Online data synthesis.** RODS (arXiv 2606.19047) is described as online data synthesis for multi-turn tool use: training data generated *during* RL from the current policy's trajectories, so that the prompt distribution tracks the policy. It is the on-policy principle applied to the prompts themselves. https://arxiv.org/abs/2606.19047
 
 What is settled: measure agreement before scaling; run the swap test on every LLM judge; deduplicate prompts; keep per-annotator provenance. What is open: how much human labelling a frontier model still needs (public reports suggest it is concentrated on safety, taste and the long tail rather than on capability), and whether generated rubrics drift toward what the generating model likes rather than what users want.
 

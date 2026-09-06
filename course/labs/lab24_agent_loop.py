@@ -7,13 +7,14 @@
     the "ask" policy defers to a permission function.
 (3) Hooks: a pre_tool hook that blocks a path, a post_tool hook that redacts a secret, and an
     on_event hook that prints a live trace.
-(4) TinyLMBackend: the base model from Part II (probably) fails to produce a valid tool call;
-    a model fine-tuned on tool traces succeeds. Tool use is trained, not parsed into existence.
+(4) TinyLMBackend: the instruction-tuned model of Lab 15 never emits a tool call; Chapter 21's
+    tool-trained model does, but only under the exact prompt prefix it was trained with; a short
+    tool-SFT learns the syntax and not the semantics. Tool use is trained, not parsed into existence.
     --full trains that model here (~3-5 min on a laptop CPU) and saves runs/lab24_toolsft_nano.pt.
 (5) AnthropicBackend.to_api_messages: the same conversation in the Messages API format, and
     how to enable the real backend (no network is used in this lab).
 
-Run:  python3 labs/lab24_agent_loop.py            (quick, ~20 s)
+Run:  python3 labs/lab24_agent_loop.py            (quick, ~1-2 min: three tiny models decoding on CPU)
       python3 labs/lab24_agent_loop.py --full     (adds the tool-call SFT, ~5 min)
 """
 from _common import setup, check, banner, section, savefig, done, plt
@@ -134,7 +135,8 @@ def ask_user(c: ToolCall, tool: Tool) -> bool:
 t = Agent(ScriptedBackend(adaptive), tools, AgentConfig(permission_policy="ask")).run(TASK, permission_fn=ask_user)
 check(os.path.exists(os.path.join(BOX, "result.txt")), "under 'ask', the permission function allowed the .txt write and the file exists")
 t = Agent(ScriptedBackend(adaptive), tools, AgentConfig(permission_policy="ask")).run(TASK)   # no permission_fn at all
-check(t.messages[4]["content"].startswith("Permission denied"), "under 'ask' with no permission function, non-read-only tools are denied (safe default)")
+check(t.messages[2]["content"].startswith("Permission denied: 'calculator'") and t.messages[4]["content"].startswith("Permission denied"),
+      "under 'ask' with no permission function, every tool is denied, the read-only calculator included (safe default)")
 
 
 # =============================================================== (3) hooks
@@ -192,10 +194,10 @@ check(t_err.stop_reason == "error" and "ContextTooLongError" in t_err.events[-1]
 
 
 class NoListingBackend(TinyLMBackend):
-    """For the nano models below: name the tool in the system prompt and send NO tool listing.
-    Even the compact listing costs ~50 of nano's 128 tokens, and the tool-trained checkpoints
-    (Chapter 21, and the one --full trains) were fine-tuned with the tool named in the system
-    prompt only, so the listing is out-of-distribution for them (the lab measured 0/4 with it)."""
+    """For the *nano* models below: name the tool in the system prompt and send NO tool listing.
+    Even the compact listing costs ~50 of nano's 128 tokens, and the checkpoint --full trains is
+    fine-tuned without it. Chapter 21's checkpoints are the opposite case: they were trained WITH
+    the listing (the served prompt is stored in the checkpoint), so they get the plain backend."""
 
     @staticmethod
     def to_chat_messages(messages, tools, system, compact_tools=True):
@@ -209,13 +211,14 @@ def calc_registry(tool_name: str) -> ToolRegistry:
                               tools.get("calculator").fn)])
 
 
-def try_model(model, label: str, system: str, tool_name: str, questions) -> tuple[int, int]:
+def try_model(model, label: str, system: str, tool_name: str, questions, backend_cls=NoListingBackend) -> tuple[int, int]:
     """Probe a model on fresh questions: how many replies parse as a tool call, and how many
     of those carry the RIGHT expression. Returns (well_formed, correct_args)."""
-    be = NoListingBackend(model, tok, max_new_tokens=64)      # a full tool call is ~55 Storyland tokens
+    be = backend_cls(model, tok, max_new_tokens=64)           # a full tool call is ~55 Storyland tokens
+    schemas = calc_registry(tool_name).schemas()              # ignored by NoListingBackend, listed by TinyLMBackend
     well_formed = correct = 0
     for a, b_ in questions:
-        r = be.complete([{"role": "user", "content": f"What is {a} + {b_}?"}], [], system)
+        r = be.complete([{"role": "user", "content": f"What is {a} + {b_}?"}], schemas, system)
         well_formed += bool(r.tool_calls)
         expr = r.tool_calls[0].arguments.get("expression", "") if r.tool_calls and r.tool_calls[0].name == tool_name else ""
         correct += expr.replace(" ", "") == f"{a}+{b_}"
@@ -224,8 +227,8 @@ def try_model(model, label: str, system: str, tool_name: str, questions) -> tupl
     return well_formed, correct
 
 
-def run_agent(model, system: str, tool_name: str, q: str):
-    return Agent(NoListingBackend(model, tok, max_new_tokens=64), calc_registry(tool_name),
+def run_agent(model, system: str, tool_name: str, q: str, backend_cls=NoListingBackend):
+    return Agent(backend_cls(model, tok, max_new_tokens=64), calc_registry(tool_name),
                  AgentConfig(permission_policy="allow_all", max_turns=3), system_prompt=system).run(q)
 
 
@@ -244,19 +247,28 @@ print(f"   {label_u} in the loop: raw {t_u.messages[1]['content'][:60]!r} -> sto
 check(t_u.stop_reason in ("done", "max_turns"), f"the loop terminated cleanly whatever the {label_u.split(' (')[0]} produced")
 print(f"   -> a model with no tool training {'DID' if ok_u else 'did NOT'} emit a valid <|tool_call|>: tool use is a trained behaviour (Chapters 15, 21)")
 
-# (4b) Chapter 21's tool-trained model (SFT on tool traces + GRPO), in ITS format: tool 'calc',
-#      the short system prompt it was trained with, and questions in its 0-20 range.
+# (4b) Chapter 21's tool-trained model (SFT on tool traces + GRPO) under the EXACT prefix it was
+#      trained with: the `small` model (256-token window), tool 'calc', the short system prompt,
+#      the compact tool listing that TinyLMBackend prepends by default, and questions in its 0-20
+#      range. Lab 21 stores the served system prompt in the checkpoint's `extra` field so a harness
+#      can check that it is serving the prompt the policy was trained on.
 SYS21, Q21, QS21 = "Use the calc tool.", "What is 17 + 5?", [(3, 4), (8, 9), (6, 19)]
 ch21 = [n for n in ("lab21_tool_grpo.pt", "lab21_tool_sft.pt") if os.path.exists(run_path(n))]
 if ch21:
     m21 = TinyLM.load(run_path(ch21[0]))
-    ok21, right21 = try_model(m21, f"Chapter 21 model (runs/{ch21[0]})", SYS21, "calc", QS21)
-    t21 = run_agent(m21, SYS21, "calc", Q21)
+    served = TinyLMBackend.to_chat_messages([], calc_registry("calc").schemas(), SYS21)[0]["content"]
+    stored = torch.load(run_path(ch21[0]), map_location="cpu", weights_only=False).get("extra", {}).get("system_prompt")
+    print(f"   served system prompt ({len(tok.encode(served))} tokens) == the prompt stored in the checkpoint: {served == stored}")
+    ok21, right21 = try_model(m21, f"Chapter 21 model (runs/{ch21[0]}), trained prefix", SYS21, "calc", QS21, TinyLMBackend)
+    ok21n, _ = try_model(m21, "   the same model with the tool listing stripped", SYS21, "calc", QS21, NoListingBackend)
+    t21 = run_agent(m21, SYS21, "calc", Q21, TinyLMBackend)
     print(t21.pretty())
+    check(served == stored, "the harness serves the system prompt the checkpoint was trained with (Chapter 21's rule)")
     check(t21.tool_calls_made >= 1 and t21.messages[2]["content"] == "22",
           f"Chapter 21's model called calc({(t21.messages[1].get('tool_calls') or [{}])[0].get('arguments')}) and the harness returned 22")
     check("22" in t21.final_text, f"its final answer uses the result: {t21.final_text!r}")
     check(right21 >= 2 and ok21 > ok_u, f"well-formed AND correct on fresh questions: {right21}/3 (vs {ok_u}/3 well-formed for the untrained model)")
+    check(ok21n < ok21, f"with the listing stripped the SAME weights drop to {ok21n}/3 well-formed: a policy is conditioned on its trained prefix")
 else:
     print("   (no runs/lab21_tool_*.pt: run labs/lab21_agentic_rl.py to see a tool-trained model succeed here)")
 
@@ -341,7 +353,7 @@ except (ImportError, RuntimeError) as e:
     print(f"   AnthropicBackend() without the package/key -> {type(e).__name__}: {e}")
     check(True, "the real backend refuses to start without `pip install anthropic` and ANTHROPIC_API_KEY")
 print("   to enable it:  pip install anthropic && export ANTHROPIC_API_KEY=...  then")
-print("                  Agent(AnthropicBackend(model='claude-sonnet-4-5'), tools, AgentConfig(permission_policy='allow_read_only')).run(TASK)")
+print("                  Agent(AnthropicBackend(model='claude-sonnet-5'), tools, AgentConfig(permission_policy='allow_read_only')).run(TASK)")
 
 # ------------------------------------------------------------------ figure: the event timeline of run (1)
 fig, ax = plt().subplots(figsize=(9, 2.6))

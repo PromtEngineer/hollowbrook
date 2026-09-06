@@ -38,17 +38,17 @@ flowchart LR
 
 ### Full fine-tuning vs LoRA
 
-Full fine-tuning updates every weight. For a 2.5M-parameter TinyLM that is free; for a 70B model it means 70B parameters plus two Adam moments each in memory, and a full copy of the model per task you fine-tune it for. **LoRA (low-rank adaptation)** keeps the pretrained weights frozen and adds, next to each chosen linear layer, a small trainable detour.
+Full fine-tuning updates every weight. For a 2.5M-parameter TinyLM that is free; for a 70B model it means 70B parameters plus AdamW's two running averages per parameter (Chapter 4) in memory, and a full copy of the model per task you fine-tune it for. **LoRA (low-rank adaptation)** keeps the pretrained weights frozen and adds, next to each chosen linear layer, a small trainable detour.
 
 ![LoRA: a frozen weight plus a trainable low-rank detour](../figures/15_lora.svg)
 
-In the figure the input `x` takes two paths. The upper path is the frozen weight `W` (192 × 192 for TinyLM-small's `q_proj`, 36,864 numbers). The lower path is two thin matrices: `A` squeezes `x` from 192 dimensions to `r = 8`, and `B` expands it back to 192. Their product `B A` has the same shape as `W`, so the two paths can be added, scaled by `α/r`. What is trained is only `A` and `B`: 8 × 192 + 192 × 8 = 3,072 numbers, 8.3% of `W`. `B` starts at zero, so on step 0 the layer computes exactly `W x` and training moves it away from the base model gradually. After training, `W + (α/r) B A` is computed once and written back into `W` (`merge_lora`), so the served model is an ordinary model with no extra cost. The rank `r` bounds how much the adapter can change: the update `B A` has at most 8 independent directions. Hu et al. (2021) found that surprisingly small ranks (4 to 16) match full fine-tuning on most tasks, and the current evidence (Biderman et al., 2024, "LoRA Learns Less and Forgets Less") is that LoRA under-performs full fine-tuning on tasks that need new knowledge, such as continued pretraining on code, and matches it on format and style tasks, while also forgetting less of the base model's abilities. The lab measures both halves of that claim.
+In the figure the input `x` takes two paths. The upper path is the frozen weight `W` (192 × 192 for TinyLM-small's `q_proj`, 36,864 numbers). The lower path is two thin matrices: `A` squeezes `x` from 192 dimensions to `r = 8`, and `B` expands it back to 192. Their product `B A` has the same shape as `W`, so the two paths can be added, scaled by `α/r`. What is trained is only `A` and `B`: 8 × 192 + 192 × 8 = 3,072 numbers, 8.3% of `W`. `B` starts at zero, so on step 0 the layer computes exactly `W x` and training moves it away from the base model gradually. After training, `W + (α/r) B A` is computed once and written back into `W` (`merge_lora`), so the served model is an ordinary model with no extra cost. The rank `r` bounds how much the adapter can change: the update `B A` has at most 8 independent directions. Hu et al. (2021) found that surprisingly small ranks (1 to 8 in their GPT-3 experiments) match full fine-tuning on most tasks, and the current evidence (Biderman et al., 2024, "LoRA Learns Less and Forgets Less") is that LoRA under-performs full fine-tuning on tasks that need new knowledge, such as continued pretraining on code, and matches it on format and style tasks, while also forgetting less of the base model's abilities. The lab measures both halves of that claim.
 
 An analogy: LoRA is an errata sheet clipped to a printed book instead of a reprint: small, swappable, and pasteable into the text for a clean copy. Its limit: an erratum can change any sentence, while a rank-8 update can only move a weight matrix along eight directions.
 
 ## The idea in code
 
-The library file is `llm/sft.py` (about 260 lines) on top of `llm/chat.py` from Chapter 14. The imports:
+The library file is `llm/sft.py` (about 300 lines) on top of `llm/chat.py` from Chapter 14. The imports:
 
 ```python
 import copy, torch
@@ -75,7 +75,7 @@ print(describe_mask(tok, ids, mask))
 # <|bos|><|system|>You are TinyLM, a helpful assistant. Answer briefly.<|end|><|user|>Write in capitals: goat<|end|><|assistant|>[G][O][A][T][<|end|>]
 ```
 
-`max_len` truncates conversations longer than the model's RoPE tables (`min(cfg.max_len, model.cfg.max_seq_len)`); with 60-to-70-token examples and a 128-token nano model it never fires here, but it is the line that prevents a crash on a long document in a real set.
+`max_len` truncates conversations longer than the model's context window, `min(cfg.max_len, model.cfg.max_seq_len)` (the RoPE position tables of Chapter 5 only reach that far); with 60-to-70-token examples and a 128-token nano model it never fires here, but it is the line that prevents a crash on a long document in a real set.
 
 ### Step 2: the loss is masked cross-entropy
 
@@ -99,10 +99,12 @@ Read this as: average the surprise at the correct next token over the assistant 
 cfg = SFTConfig(steps=750, batch_size=16, lr=1e-3, warmup_steps=20, schedule="cosine", eval_every=150)
 model = copy.deepcopy(base)
 hist = sft_train(model, tok, train, cfg, val_examples=make_examples(32, seed=2, tasks=["upper", "reverse", "add", "count"]))
-hist.train_loss[0], hist.train_loss[-1], hist.val_acc    # 9.07, 1.19, [0.19, 0.25, 0.44, 0.50, 0.56]  (nano, ~3 min idle)
+hist.train_loss[0], hist.train_loss[-1], hist.val_acc    # 9.07, 1.19, [0.19, 0.25, 0.44, 0.50, 0.56]  (nano; seeded, so these repeat on CPU; a minute or two when the CPU is idle)
 ```
 
-The defaults in `SFTConfig` encode the folklore of the stage. `lr = 3e-4` is a third of pretraining's `1e-3`; production SFT of a 7B-to-70B model uses `1e-5` to `2e-5`, roughly ten times below its pretraining rate, because the model is already in a good basin and a large step leaves it. The lab uses `1e-3` because TinyLM is thousands of times smaller and the default converges about three times slower at this scale; the "pretraining LR / 10" rule assumes a model pretrained near its optimal LR, which nano and small were not. `weight_decay = 0` because decay pulls weights toward zero, away from the pretrained solution. `epochs` is usually 1 to 3: a third epoch on a small set shows up as validation loss rising while accuracy plateaus. `max_len = 192` truncates; `grad_clip = 1.0` as always.
+The defaults in `SFTConfig` encode the folklore of the stage, with one deliberate exception. Production SFT of a 7B-to-70B model uses an `lr` of `1e-5` to `2e-5`, roughly ten times below its pretraining rate, because the model is already in a good basin and a large step leaves it. `SFTConfig.lr` is `1e-3`, the *same* as TinyLM's pretraining rate, because TinyLM is thousands of times smaller and was not pretrained near its optimal rate: at `3e-4` the nano model learns nothing usable in 300 steps, and the comment in `llm/sft.py` records that sweep. The "pretraining LR / 10" rule is a rule for large models in a good basin, not a constant. `weight_decay = 0` because decay pulls weights toward zero, away from the pretrained solution. `epochs` is usually 1 to 3: a third epoch on a small set shows up as validation loss rising while accuracy plateaus. `max_len = 192` truncates; `grad_clip = 1.0` as always; `eval_max_new_tokens = 16` keeps the periodic evals short, because every course answer fits in 12 tokens plus `<|end|>`.
+
+A compute note on `system`. `SFTConfig.system` is the system prompt rendered into every example (`tasks.SYSTEM_PROMPT` by default); `None` omits the turn. It is not cosmetic: in the lab's data the system turn is 43 of the 63 tokens of an average example, so dropping it shrinks an example to 20 tokens and raises the trainable fraction from 8% to 25%, which makes a step about three times cheaper for the same number of assistant tokens. The price is that the model then never sees a system turn, so `respond` and `eval_tasks` must be called with the same `system=None` (both take the argument, and `sft_train` passes its own through to its periodic evals); otherwise the model is evaluated under a prompt it was never trained with, the mismatch Chapter 21 calls "train with the prompt you serve with". The labs keep the default so that every checkpoint in `runs/` answers under one prompt.
 
 ### Step 4: packing
 
@@ -118,7 +120,7 @@ q.base.weight.shape, q.lora_A.shape, q.lora_B.shape  # (96, 96), (8, 96), (96, 8
 trainable_params(lora), sum(p.numel() for p in base.parameters())   # (37,632, 379,200): 9.9% (150,528 of 2,529,024 = 6.0% for small)
 ```
 
-`LoRALinear.forward` is one line, `self.base(x) + (x @ A.T @ B.T) * scale`, with `scale = α/r` and `α = 2r` by default. Because `B` is initialised to zero, `lora(x)` equals `base(x)` before the first step; the lab checks this to `1e-5`. `sft_train` with `cfg.lora_rank > 0` calls `apply_lora`, filters the optimizer down to parameters with `requires_grad`, trains, and calls `merge_lora`, which copies `W + scale · B @ A` into each base weight and puts the plain `nn.Linear` back, so the returned model saves and loads like any TinyLM.
+`LoRALinear.forward` is one line, `self.base(x) + (x @ A.T @ B.T) * scale`, with `scale = α/r` and `α = 2r` by default. Because `B` is initialised to zero, `lora(x)` equals `base(x)` before the first step; the lab checks this to `1e-5`. `sft_train` with `cfg.lora_rank > 0` calls `apply_lora`, filters the optimizer down to parameters with `requires_grad`, trains, and calls `merge_lora`, which copies `W + scale · B @ A` into each base weight and puts the plain `nn.Linear` back, so the returned model saves and loads like any TinyLM. `apply_lora` is idempotent: a model that already carries adapters is returned unchanged, so calling it yourself before `sft_train` neither double-wraps the layers nor freezes the adapters.
 
 ### Step 6: talking to it
 
@@ -127,12 +129,12 @@ respond(model, tok, "Write in capitals: kite")      # 'KITE' after SFT (the base
 eval_tasks(model, tok, val, max_new_tokens=16).table()   # a markdown table with a bootstrap CI per task
 ```
 
-`respond` encodes the system and user turns with `chat.encode_chat` (role ids from the template, content with `allowed_special=False`, a trailing `<|assistant|>`), decodes greedily and stops at `<|end|>`. `eval_tasks` does that for every example and grades with `tasks.verify`; `EvalResult.table()` adds a 95% bootstrap confidence interval so that a difference of 0.05 on 32 items is not over-read.
+`respond` encodes the system and user turns with `chat.encode_chat` (role ids from the template, content with `allowed_special=False`, a trailing `<|assistant|>`), decodes greedily and stops at `<|end|>`. `eval_tasks` does that for every example and grades with `tasks.verify`; `EvalResult.table()` adds a 95% **bootstrap confidence interval** (resample the items with replacement 1,000 times and read off the spread of the mean; Chapter 23) so that a difference of 0.05 on 32 items is not over-read.
 
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab15_sft.py            # quick: TinyLM-nano, 750 steps full FT + 750 LoRA, saves runs/sft_nano.pt (~7 min idle CPU)
+python3 labs/lab15_sft.py            # quick: TinyLM-nano, 750 steps full FT + 750 LoRA, saves runs/sft_nano.pt (about 1.5 min on an idle 4-core CPU, 10+ min when shared)
 python3 labs/lab15_sft.py --full     # TinyLM-small, 800 + 800 steps, saves runs/sft_small.pt (later chapters load it)
 ```
 
@@ -299,7 +301,7 @@ It teaches the format and shallow procedures: the copy tasks `upper` and `revers
 
 <details><summary>5. Your SFT learning rate is 2e-5 for a 7B model. A colleague says "TinyLM uses 1e-3, so raise it". What is wrong with the argument?</summary>
 
-The rule is relative to the model's pretraining LR and to its size: 2e-5 is already about a tenth of a 7B model's pretraining rate, and a large model in a good basin is knocked out of it by large steps. TinyLM is thousands of times smaller, was pretrained at 1e-3, and converges too slowly at the 3e-4 default; its number does not transfer.
+The rule is relative to the model's pretraining LR and to its size: 2e-5 is already about a tenth of a 7B model's pretraining rate, and a large model in a good basin is knocked out of it by large steps. TinyLM is thousands of times smaller, was pretrained at 1e-3, and learns nothing usable in 300 steps at 3e-4 (the sweep recorded in `llm/sft.py`); its number does not transfer.
 </details>
 
 ## Key takeaways

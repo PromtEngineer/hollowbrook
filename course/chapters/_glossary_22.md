@@ -1,6 +1,7 @@
 - **alignment** — the training and evaluation methods whose aim is that a model's behaviour matches what its developers and users intend; operationally, following written principles on hard inputs without losing capability (Ch. 22)
 - **alignment tax** — the measured capability cost of alignment training: task accuracy lost while principle adherence rose (Ch. 22)
 - **Constitutional AI (CAI)** — Anthropic's 2022 recipe: write principles as a document, have the model critique and revise its own drafts against them (SFT data), then have an AI judge rank samples against them (preference data) (Ch. 22)
+- **model spec** — a lab's public, versioned document stating how its models should behave and how conflicting instructions (platform, developer, user) rank; Anthropic's constitution for Claude and OpenAI's Model Spec are the examples (Ch. 22)
 - **constitution** — the short written document of principles that drives CAI; in 2026 published as a model spec by several labs (Ch. 22)
 - **critique and revision** — stage 1 of CAI: the model is shown a principle, critiques its own draft against it and rewrites; revisions become SFT data (Ch. 22)
 - **reinforcement learning from AI feedback (RLAIF)** — stage 2 of CAI: an AI judge reading the principles scores or ranks samples, and the verdicts become preference pairs for a reward model or DPO (Ch. 22)
@@ -13,3 +14,5 @@
 - **agentic safety** — whether a model acting with tools stays inside its instructions when instructions and task conflict; defended by weights and by the harness together (Ch. 22)
 - **permission gate** — a harness rule requiring human approval before destructive or irreversible actions (Ch. 22)
 - **monitoring** — logging and auditing agent transcripts so that violations are found after the fact even when the weights and the gates missed them (Ch. 22)
+- **likelihood displacement** — the DPO failure in which chosen answers become less likely along with the rejected ones they share tokens with; the lab's stage 2 shows it erasing a refusal (defined in Ch. 17) (Ch. 22)
+- **sandbox** — an isolated environment in which an agent's actions cannot reach anything outside its scope (defined in Ch. 21) (Ch. 22)

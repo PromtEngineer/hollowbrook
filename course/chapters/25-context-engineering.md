@@ -13,7 +13,7 @@ The agent loop of Chapter 24 appends to its message list forever. Every tool res
 
 ![The context window as a budget: what fills it, what compaction removes, what lives outside it](../figures/25_context_window.svg)
 
-The top bar in the figure is the lab's context at turn 21, drawn to scale against an 8,000-token window. From the left: the system prompt (90 tokens) and the seven tool schemas (430 tokens) are the **fixed cost**, paid on every call whether or not anything happened; then the task (9 tokens); then twenty alternating pairs of a thin blue assistant turn (a tool call, about 20 tokens) and a green tool result (up to 508 tokens, because the harness has already truncated each result to 2,000 characters). The red dashed line at 80 % is where `ContextBudget.needs_compaction` returns true. The second bar is the same context one turn later, after `compact(keep_last=6)`: the first message is untouched, the last six messages are kept verbatim, and every older tool result has been replaced by a 12-token **stub** reading `[tool result truncated: 2032 chars]`. The window drops from 6,671 to 2,216 tokens. The purple mark under the stubs is the point of the chapter: the fact `db_port=4242`, read at turn 1, was inside the third green block and is now gone. A **summariser** (the purple message on the right) is the alternative that keeps facts at the cost of a model call.
+The top bar in the figure is the lab's context at the end of turn 22, the first moment `ContextBudget.needs_compaction` returns true, drawn to scale against an 8,000-token window. From the left: the system prompt (41 tokens) and the seven tool schemas (479 tokens) are the **fixed cost**, paid on every call whether or not anything happened; then the task (9 tokens); then twenty-two alternating pairs of a thin blue assistant turn (a tool call, about 20 tokens) and a green tool result (between 9 and 508 tokens, the top end because the harness has already truncated each result to 2,000 characters). The red dashed line at 80 % (6,400 tokens) is the threshold the bar has just crossed. The second bar is the same context a moment later, after `compact(keep_last=6)` has run in the same turn: the first message is untouched, the last six messages are kept verbatim, and every older tool result has been replaced by an 8-token **stub** reading `[tool result truncated: 2032 chars]`. The window drops from 6,671 to 2,216 tokens. The purple mark under the stubs is the point of the chapter: the fact `db_port=4242`, read at turn 1, was the first green block, a thin 9-token one right after the task, and is now gone. A **summariser** (the purple message on the right) is the alternative that keeps facts at the cost of a model call.
 
 The orange band is the **prompt cache**. Providers store the KV cache (Chapter 7) of a request and reuse it for any later request whose *byte-identical prefix* matches; append-only histories reuse everything, while a timestamp in the system prompt or a compaction rewrites the prefix and forfeits the reuse. The three boxes at the bottom are the places information can live *outside* the window: a **memory file** the agent appends to and a future run reads back; a **sub-agent** whose own window absorbs a noisy search and returns one paragraph; and **retrieval**, where files, documents and tool schemas stay on disk until the agent asks for them.
 
@@ -121,7 +121,7 @@ Agent(backend, tools, AgentConfig(memory_path=mem.path)).run("What is the db por
 print("db_port=4242" in backend.calls[0]["system"])    # True: the note arrived via the system prompt, no tool call
 ```
 
-`Agent._system` re-reads the file on every run, so the memory can grow between sessions and even between processes; `render_for_prompt` keeps the *tail* of a long file, so the newest notes win. The library gives the agent no built-in tool for writing to memory; the lab registers a one-line `remember(note)` tool, which is the pattern real harnesses use (CLAUDE.md, NOTES.md, a scratchpad directory): the model decides what its future self needs to know and writes it down in words. Chapter 27 builds two structured memory files, PLAN.md and PROGRESS.md, on the same primitive.
+`Agent._system` re-reads the file on every run, so the memory can grow between sessions and even between processes (run the snippet twice and the note appears twice: the file is append-only, and nothing deduplicates it but the agent); `render_for_prompt` keeps the *tail* of a long file, so the newest notes win. The library gives the agent no built-in tool for writing to memory; the lab registers a one-line `remember(note)` tool, which is the pattern real harnesses use (CLAUDE.md, NOTES.md, a scratchpad directory): the model decides what its future self needs to know and writes it down in words. Chapter 27 builds two structured memory files, PLAN.md and PROGRESS.md, on the same primitive.
 
 ### Step 5: sub-agents as context isolation
 
@@ -141,7 +141,7 @@ print([m["role"] for m in backend.calls[1]["messages"]])   # ['user', 'assistant
 
 ### Step 6: the stable prefix and the prompt cache
 
-A **prompt cache** lets a provider reuse the KV cache of a previous request for the longest byte-identical prefix of a new one, at a fraction of the price (Anthropic bills cache reads at 10 % of input tokens; other providers are similar). The rule for the harness is: put stable material first and never rewrite it. The lab checks this by rendering consecutive requests the way a provider would see them and computing the longest common prefix:
+A **prompt cache** lets a provider reuse the KV cache of a previous request for the longest byte-identical prefix of a new one, at a fraction of the price (Anthropic's documentation prices cache reads at about a tenth of the normal input price; other providers are similar). The rule for the harness is: put stable material first and never rewrite it. The lab checks this by rendering consecutive requests the way a provider would see them and computing the longest common prefix:
 
 ```python
 def rendered(c):      # what a provider hashes: system, tools, messages, in order
@@ -173,7 +173,9 @@ Three things break the prefix, and the lab shows each: a value that changes ever
 #     self._emit(t, "compaction", {"tokens_before": before, "tokens_after": after}, turn)
 ```
 
-`AgentConfig` exposes the knobs: `context_budget_tokens` (8,000 by default, chosen small so the lab can show compaction in thirty turns), `compaction_threshold` (0.8), `compaction_keep_last` (6), `max_tool_result_chars` (2,000) and `summarizer` (`None` = stub only). The interactive lets you move all four and watch the bar.
+`AgentConfig` exposes the knobs: `context_budget_tokens` (8,000 by default, chosen small so the lab can show compaction in thirty turns), `compaction_threshold` (0.8), `compaction_keep_last` (6), `max_tool_result_chars` (2,000) and `summarizer` (`None` = stub only). The interactive lets you move the window size, the truncation cap and the auto-compaction switch and watch the bar.
+
+🆕 Providers have started offering the same moves on their side of the API: Anthropic's Messages API documents a beta *compaction* option that summarises earlier context automatically once it passes a threshold, and a *context editing* option that clears old tool results (the equivalent of stubbing). They are the operations of this chapter run by the provider instead of the harness; the budget arithmetic, and the cache cost of a rewritten prefix, are the same.
 
 ### Step 8: what the 2026 evidence says about long contexts
 
@@ -291,12 +293,12 @@ In A every request reuses all of the previous one except its closing `]`, and ab
 
 <details><summary>1. What is the fixed cost of a call, and why does it matter more than any single message?</summary>
 
-The system prompt plus every tool schema, re-sent on every call whether or not anything happened: 520 tokens in the lab for seven tools. It is multiplied by the number of turns, and adding tools raises it linearly (about 85 tokens per tool), which is why large tool sets need tool search (Chapter 26) and why the fixed part should be first and stable for the cache.
+The system prompt plus every tool schema, re-sent on every call whether or not anything happened: 520 tokens in the lab for seven tools (41 for the prompt, 479 for the schemas). It is multiplied by the number of turns, and adding tools raises it linearly (about 70 tokens per built-in tool; about 88 for the longer schemas of Chapter 26's catalogue), which is why large tool sets need tool search (Chapter 26) and why the fixed part should be first and stable for the cache.
 </details>
 
 <details><summary>2. <code>compact()</code> keeps the first message and the last <code>keep_last</code> and stubs older tool results. What is lost, and what is the alternative?</summary>
 
-The *content* of older results is lost: the lab's `db_port=4242`, read at turn 1, became `[tool result truncated: 39 chars]`. The assistant turns are kept, so the agent still sees what it did. The alternative is a summariser, which sees the full older messages and collapses them into one message that can carry the facts, at the price of a model call and the risk that the summary omits something.
+The *content* of older results is lost: the lab's `db_port=4242`, read at turn 1, became the 8-token stub `[tool result truncated: 39 chars]`. The assistant turns are kept, so the agent still sees what it did. The alternative is a summariser, which sees the full older messages and collapses them into one message that can carry the facts, at the price of a model call and the risk that the summary omits something.
 </details>
 
 <details><summary>3. What happens in <code>Agent.run</code> when the rendered prompt no longer fits TinyLM's window, and why is that better than a silent empty reply?</summary>

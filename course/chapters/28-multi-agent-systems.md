@@ -38,9 +38,11 @@ The library file is `llm/agent/multiagent.py` (113 lines). Every pattern is buil
 
 ```python
 import json, threading, time
+from concurrent.futures import ThreadPoolExecutor
 from llm.agent import (Agent, AgentConfig, AssistantMessage, ScriptedBackend, ToolRegistry,
                        orchestrate, generator_evaluator_loop, debate, make_builtin_tools, estimate_tokens)
 from llm.agent.context import message_text
+from llm.agent.multiagent import parse_json_list      # finds a JSON list of strings inside prose
 from llm.tasks import TaskExample, verify
 
 def call(name, **arguments):
@@ -74,7 +76,7 @@ def orchestrate(orchestrator_backend, worker_backend, task, tools, n_workers=3, 
                 "You are an orchestrator that merges worker reports.", max_turns=1)
 ```
 
-One practical trap, which the lab hits on purpose: the workers share one `worker_backend`, and `ScriptedBackend` replays a single list in call order. With three threads, whichever worker asks first gets the next line, whether or not it was meant for it. The lab's `RoutedBackend` picks the reply by which subtask appears in the first message and keeps one position per route under a lock; with a real API backend the same issue appears as rate limits and shared connection pools rather than wrong answers. The scripted version also sleeps 0.25 s per call so the overlap can be measured:
+One practical point, which the lab makes explicit: the workers share one `worker_backend`. `ScriptedBackend` guards its script index with a lock, so three threads cannot corrupt it, but it still replays one list in *arrival* order, so a scripted reply meant for worker B can be handed to worker A. The lab's `RoutedBackend` picks the reply by which subtask appears in the first message and keeps one position per route; with a real API backend the same sharing shows up as rate limits and connection pools rather than wrong answers. The scripted version also sleeps 0.25 s per call so the overlap can be measured:
 
 ```python
 SUMS = {"12 + 7 + 9": "28", "(3 + 5 + 4) / 3": "4.0", "2 ** 10": "1024"}
@@ -84,7 +86,7 @@ print(orchestrate(orch, workers, "compute three numbers", tools, n_workers=3))  
 print(orch.calls[1]["messages"][0]["content"][:70])                              # Original task: ... Worker reports: Subtask: ...
 ```
 
-(With a plain `ScriptedBackend` this still returns the merged answer, because the orchestrator's merge step is scripted, but the workers' tool calls and replies were handed out in arrival order.)
+(With a plain `ScriptedBackend` this still returns the merged answer, because the orchestrator's merge step is scripted, but the workers' tool calls and replies were handed out in arrival order; the lock only makes that order well-defined, not right.)
 
 ### Step 2: pipelines and hand-offs
 
@@ -167,7 +169,7 @@ A note on the method, since it is an instance of this chapter. The draft of this
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab28_multiagent.py            # quick: scripted agents only, about 5 s
+python3 labs/lab28_multiagent.py            # quick: scripted agents only, about 8 s
 python3 labs/lab28_multiagent.py --full     # + six workers, + three TinyLM models debating, about 20 s
 ```
 
@@ -181,19 +183,19 @@ context tokens per call: [20, 43, 68, 91]
 Section 2 fans the same task out to three workers. The timeline is drawn from timestamps recorded inside the backend:
 
 ```
-merged answer: 'Report numbers: 28, 4.0 and 1024.'  | 8 model calls, ≈3268 input tokens, 0.52s
-worker timeline (each worker = 2 model calls of 0.25 s):
+merged answer: 'Report numbers: 28, 4.0 and 1024.'  | 8 model calls, ≈3268 input tokens, 0.51s
+worker timeline (each worker = 2 model calls of 0.25 s; replies routed by subtask, not by arrival order):
   12 + 7 + 9                 |███████████████████                     |  0.00– 0.25 s
   (3 + 5 + 4) / 3            |███████████████████                     |  0.00– 0.25 s
-  2 ** 10                    |████████████████████                    |  0.01– 0.26 s
-  12 + 7 + 9                 |                   ███████████████████  |  0.25– 0.50 s
+  2 ** 10                    |████████████████████                    |  0.00– 0.26 s
+  12 + 7 + 9                 |                   ████████████████████ |  0.25– 0.50 s
   (3 + 5 + 4) / 3            |                   ████████████████████ |  0.25– 0.50 s
-  2 ** 10                    |                    ████████████████████|  0.26– 0.52 s
-workers were busy for 1.50 s of model latency in total but spanned only 0.51 s of wall-clock: 2.9× overlap
+  2 ** 10                    |                    ████████████████████|  0.26– 0.51 s
+workers were busy for 1.51 s of model latency in total but spanned only 0.51 s of wall-clock: 3.0× overlap
 ✅ each worker's context holds only its own subtask
 ```
 
-Six worker calls overlap into two rows of bars; the orchestrator's split and merge add two sequential calls, so the whole run is 0.52 s against 1.01 s. The price is in the second column: eight model calls and 42 % more tokens, because the orchestrator's two prompts and three separate worker contexts together hold more text than one growing context did. In `--full`, six workers overlap 6.0× (3.02 s of latency in 0.51 s).
+Six worker calls overlap into two rows of bars; the orchestrator's split and merge add two sequential calls, so the whole run is about 0.51 s against 1.01 s (the timings move by a few hundredths between runs; the ratios do not). The price is in the second column: eight model calls and 42 % more tokens, because the orchestrator's two prompts and three separate worker contexts together hold more text than one growing context did. In `--full`, six workers overlap about 6× (3.00 s of latency in 0.51 s).
 
 Section 3 runs the generator/evaluator loop three ways:
 
@@ -224,7 +226,7 @@ Section 5 is the bill, which is the table you should produce for any multi-agent
 ```
   pattern                              model calls  est. input tokens  wall-clock
   single agent                                   4              2,302       1.01s
-  orchestrator–workers                           8              3,268       0.52s
+  orchestrator–workers                           8              3,268       0.51s
   generator/evaluator (model judge)              4                275           -
 
   orchestrator–workers vs single agent: 2.00× the calls, 1.42× the tokens, 1.96× faster
@@ -233,11 +235,11 @@ Section 5 is the bill, which is the table you should produce for any multi-agent
 Section 6 (`--full`) ends with three copies of the small base model debating "What is 17 + 25?" at temperatures 0, 0.7 and 1.0:
 
 ```
-three TinyLM base models (T = 0, 0.7, 1.0) after 2 rounds: ['and Jack looked for the kite n', 'had a brown book.', 'and Nora looked for the kite n']  [13.8s]
+three TinyLM base models (T = 0, 0.7, 1.0) after 2 rounds: ['and Nora looked for the book n', 'liked the green hat more than ', 'and Nora looked for the book n']  [58.0s]
 ✅ debating base models are all wrong: debate cannot create capability
 ```
 
-A base model continues stories; three of them continue three stories (the sampled ones vary between runs; the greedy one at T = 0 is always a story). Capability is not a vote, and the only pattern in this chapter that can turn a wrong answer into a right one is the one with a verifier in it. The lab's figure `figures/generated/lab28_patterns.png` shows the Gantt chart and the token bars side by side.
+A base model continues stories; three of them continue three stories (all three vary between runs, the greedy one at T = 0 included, because in round 2 each agent's prompt contains the others' sampled answers; the time depends on how busy the machine is, 14 s idle to a minute under load). Capability is not a vote, and the only pattern in this chapter that can turn a wrong answer into a right one is the one with a verifier in it. The lab's figure `figures/generated/lab28_patterns.png` shows the Gantt chart and the token bars side by side.
 
 ## Try it yourself ✍️
 

@@ -150,7 +150,7 @@ assert torch.allclose(logits[0, -1], manual, atol=1e-4)      # logit for token t
 
 ## Worked example 🧪
 
-Run `python3 labs/lab03_embeddings.py` (quick mode: the nano base model, `runs/base_nano.pt`; a few seconds if the checkpoint exists, about a minute if it has to train one) and then `--full` (the small base model, `runs/base_small.pt`; 5–10 minutes if it has to train one). If another lab is already training the checkpoint, the lab waits for it (polling every 30 s for up to 10 minutes) rather than training a duplicate. The excerpts below are real output from the checkpoints in `runs/`; if you retrain a base model, the exact cosines and orderings will shift (the *pattern* will not).
+Run `python3 labs/lab03_embeddings.py` (quick mode: the nano base model, `runs/base_nano.pt`; about 10 seconds if the checkpoint exists, about a minute more if it has to train one) and then `--full` (the small base model, `runs/base_small.pt`; 5–10 minutes if it has to train one). If another lab is already training the checkpoint, the lab waits for it (polling every 30 s for up to 10 minutes) rather than training a duplicate. The excerpts below are real output from the checkpoints in `runs/`; if you retrain a base model, the exact cosines and orderings will shift (the *pattern* will not).
 
 **Section 1 — the lookup.**
 

@@ -34,7 +34,7 @@ TASKS = ["upper", "reverse", "add", "count"]
 N_TRAIN = 2000
 N_VAL = 32 if args.quick else 48
 STEPS = 750 if args.quick else 800
-LR = 1e-3                      # sft.SFTConfig's default is 3e-4; TinyLM is tiny, and 1e-3 converges 3x faster here
+LR = 1e-3                      # = SFTConfig's default, TinyLM's pretraining rate (3e-4 learns nothing usable in 300 steps; see sft.py)
 LORA_STEPS = STEPS             # same budget as full FT, so the comparison is fair
 LORA_RANK = 8
 LORA_LR = 3e-3                 # adapters tolerate (and need) a higher LR than the full weights
@@ -139,8 +139,8 @@ print(f"trainable params: {n_lora:,} (LoRA) vs {n_all:,} (full) = {100 * n_lora 
 check(torch.allclose(logits_before, logits_after, atol=1e-5), "at initialisation B = 0, so the LoRA model computes exactly what the base did")
 check(n_lora < 0.1 * n_all, "LoRA trains fewer than 10% of the parameters")
 
-# sft_train applies LoRA itself when cfg.lora_rank > 0 (and merges it at the end), so hand it a FRESH copy:
-# calling apply_lora twice on one model freezes the first adapters and leaves nothing trainable.
+# sft_train applies LoRA itself when cfg.lora_rank > 0 (and merges it at the end). apply_lora is idempotent, so
+# passing `demo` would work too; a FRESH copy of the base keeps the comparison with full FT clean.
 lora_model = copy.deepcopy(base)
 lcfg = SFTConfig(steps=LORA_STEPS, batch_size=16, lr=LORA_LR, warmup_steps=20, schedule="cosine",
                  log_every=50, eval_every=EVAL_EVERY, seed=args.seed, lora_rank=LORA_RANK)

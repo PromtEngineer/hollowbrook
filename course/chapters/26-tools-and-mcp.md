@@ -146,7 +146,7 @@ print(t.messages[2]["content"], "|", remote.get("calculator").read_only, remote.
 client.close()
 ```
 
-`mcp_tools_to_registry` copies each server entry's `name`, `description` and `inputSchema` into a `Tool` whose function is a closure over `client.call_tool`. The loop is unchanged. The design decision to notice is where `read_only` comes from. The 2025 revisions of the protocol added optional *annotations* on each tool, among them `readOnlyHint`; our server emits it from `Tool.read_only`, and the client copies it, so under `allow_read_only` the remote calculator runs and the remote `write_file` is denied. A hint is a *claim by the server*, though, and many servers send none; then nothing is read-only unless you say so with `read_only_tools=[...]` (a per-tool allowlist you own) or `read_only=True` (everything, for a server you know is read-only). The conservative default is deliberate: an unknown remote tool is treated as a write.
+`mcp_tools_to_registry` copies each server entry's `name`, `description` and `inputSchema` into a `Tool` whose function is a closure over `client.call_tool`. The loop is unchanged. The design decision to notice is where `read_only` comes from. A 2025 revision of the protocol added optional *annotations* on each tool, among them `readOnlyHint`; our server emits it from `Tool.read_only`, and the client copies it, so under `allow_read_only` the remote calculator runs and the remote `write_file` is denied. A hint is a *claim by the server*, though, and many servers send none; then nothing is read-only unless you say so with `read_only_tools=[...]` (a per-tool allowlist you own) or `read_only=True` (everything, for a server you know is read-only). The conservative default is deliberate: an unknown remote tool is treated as a write.
 
 ### Step 5: what the full protocol adds
 
@@ -171,7 +171,7 @@ reg = make_builtin_tools("/tmp/lab26_demo")
 print(estimate_tokens(json.dumps(reg.schemas())))     # 479 tokens for 7 tools, ~68 per tool
 ```
 
-At about 85 tokens per tool, 120 tools cost 10,539 tokens per call and 1,000 tools cost 88,435, before the conversation has started. **Tool search** is the fix: keep the catalogue outside the context and give the model *one* tool, `search_tools(query)`, that returns the schemas of the few tools that match. The lab's keyword version returns three refund tools for `"process a refund"` at 320 tokens all in, 33× less than the full catalogue. Production harnesses do the same with embeddings and deferred loading (Claude Code is reported to load many MCP tool schemas only when a search step asks for them). The trade is a turn: one call to find the tool before the call that uses it.
+At about 85 tokens per tool, 120 tools cost 10,539 tokens per call and 1,000 tools cost 88,435, before the conversation has started. **Tool search** is the fix: keep the catalogue outside the context and give the model *one* tool, `search_tools(query)`, that returns the schemas of the few tools that match. The lab's keyword version returns three refund tools for `"process a refund"` at 320 tokens all in, 33× less than the full catalogue. Production harnesses do the same with embeddings and deferred loading (Claude Code is reported to load many MCP tool schemas only when a search step asks for them), and 🆕 the Anthropic Messages API now documents the same mechanism natively: a tool definition can be marked `defer_loading`, and a server-side tool-search tool loads it into the context only when a query matches. The trade is a turn: one call to find the tool before the call that uses it.
 
 ### Step 7: A2A, the other protocol
 
@@ -218,7 +218,7 @@ Part (a) prints the calculator's schema and validation errors, then the two temp
    good: convert_temperature(20, 'K')   -> Error: from_unit must be 'C' or 'F' (got 'K'). Example: value=20, from_unit='C'.
 ```
 
-Part (b) starts the server as a subprocess (0.03 s) and tees both pipes so every JSON-RPC line is printed as it passes. This is the handshake and the tool list:
+Part (b) starts the server as a subprocess (a few hundredths of a second) and tees both pipes so every JSON-RPC line is printed as it passes. This is the handshake and the tool list:
 
 ```
    [initialize handshake]

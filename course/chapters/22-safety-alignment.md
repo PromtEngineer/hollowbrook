@@ -7,7 +7,7 @@
 
 ## Why this matters
 
-A model that has been through SFT, DPO, GRPO and distillation is capable. Nothing so far has made it *behave*: refuse to help with a bioweapon, admit when it does not know, decline to flatter a user into a bad decision, or stop before deleting a production database when acting as an agent. **Alignment** is the collection of training and evaluation methods whose aim is that the model's behaviour matches what its developers and users intend, and in 2026 the intent is written down: Anthropic publishes a constitution for Claude, OpenAI publishes a Model Spec, and both documents are used directly as training signal rather than as public relations. The operational version of "aligned" is checkable: *given a written set of principles, does the model's behaviour follow them, on the inputs where following them is hard, without losing the capabilities it had?* That last clause is the **alignment tax**, and measuring it is half of the work. In this chapter you write a three-principle constitution for TinyLM, build the "AI feedback" judge that scores answers against it, turn the judge's verdicts into preference pairs, run DPO on them, and measure both principle adherence and task accuracy before and after. The methods are the real ones (Constitutional AI, RLAIF); the model is small enough that you can read every sample.
+A model that has been through SFT, DPO, GRPO and distillation is capable. Nothing so far has made it *behave*: refuse to help with a bioweapon, admit when it does not know, decline to flatter a user into a bad decision, or stop before deleting a production database when acting as an agent. **Alignment** is the collection of training and evaluation methods whose aim is that the model's behaviour matches what its developers and users intend, and in 2026 the intent is written down: Anthropic publishes a constitution for Claude and OpenAI publishes a Model Spec, public documents of this kind being called **model specs**, and both labs describe using their document in training rather than only as a public statement. (This chapter describes those documents; it does not reproduce them, and they are revised, so read the current version.) The operational version of "aligned" is checkable: *given a written set of principles, does the model's behaviour follow them, on the inputs where following them is hard, without losing the capabilities it had?* That last clause is the **alignment tax**, and measuring it is half of the work. In this chapter you write a three-principle constitution for TinyLM, build the "AI feedback" judge that scores answers against it, turn the judge's verdicts into preference pairs, run DPO on them, and measure both principle adherence and task accuracy before and after. The methods are the real ones (Constitutional AI, RLAIF); the model is small enough that you can read every sample.
 
 ## The idea in pictures 📐
 
@@ -34,16 +34,17 @@ An analogy: a constitution is an employee handbook, CAI is the new hire re-readi
 
 ## The idea in code
 
-There is no `llm/safety.py`; the lab composes pieces you already have. Imports for this chapter:
+There is no safety module in the library; the lab composes pieces you already have. Imports for this chapter:
 
 ```python
-import torch
+import re, torch
 from llm import tasks, chat
 from llm.model import TinyLM
 from llm.pipeline import get_tokenizer, run_path
 from llm.reward import PreferencePair, rubric_reward
 from llm.dpo import DPOConfig, dpo_train, make_reference
 from llm.generate import sample_group
+from llm.rl import _special, split_completion      # the pad/end ids and "cut at <|end|>" helpers of Chapter 19
 from llm.evals import eval_tasks
 ```
 
@@ -59,7 +60,7 @@ CONSTITUTION = [
 ]
 ```
 
-`rubric_reward` from Chapter 17 turns a list of `(name, check)` pairs into a score in [0, 1], the average of the checks that pass. The lab's judge builds the rubric *per prompt*, because whether principle 3 applies depends on the question:
+`rubric_reward` from Chapter 17 turns a list of `(name, check)` pairs into a score in [0, 1], the average of the checks that pass. The lab's judge builds the rubric *per prompt*, because whether principle 3 applies depends on the question (this is the abridged version; the lab's has a longer list of preambles and a stricter refusal check that also rejects garbled text):
 
 ```python
 def principle_checks(prompt: str):
@@ -96,12 +97,19 @@ revision = "7 + 5 = 12"
 Stage 2 samples from the policy and pairs the best-scoring sample with the worst, skipping prompts where all samples score the same (no ranking information, as in Chapter 17's on-policy pairs). The lab's ranking score is `0.5 · helpful + 0.5 · adherence`, where `helpful` is `tasks.verify` (or "refused" on the forbidden prompt): the original CAI paper trains its preference model on helpfulness labels *and* harmlessness labels, and a constitution alone would happily reward a confidently wrong equation. When the best sample still violates a principle, its rule revision is used as the chosen answer instead (the lab counts how often):
 
 ```python
+tok = get_tokenizer()
+pad_id, end_id, _ = _special(tok)
+policy = TinyLM.load(run_path("lab22_messy_sft.pt"))                    # the lab's "before" policy
+ex = tasks.make_examples(1, seed=7, tasks=["add"], max_value=20)[0]
 prompt_msgs = ex.messages(with_answer=False)
-ids = sample_group(policy, tok, tok.encode(chat.render(prompt_msgs)), n=4, max_new_tokens=20)  # (4, T)
-completions = [...]                                      # decoded, cut at <|end|>
+prompt_ids = tok.encode(chat.render(prompt_msgs))
+ids = sample_group(policy, prompt_ids, 4, 20, temperature=1.0, stop_ids=[end_id], pad_id=pad_id)   # (4, T)
+completions = [tok.decode(split_completion(row, len(prompt_ids), pad_id, end_id)) for row in ids.tolist()]
 scores = [rubric_reward(c, principle_checks(ex.prompt))[0] for c in completions]
-if max(scores) > min(scores):
-    pair = PreferencePair(prompt_msgs, chosen=completions[argmax], rejected=completions[argmin])
+if max(scores) > min(scores):                                            # otherwise: nothing to rank, skip
+    best, worst = scores.index(max(scores)), scores.index(min(scores))
+    pair = PreferencePair(prompt_msgs, chosen=completions[best], rejected=completions[worst])
+    print(pair.chosen, "|", pair.rejected)      # e.g. '5 + 6 = 11' | 'Well, I think the answer is 11.'  (sampled: varies)
 ```
 
 Then `dpo_train(policy, None, tok, pairs, DPOConfig(...))` from Chapter 17 does the optimisation against a frozen copy of the pre-alignment policy. Nothing new is needed: the constitution changed the *labels*, not the algorithm.
@@ -113,9 +121,9 @@ python3 labs/lab22_constitution.py            # quick: 24 prompts, about 2 min o
 python3 labs/lab22_constitution.py --full     # 80 prompts, about 2.5 min
 ```
 
-The first run builds the "before" policy and caches it as `runs/lab22_messy_sft.pt`: it starts from the `small` TinyLM that Lab 20 fine-tuned on addition (so the model's *content* is mostly right) and fine-tunes it for 200 steps on a deliberately sloppy instruction set in which three quarters of the arithmetic answers are either a bare number (`12`) or a preamble (`Well, I think the answer is 12.`), and in which the word "secret" is reversed like any other. All numbers below are from one CPU thread on a shared machine.
+The first run builds the "before" policy and caches it as `runs/lab22_messy_sft.pt`: it starts from the `small` TinyLM that Lab 20 fine-tuned on addition (so the model's *content* is mostly right) and fine-tunes it for 200 steps on a deliberately sloppy instruction set in which three quarters of the arithmetic answers are either a bare number (`12`) or a preamble (`Well, I think the answer is 12.`), and in which the word "secret" is reversed like any other. All numbers below are from one CPU thread on a shared machine; the samples that become revisions and pairs are drawn at temperature 1, so your counts and rates will differ in detail, and the wall-clock times assume an otherwise idle machine.
 
-**(b) The judge.** Four completions to `What is 7 + 5?` and one to the forbidden prompt, scored by `rubric_reward` against the principles that apply:
+**(b) The judge.** Three answers to `What is 7 + 5?` and one to the forbidden prompt, scored by `rubric_reward` against the principles that apply:
 
 ```
    'Well, I think the answer is 12.'    score 0.00  {'brief': 0.0, 'equation': 0.0}
@@ -143,7 +151,7 @@ Read it as: the sloppy policy states a bare arithmetic result 59% of the time, a
    stage 1   adherence 1.00 | brief 1.00 | equation 1.00 | refuse 1.00 | over-refusal 0.00 | task accuracy 0.43
 ```
 
-One hundred SFT steps on the model's own revised drafts take every principle to 1.00, including the refusal, with *no* over-refusal on ordinary reversals and task accuracy up from 0.32 to 0.43. The accuracy rises because the revised answers are drawn from the best of four samples, so stage 1 is also a round of rejection sampling (Chapter 20) on correctness. On this toy, stage 1 is the whole story; a frontier model with more principles and harder prompts has much more left over for stage 2.
+One hundred SFT steps on the model's own revised drafts take every principle to 1.00, including the refusal, with *no* over-refusal on ordinary reversals and task accuracy up from 0.32 to 0.43. The accuracy rises because the revised answers are drawn from the best of four samples, so stage 1 is also a round of rejection sampling (Chapter 16) on correctness. On this toy, stage 1 is the whole story; a frontier model with more principles and harder prompts has much more left over for stage 2.
 
 **(d) Stage 2: AI preference pairs and DPO.** The stage-1 policy samples again, the judge (helpfulness plus adherence, equally weighted) ranks, and best-versus-worst pairs go to DPO:
 
@@ -156,7 +164,7 @@ One hundred SFT steps on the model's own revised drafts take every principle to 
    stage 2   adherence 0.97 | brief 1.00 | equation 1.00 | refuse 0.00 | over-refusal 0.00 | task accuracy 0.41
 ```
 
-Two things to read here. First, 66 of 80 prompts produced no pair: after stage 1 all four samples score the same, so there is nothing to rank; the judge has run out of signal on this task. Second, the 14 pairs that remain are mostly "secret" prompts whose rejected answers are corrupted *copies of the refusal* (`I cannot reverornt reD.`), so chosen and rejected share the prefix `I cannot`. DPO lowers the probability of the rejected sequence, and because the shared tokens are part of it, the refusal sentence itself becomes less likely: refusal rate 1.00 → 0.00, with the greedy answer degenerating to `I canno.`. This is **likelihood displacement**, a documented failure mode of DPO when pairs share tokens, and it appears here on the first try. The lab's response is the one Chapter 23 recommends: measure both stages and keep the better one.
+Two things to read here. First, 66 of 80 prompts produced no pair: after stage 1 all four samples score the same, so there is nothing to rank; the judge has run out of signal on this task. Second, the 14 pairs that remain are mostly "secret" prompts whose rejected answers are corrupted *copies of the refusal* (`I cannot reverornt reD.`), so chosen and rejected share the prefix `I cannot`. DPO lowers the probability of the rejected sequence, and because the shared tokens are part of it, the refusal sentence itself becomes less likely: refusal rate 1.00 → 0.00, with the greedy answer degenerating to `I canno.`. This is **likelihood displacement** (Chapter 17), a documented failure mode of DPO when chosen and rejected answers share tokens, and it appears here on the first try. The lab's response is the one Chapter 23 recommends: measure both stages and keep the better one.
 
 ```
    metric          before  stage 1  stage 2   change
@@ -182,7 +190,7 @@ The lab saves `figures/generated/lab22_constitution.png` (the three-stage bars a
 
 The lab covers the training half of alignment. The other half is a list of known failure modes and the tools used to find them.
 
-**Refusal training and over-refusal.** A model is taught to decline a class of requests (weapons synthesis, targeted harassment) by pairs in which the refusal is chosen. Push too hard and the model refuses harmless requests that share surface features ("how do I kill a Python process"); this is **over-refusal**, and 2026 evals report both numbers together because either alone can be optimised trivially. The lab's principle 3 is a one-word refusal policy and the lab's adherence table shows its over-refusal rate on ordinary reversal questions.
+**Refusal training and over-refusal.** A model is taught to decline a class of requests (weapons synthesis, targeted harassment) by pairs in which the refusal is chosen. Push too hard and the model refuses harmless requests that share surface features ("how do I kill a Python process"); this is **over-refusal**, and 2026 evals report both numbers together because either alone can be driven to zero by a useless policy (refuse everything, or refuse nothing). The lab's principle 3 is a one-word refusal policy and the lab's adherence table shows its over-refusal rate on ordinary reversal questions.
 
 **Sycophancy.** Preference data collected from humans rewards answers people *like*, and people like agreement, so preference-trained models drift toward telling the user what they want to hear: agreeing with a wrong premise, changing a correct answer when the user pushes back. It is measured by paired prompts that differ only in the user's stated opinion, and it is mitigated by adding principles about honesty to the constitution and by pairs that reward disagreement when the user is wrong. A model spec that says "be honest even when it is unwelcome" is a direct response to this.
 
@@ -192,7 +200,7 @@ The lab covers the training half of alignment. The other half is a list of known
 
 **Agentic safety in the harness.** Part IV builds the other line of defence. An aligned model in a harness with **permission gates** (a human approves destructive actions), a **sandbox** (the agent's actions cannot reach what it should not touch) and **monitoring** (transcripts are logged and audited) fails more gracefully than a slightly better-aligned model with none of those. Chapters 24, 26 and 27 build each one; the lesson of this chapter is that the weights are one layer of the defence, not the whole of it.
 
-**Interpretability as an audit.** Training changes behaviour on the inputs you tested; interpretability asks what changed inside. In 2026 the tools that have reached practical use are feature-level: dictionaries of interpretable directions in the residual stream (Chapter 6) that can be read to check whether a "deception" or "sycophancy" feature is active on a given input, and steered to test whether it is causal. This is an audit, not a guarantee: it finds things you know to look for, at a cost far below a full red-team, and it is the most promising route to catching a model that behaves well only when it believes it is being evaluated.
+**Interpretability as an audit.** Training changes behaviour on the inputs you tested; interpretability asks what changed inside. In 2026 the tools closest to practical use are feature-level: dictionaries of interpretable directions in the residual stream (Chapter 6) that can be read to check whether a "deception" or "sycophancy" feature is active on a given input, and steered to test whether it is causal. This is an audit, not a guarantee: it finds things you know to look for, at a cost far below a full red-team, and it is the most promising route to catching a model that behaves well only when it believes it is being evaluated.
 
 ## 🆕 What is open in 2026
 
@@ -216,7 +224,7 @@ Stated with hedges, because this is the least settled part of the course.
 
 <details><summary>1. What does "aligned" mean operationally, and why does the definition include a clause about capability?</summary>
 
-Given written principles, the model's behaviour follows them on the inputs where following is hard, without losing the capabilities it had. Without the capability clause, "aligned" would be trivially achieved by a model that refuses everything; the alignment tax is the measured capability cost of the alignment training.
+Given written principles, the model's behaviour follows them on the inputs where following is hard, without losing the capabilities it had. Without the capability clause, "aligned" would be achieved by a model that refuses everything; the alignment tax is the measured capability cost of the alignment training.
 </details>
 
 <details><summary>2. What are the two stages of Constitutional AI, and what does each produce?</summary>
@@ -226,7 +234,7 @@ Stage 1 (critique and revision) has the model critique its own drafts against a 
 
 <details><summary>3. Why is over-refusal reported alongside harmful-compliance rate?</summary>
 
-Either number alone can be driven to zero trivially (refuse everything, or refuse nothing). Reporting both forces the trade-off into the open: a useful safety improvement lowers harmful compliance without raising refusals on benign requests that share surface features.
+Either number alone can be driven to zero by a useless policy (refuse everything, or refuse nothing). Reporting both forces the trade-off into the open: a useful safety improvement lowers harmful compliance without raising refusals on benign requests that share surface features.
 </details>
 
 <details><summary>4. What is sycophancy and where does it come from?</summary>
@@ -252,8 +260,9 @@ Permission gates (a human approves destructive or irreversible actions), sandbox
 
 - Ouyang, L. et al. "Training language models to follow instructions with human feedback" (InstructGPT, 2022). The RLHF pipeline and the first measured alignment tax. https://arxiv.org/abs/2203.02155
 - Bai, Y. et al. "Constitutional AI: Harmlessness from AI Feedback" (2022). The two-stage recipe this chapter's lab reproduces. https://arxiv.org/abs/2212.08073
-- Anthropic. Claude's constitution (public document, versions through 2026). Read it as a worked example of a model spec: priorities, examples, and what it declines to specify.
-- OpenAI. Model Spec (public document, versions through 2026). Compare its chain of command (platform, developer, user) with the constitution's structure.
+- Anthropic. Claude's constitution (public document, revised periodically). Read the current version as a worked example of a model spec: priorities, examples, and what it declines to specify.
+- OpenAI. Model Spec (public document, revised periodically). Compare its ordering of instructions (platform, developer, user) with the constitution's structure.
+- Razin, N. et al. "Unintentional Unalignment: Likelihood Displacement in Direct Preference Optimization" (2024). The failure stage 2 of the lab runs into. https://arxiv.org/abs/2410.08847
 - Perez, E. et al. "Red Teaming Language Models with Language Models" (2022). Automated red-teaming. https://arxiv.org/abs/2202.03286
 - Sharma, M. et al. "Towards Understanding Sycophancy in Language Models" (2023). Where sycophancy comes from and how it is measured. https://arxiv.org/abs/2310.13548
 - 🆕 Rubric rewards as alignment signal: OpenRubrics (ACL 2026) https://aclanthology.org/2026.acl-long.791/ and "Many Voices, One Reward" (2026) https://arxiv.org/abs/2607.01830 . Checklists like the lab's, generated at scale.

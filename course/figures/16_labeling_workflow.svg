@@ -77,7 +77,7 @@
     <text x="34" y="312" font-size="10"><tspan font-weight="700">verbosity:</tspan> prefers the longer answer → win-rate vs length gap</text>
     <text x="34" y="328" font-size="10"><tspan font-weight="700">self-preference:</tspan> prefers its own style → use another judge family</text>
     <text x="34" y="348" fill="#64748b" font-size="10">evals.position_bias_check runs the swap test; the lab shows a judge failing it.</text>
-    <text x="34" y="364" fill="#64748b" font-size="10">A rubric-graded judge (2025–26 practice) is less biased than "which is better?".</text>
+    <text x="34" y="364" fill="#64748b" font-size="10">A rubric-graded judge (2025–26 practice) is reported less biased than "which is better?".</text>
   </g>
 
   <!-- kappa panel -->
