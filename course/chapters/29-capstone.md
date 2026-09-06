@@ -29,38 +29,56 @@ flowchart LR
 
 Read it as: every stage consumes the previous checkpoint and writes its own; the evaluation reads all of them. Two rules make the script re-runnable. **Checkpoint reuse**: each stage first looks for a checkpoint in `runs/` (its own `capstone_*` file or the one the chapter's lab produced, such as `sft_nano.pt` or `grpo_small.pt`) and trains only if none exists, so a second run takes seconds, and a crash in stage 7 does not cost you stages 0–6. A lineage rule: every `capstone_*` file records which checkpoint it was trained from (`extra["parent"]`), and it is reused only if that parent is the checkpoint the current run is actually using upstream; otherwise it is retrained, so the chain stays a chain even when an earlier lab's checkpoint appears in `runs/` between two runs.
 
-The second figure is the scale-up map, discussed in its own section below.
+The second figure is the **scale-up map**: a table with one column per scale (TinyLM, nanochat's $100 run, 1B, 10B, 100B+) and one row per pipeline stage, showing what stops being simple in that stage as you move right. It is discussed in its own section below.
 
 ![The scale-up map: what changes from TinyLM to a frontier run](../figures/29_scale_map.svg)
 
 ## The idea in code
 
-There is no new library code in this chapter. The script is 300 lines of calls into functions you have already read, and the pattern for every stage is the same:
+There is no new library code in this chapter. The script is about 430 lines of calls into functions you have already read, and the pattern for every stage is the same. Here it is with the lab's `existing()` helper reduced to its core (the lab's version also checks the recorded parent):
 
 ```python
+import os
 from llm.model import TinyLM
-from llm.pipeline import run_path
+from llm.pipeline import TOKENIZER_PATH, get_tokenizer, run_path
+from llm.sft import SFTConfig, make_sft_examples, sft_train
 
-with Stage("4. supervised fine-tuning (Chapter 15)") as st:          # times the block, records a note
-    p = existing("sft_nano.pt", "capstone_sft_nano.pt", d_model=96, parent=paths["mid"])   # reuse if one exists
-    if p is None:
-        model = TinyLM.load(paths["mid"])                                                  # start from the previous stage
-        hist = sft_train(model, tok, sft_examples, cfg, verbose=True)
-        p = save_stage(model, "capstone_sft_nano.pt", "sft", parent=paths["mid"])          # records its parent
-    paths["sft"] = p
+def existing(*names, d_model):                       # the first checkpoint in runs/ that exists and has the right width
+    for n in names:
+        p = run_path(n)
+        if os.path.exists(p) and TinyLM.load(p).cfg.d_model == d_model:
+            return p
+    return None
+
+tok = get_tokenizer()
+paths = {"mid": run_path("capstone_mid_nano.pt")}                                   # the previous stage's checkpoint
+p = existing("sft_nano.pt", "capstone_sft_nano.pt", d_model=96)                    # reuse if one exists ...
+if p is None:                                                                       # ... else train from the previous stage
+    model = TinyLM.load(paths["mid"])
+    sft_train(model, tok, make_sft_examples(800, seed=1), SFTConfig(steps=120, lr=3e-4), verbose=False)
+    p = run_path("capstone_sft_nano.pt")
+    model.save(p, TOKENIZER_PATH, extra={"stage": "sft", "parent": paths["mid"]})      # records its parent
+paths["sft"] = p
+print(os.path.basename(p))                          # sft_nano.pt (Lab 15's checkpoint, reused) or capstone_sft_nano.pt
 ```
 
-`existing()` checks the candidate's width (`cfg.d_model`), so a nano checkpoint is never reused in a `--full` run. **The evaluation** (Chapter 23) is the same call for every checkpoint: greedy decoding, `tasks.verify` as grader, plus perplexity on held-out Storyland:
+The lab wraps each such block in a `Stage` context manager that times it and records a one-line note for the report. `existing()` checks the candidate's width (`cfg.d_model`), so a nano checkpoint is never reused in a `--full` run. **The evaluation** (Chapter 23) is the same call for every checkpoint: greedy decoding, `tasks.verify` as grader, plus perplexity on held-out Storyland:
 
 ```python
 from llm.evals import eval_tasks, perplexity
+from llm.pipeline import get_tokens
 from llm import tasks
+_, val_tokens = get_tokens(tok)                                            # held-out Storyland
 held_all = tasks.make_examples(40, seed=2024)                              # seven task types
 held_add = tasks.make_examples(24, seed=2025, tasks=["add"], max_value=9)  # what GRPO trained on
-for name in ("base", "mid", "sft", "dpo", "grpo", "opd"):
+paths["base"] = run_path("base_nano.pt")                                   # the lab has all six stages here
+for name in ("base", "sft"):
     m = TinyLM.load(paths[name])
     r_all, r_add = eval_tasks(m, tok, held_all, max_new_tokens=16), eval_tasks(m, tok, held_add, max_new_tokens=16)
     ppl = perplexity(m, val_tokens, batch_size=16, seq_len=128, n_batches=5)
+    print(f"{name}: acc(all) {r_all.accuracy:.2f}  acc(add) {r_add.accuracy:.2f}  ppl {ppl:.2f}")
+# base: acc(all) 0.00  acc(add) 0.00  ppl 2.90
+# sft:  acc(all) 0.40  acc(add) 0.00  ppl 840.26
 ```
 
 **Tool-SFT** is supervised fine-tuning on conversations that contain a tool call and a tool result, so that the model learns to emit the harness's format. The training conversations use *exactly* the system prompt that `TinyLMBackend` renders at inference (the prompt plus the tool schemas as JSON), because a format learned under one system prompt does not transfer to another:
@@ -81,7 +99,7 @@ conv = [{"role": "system", "content": system_text},
         {"role": "assistant", "content": "17 + 25 = 42"}]
 ```
 
-`sft_train` accepts such conversations directly (`sft_train(model, tok, convs, SFTConfig(steps=200, batch_size=4, lr=1e-3, warmup_steps=5, max_len=512))`), and `build_sft_example` masks everything except the `tool_call` and `assistant` turns, so the model is trained to produce the call and the final answer and never the tool's output. `TinyLMBackend` lists tools compactly by default (name, description, argument names) because a full JSON schema costs a few hundred Storyland tokens; a whole trace is 197 tokens, of which the tool-call turn is 51 (the JSON is spelled out nearly byte by byte), which is why the agent's `max_new_tokens` is 80 and the model's context is extended to 512 for this stage.
+`sft_train` accepts such conversations directly (`sft_train(model, tok, convs, SFTConfig(steps=200, batch_size=4, lr=1e-3, warmup_steps=5, max_len=512))`), and `build_sft_example` masks everything except the `tool_call` and `assistant` turns, so the model is trained to produce the call and the final answer and never the tool's output. `TinyLMBackend` lists tools compactly by default (name, description, argument names) because a full JSON schema costs well over a hundred extra Storyland tokens per tool (123 for `calc`; Lab 27 measured about 170 per tool for the seven built-ins); a whole trace is 197 tokens, of which the tool-call turn is 51 (the JSON is spelled out nearly byte by byte), which is why the agent's `max_new_tokens` is 80 and the model's context is extended to 512 for this stage.
 
 ## Worked example 🧪
 
@@ -91,7 +109,7 @@ python3 labs/lab29_capstone.py --full     # the small model; about 25 minutes th
 python3 labs/lab29_capstone.py --fresh    # retrain every capstone_* checkpoint
 ```
 
-The timings below come from a 4-core machine with two PyTorch threads (`OMP_NUM_THREADS=2`) while other labs were running (load average 4–8); the script drops to one thread only when the load exceeds three times the core count. Because the earlier labs' checkpoints in `runs/` are what the capstone reuses, your table will differ from this one whenever those labs have been re-run.
+The timings below come from a 4-core machine with two PyTorch threads (`OMP_NUM_THREADS=2`) while other labs were running (load average 4–8); the script drops to one thread only when the load exceeds three times the core count. Because the earlier labs' checkpoints in `runs/` are what the capstone reuses, your table will differ from this one whenever those labs have been re-run. The lab prints two tables: the **stage table** (what each stage did, what it reused, how long it took) and the **checkpoint comparison table** (the same evaluation applied to every saved checkpoint, so stages can be compared rather than admired).
 
 ### Quick mode (nano model)
 
@@ -109,7 +127,7 @@ decontaminate                   1511        3  contaminated:3
    1,938 raw docs -> 1,511 curated
 ```
 
-Then the base model is loaded, mid-training runs for 40 steps the first time (`held-out MATH loss 1.770 -> 1.666`; reused afterwards), three stages report `reusing ...`, and the two stages no earlier lab produced in this form run for real:
+Then the base model is loaded, mid-training runs for 40 steps the first time (`held-out MATH loss 1.770 -> 1.666`; reused afterwards), three stages report `reusing ...`, and the two stages no earlier lab produced in this form (OPD and tool-SFT) run for real the first time and are reused after that:
 
 ```
 --- 7. on-policy distillation into a student (Chapter 20) ---
@@ -133,7 +151,7 @@ The table that the whole course was building towards, with each checkpoint's ans
 | opd   | capstone_opd_nano.pt  | 0.35 | 0.00 | 1705.34 | 1 |   '3 + 63 = 97'
 ```
 
-Base and mid continue the prompt as a Storyland document and answer nothing. SFT (Lab 15 trained it on `upper`, `reverse`, `add` and `count`) produces the shape of an answer and scores 0.40 on the mixed tasks, at a Storyland perplexity of 840 instead of 2.9. Lab 17's DPO and Lab 19's GRPO checkpoints were trained on addition alone: they copy the operands (`7 + 2 = ...`), get a fifth of the single-digit sums right, and score zero on everything else, at perplexities in the thousands on the text they were pretrained on. That is Chapter 14's alignment tax taken to its limit by a 300k-parameter model pushed hard on one task; a bigger model pays it in a much smaller coin. OPD moved the SFT model toward the GRPO teacher without changing either score. With 40 and 24 questions the 95 % intervals are about ±0.15 and ±0.2, so `sft` versus `opd` is a tie; the base-versus-rest gap and the addition scores of `dpo` and `grpo` are the real differences (Chapter 23).
+Base and mid continue the prompt as a Storyland document and answer nothing. SFT (Lab 15 trained it on `upper`, `reverse`, `add` and `count`) produces the shape of an answer and scores 0.40 on the mixed tasks, at a Storyland perplexity of 840 instead of 2.9. Lab 17's DPO and Lab 19's GRPO checkpoints were trained on addition alone: they copy the operands (`7 + 2 = ...`), get a fifth of the single-digit sums right, and score zero on everything else, at perplexities in the thousands on the text they were pretrained on. That is the alignment tax of Chapter 14 in its broadest sense, capability lost to post-training (here fluency lost to task-tuning), taken to its limit by a 300k-parameter model pushed hard on one task; a bigger model pays it in a much smaller coin. OPD moved the SFT model toward the GRPO teacher without changing either score. With 40 and 24 questions the 95 % intervals are about ±0.15 and ±0.2, so `sft` versus `opd` is a tie; the base-versus-rest gap and the addition scores of `dpo` and `grpo` are the real differences (Chapter 23).
 
 The last stage is the agent:
 
@@ -157,7 +175,7 @@ step   119 | loss 0.4089 | lr 1.00e-04 | grad_norm 0.85 | 2,641 tok/s
 6/6 checks passed in 121.7s
 ```
 
-120 steps of the ordinary SFT loop (warmup, cosine decay, a masked loss on the two assistant turns) are enough for the nano model to emit a well-formed tool call that the harness parses and executes. The operands are invented (`26 + 30` for `17 + 25`), the final answer ignores the `56` it was given and trails off into a quote mark. Sixty steps were not enough under the cosine schedule (loss 1.68, near-JSON with misspelled keys); the same sixty steps at a constant `1e-3` were, which is a reminder that a schedule halves the learning rate you thought you had. The whole quick run took two minutes with the machine shared, 25 s when it was idle.
+120 steps of the ordinary SFT loop (warmup, cosine decay, a masked loss on the two assistant turns) are enough for the nano model to emit a well-formed tool call that the harness parses and executes. The operands are invented (`26 + 30` for `17 + 25`), the final answer ignores the `56` it was given and trails off into a quote mark. Sixty steps were not enough under the cosine schedule (loss 1.68, near-JSON with misspelled keys); the same sixty steps at a constant `1e-3` were, which is a reminder that a schedule halves the learning rate you thought you had. The whole quick run took two minutes with the machine shared the first time; with every checkpoint reused it takes about 30 s, whatever the load.
 
 ### Full mode (small model)
 
@@ -187,7 +205,7 @@ step   119 | loss 0.4089 | lr 1.00e-04 | grad_norm 0.85 | 2,641 tok/s
 7/7 checks passed in 425.1s
 ```
 
-Seven minutes on a shared machine, because every stage the earlier labs had already produced in `--full` mode was reused; when the capstone trained SFT, DPO and GRPO itself (an earlier run) it took 837 s. The reused checkpoints tell a cleaner story than the ones this script trains in a few minutes. Lab 15's `sft_small.pt` scores 0.48 on the mixed tasks and 0.20 on addition at a Storyland perplexity of 183. Lab 17's DPO checkpoint, trained on addition alone, reaches 0.67 on addition and nothing on the other tasks at a perplexity of 8.7, and Lab 19's GRPO checkpoint keeps both numbers; on 30 questions 0.20 and 0.67 are distinguishable, 0.67 and 0.67 obviously not. The OPD student is the nano SFT model of Lab 15 distilled from the small GRPO teacher; 16 steps lower the reverse KL from 3.25 to 2.73 without changing its scores, and its 0.32 on the mixed tasks comes from Lab 15, not from distillation.
+Seven minutes on a shared machine, because every stage the earlier labs had already produced in `--full` mode was reused; when the capstone trained SFT, DPO and GRPO itself (an earlier run) it took 837 s. The reused checkpoints tell a cleaner story than the ones this script trains in a few minutes. Lab 15's `sft_small.pt` scores 0.48 on the mixed tasks and 0.20 on addition at a Storyland perplexity of 183. Lab 17's DPO checkpoint, trained on addition alone, reaches 0.67 on addition and nothing on the other tasks at a perplexity of 8.7, and Lab 19's GRPO checkpoint keeps both numbers; on 30 questions 0.20 and 0.67 are distinguishable (intervals of about ±0.15 that do not overlap), and 0.67 and 0.67 are not. The OPD student is the nano SFT model of Lab 15 distilled from the small GRPO teacher; 16 steps lower the reverse KL from 3.25 to 2.73 without changing its scores, and its 0.32 on the mixed tasks comes from Lab 15, not from distillation.
 
 Two experiments behind this table are worth knowing, because you will meet both on your own checkpoints. GRPO from a *weak* policy learns nothing: most groups are all-wrong, `skipped` is 0.75–1.00. GRPO from a *good* policy (Lab 17's DPO model, 0.67 on addition) at `lr = 2e-4` with no reference model *destroys* it: reward 0.61 → 0.31 in 20 steps, held-out accuracy 0.67 → 0.07, because with `ppo_epochs = 1` nothing is clipped and Adam turns a few hundred noisy answer tokens into full-size updates. A KL anchor to a frozen copy (`kl_coef = 0.05`) at `lr = 2e-5` keeps the accuracy (0.67 → 0.70), which is the script's configuration for the small model; Chapter 19's KL term is the difference between improving a policy and wrecking one.
 
@@ -206,7 +224,7 @@ The agent is the finale, and it deserves to be read line by line:
    TinyLM called the tool and its final answer was wrong ('17 + 25 = 41')
 ```
 
-After 200 steps of tool-SFT, starting from Lab 19's GRPO model, the 2.4M-parameter model emits a syntactically perfect tool call with the right operands, the harness runs `safe_eval("17 + 25")`, and `42` comes back as a `tool_result` turn. Then the model's second turn answers `17 + 25 = 41`: it copied the operands but did not copy the result it was handed. That is nearly the whole course in four lines: a pretrained model (Chapter 10), taught a chat format (15), sharpened on a task (17, 19), taught a tool protocol, driven by the loop of Chapter 24, and caught by a verifier rather than by itself (27). The raw generation shows what the harness hides: after `<|end|>` the model keeps going (`l: "17 + 25 = 34`) and `TinyLMBackend` keeps only the part before the first foreign role tag. The outcome is a coin flip at this scale: two earlier runs of the same recipe produced `17 + 25 = 42` (correct, tool result copied) and `calc("6 + 13")` followed by `6 + 13 = 21` (wrong operands, tool result ignored), and the nano model above never copies the operands at all. Copying two numbers out of a 200-token prompt into a template is a harder skill than the template, and it is the skill Chapter 21's reward pays for; tool-SFT teaches the *protocol* of tool use, agentic RL its *purpose*. The harness did its Chapter 27 job in every case: a bounded loop, a validated call, a sandboxed execution, and a transcript that records the call and the answer, so that a verifier, not the model, has the last word.
+After 200 steps of tool-SFT, starting from Lab 19's GRPO model, the 2.5M-parameter model emits a syntactically perfect tool call with the right operands, the harness runs `safe_eval("17 + 25")`, and `42` comes back as a `tool_result` turn. Then the model's second turn answers `17 + 25 = 41`: it copied the operands but did not copy the result it was handed. That is nearly the whole course in four lines: a pretrained model (Chapter 10), taught a chat format (15), sharpened on a task (17, 19), taught a tool protocol, driven by the loop of Chapter 24, and caught by a verifier rather than by itself (27). The raw generation shows what the harness hides: after `<|end|>` the model keeps going (`l: "17 + 25 = 34`) and `TinyLMBackend` keeps only the part before the first foreign role tag. The outcome is a coin flip at this scale: two earlier runs of the same recipe produced `17 + 25 = 42` (correct, tool result copied) and `calc("6 + 13")` followed by `6 + 13 = 21` (wrong operands, tool result ignored), and the nano model above never copies the operands at all. Copying two numbers out of a 200-token prompt into a template is a harder skill than the template, and it is the skill Chapter 21's reward pays for; tool-SFT teaches the *protocol* of tool use, agentic RL its *purpose*. The harness did its Chapter 27 job in every case: a bounded loop, a validated call, a sandboxed execution, and a transcript that records the call and the answer, so that a verifier, not the model, has the last word.
 
 The report is saved to `runs/capstone_report.md` and the figure to `figures/generated/lab29_capstone.png` (accuracy per stage on the left, seconds per stage on the right).
 
@@ -218,14 +236,14 @@ Everything in the lab has a counterpart in a frontier run. The figure `29_scale_
 
 **nanochat** (Karpathy, October 2025) is the closest public relative of this course: one repository that trains a tokenizer, pretrains a Transformer, mid-trains, SFTs, optionally runs a little RL, evaluates, and serves a chat UI, in about four hours on 8×H100 for roughly $100. Set against Lab 29, the differences are instructive because they are *not* differences of kind:
 
-- **Data volume.** TinyLM sees about a million Storyland tokens; nanochat streams on the order of ten billion FineWeb-Edu tokens from disk shards through the same kind of packed-window loader, with the tokens-per-parameter ratio chosen from a scaling rule (Chapter 9).
+- **Data volume.** TinyLM's whole corpus is about 0.4 million Storyland tokens, which the small base model passes over roughly eight times (700 steps × 32 × 128 tokens); nanochat streams about eleven billion FineWeb-Edu tokens (Chapter 9) from disk shards through the same kind of packed-window loader, with the tokens-per-parameter ratio chosen from a scaling rule (Chapter 9).
 - **Tokenizer.** Its own byte-level BPE with 2¹⁶ = 65,536 entries; ours saturates at 871 because Storyland has 401 distinct chunks.
-- **Model and optimizer.** ~560M parameters with the block you built (pre-norm, RoPE, GQA, SwiGLU), Muon for the matrices and AdamW for the rest, in bfloat16; its speedrun lineage (modded-nanogpt) reached a GPT-2-grade result in a reported ~1.35 minutes on 8×H100 by April 2026 with Muon, FlashAttention-3, an FP8 head and multi-token prediction.
+- **Model and optimizer.** ~560M parameters in a decoder block of the same family as the one you built (pre-norm, RoPE; the attention and MLP details differ, and the repository's `gpt.py` is the place to see how), Muon for the matrices and AdamW for the rest, in bfloat16; its speedrun lineage (modded-nanogpt) reached a GPT-2-grade result in a reported ~1.35 minutes on 8×H100 by April 2026 with Muon, FlashAttention-3, an FP8 head and multi-token prediction.
 - **Parallelism.** Data parallelism across eight GPUs with an all-reduce per step (Lab 11 did this across two CPU processes).
 - **Evals.** A fixed suite (a CORE-style aggregate, ARC, GSM8K, HumanEval, MMLU) on every checkpoint: the capstone's table with better questions.
 - **Post-training.** SFT and a little RL on GSM8K; no preference stage, no distillation, no safety training. A $100 model is a research artefact, not a product.
 
-nanochat is Lab 29 with 10⁴ times the data, 200 times the parameters, real benchmarks and a GPU. Every function name maps.
+nanochat is Lab 29 with some 10⁴ times the data, about 200 times the parameters, real benchmarks and a GPU. Every function name maps.
 
 ### What changes at 1B, 10B and 100B+
 
@@ -233,13 +251,13 @@ nanochat is Lab 29 with 10⁴ times the data, 200 times the parameters, real ben
 
 **Tokenizer size.** 32k–128k vocabularies at 1–10B, 128k–256k at the frontier, trained on a sample of the actual pretraining mix, with digit chunking and code-whitespace merges deliberately designed. The rule from Chapter 2 holds: the tokenizer and the mix are designed together.
 
-**Precision, optimizer and architecture.** FP8 training is the 2026 default from about 10B up; NVFP4 recipes are reported validated on multi-trillion-token runs to ~120B, MXFP4 pretraining is under study, and Hadamard rotations keep FP4 stable. Muon is mainstream (Kimi K2, GLM-4.5/5 and DeepSeek-V4 report using it), with the commonly cited ≈2× compute-efficiency over AdamW and a July 2026 study reporting it matches or beats AdamW on hybrid Mamba-attention MoE models. At 100B+ the model is a mixture of experts: DeepSeek-V4 (~1.6T parameters) keeps DeepSeekMoE and MTP, adds compressed sparse attention for million-token context and replaces plain residuals with manifold-constrained hyper-connections. Chapter 12 built the MoE block; what changes is that expert placement becomes a networking problem.
+**Precision, optimizer and architecture.** FP8 training is the 2026 default at scale; NVFP4 recipes are reported validated on multi-trillion-token runs to ~120B, MXFP4 pretraining is under study, and Hadamard rotations keep FP4 stable. Muon is mainstream (Kimi K2, GLM-4.5/5 and DeepSeek-V4 report using it), with the commonly cited ≈2× compute-efficiency over AdamW and a July 2026 study reporting it matches or beats AdamW on hybrid Mamba-attention MoE models. At 100B+ the model is a mixture of experts: DeepSeek-V4 (~1.6T parameters) keeps DeepSeekMoE and MTP, adds compressed sparse attention for million-token context and replaces plain residuals with manifold-constrained hyper-connections. Chapter 12 built the MoE block; what changes is that expert placement becomes a networking problem.
 
-**4-D parallelism.** Chapter 11's taxonomy becomes the daily job: tensor parallelism inside a node, pipeline across nodes, expert parallelism for the MoE layers, data parallelism over everything, context parallelism for long sequences; 40–50 % MFU is the target and fault tolerance is a feature. The loop of Chapter 10 is unchanged in shape.
+**4-D parallelism.** Chapter 11's taxonomy becomes the daily job: tensor parallelism inside a node, pipeline across nodes, expert parallelism for the MoE layers, data parallelism over everything, context parallelism for long sequences; 40 % MFU is a good large-run number and 50 % exceptional (Chapter 9), and fault tolerance is a feature. The loop of Chapter 10 is unchanged in shape.
 
 **Evaluation infrastructure.** From a table on every checkpoint to a service: held-out internal evals, contamination checks on every source, agentic benchmarks (SWE-bench Verified, Terminal-Bench) in containers, and, after the 2026 audits (flawed tests in a majority of hard SWE-bench Verified tasks; BenchJack's benchmark exploits), a standing effort to audit the benchmarks themselves.
 
-**RL infrastructure with async rollouts.** Chapter 19's `grpo_step` samples, scores and updates in one process. At scale the sampler is a separate inference fleet with paged KV caches, the trainer consumes trajectories as they arrive with a small policy lag (corrected by the clipped ratio you implemented), and agentic environments (Chapter 21) are containers started per episode; AgentRL, SkyRL-Agent, verl and rollout-as-a-service are the 2026 frameworks. The algorithmic fixes (DAPO, Dr. GRPO, GSPO, adaptive rollouts) address the entropy collapse you saw when every group had zero variance. On-policy distillation from a large teacher (Chapter 20) is reported 10–30× cheaper than RL for comparable gains.
+**RL infrastructure with async rollouts.** Chapter 19's `grpo_step` samples, scores and updates in one process. At scale the sampler is a separate inference fleet with paged KV caches running **async rollouts** (generation runs continuously on its own workers and the trainer consumes finished trajectories as they arrive), with a small policy lag (corrected by the clipped ratio you implemented), and agentic environments (Chapter 21) are containers started per episode; AgentRL, SkyRL-Agent, verl and rollout-as-a-service are the 2026 frameworks. The algorithmic fixes (DAPO, Dr. GRPO, GSPO, adaptive rollouts) address the entropy collapse you saw when every group had zero variance. On-policy distillation from a large teacher (Chapter 20) is reported 10–30× cheaper than RL for comparable gains.
 
 **Safety.** Absent from the lab and from nanochat, mandatory in a product: a model spec (Chapter 22), RLAIF, refusal training, red-teaming, agentic-autonomy evals, interpretability as audit. The harness of Chapter 27 is the last line, not the first.
 
@@ -289,9 +307,9 @@ A checklist to tick honestly.
 Reuse makes the pipeline cheap to re-run and resumable after a failure: a stage loads its checkpoint from `runs/` and trains only if none exists. Blind reuse breaks the lineage: a DPO checkpoint trained from one SFT model would be evaluated as if it followed a different one, and a nano checkpoint could be loaded into a small run. The script checks `d_model` and reuses its own files only when their recorded parent matches.
 </details>
 
-<details><summary>2. Perplexity rose from 2.90 to 4.02 across post-training while task accuracy did not fall. Is that a bug?</summary>
+<details><summary>2. In the quick-mode table, Storyland perplexity rose from 2.90 (base) to 840 (SFT) and into the thousands (DPO, GRPO) while task accuracy rose from 0 to 0.40. Is that a bug?</summary>
 
-No. Storyland perplexity measures how well the model continues stories; SFT, DPO and GRPO train it to answer questions instead, and every step away from the pretraining distribution costs fluency. This is Chapter 14's alignment tax at toy scale, and why post-training is evaluated with task accuracy and preference metrics, not perplexity.
+No. Storyland perplexity measures how well the model continues stories; SFT, DPO and GRPO train it to answer questions instead, and every step away from the pretraining distribution costs fluency (the small model pays less: 2.07 to 8.7 for DPO in full mode). This is Chapter 14's alignment tax at toy scale, and why post-training is evaluated with task accuracy and preference metrics, not perplexity.
 </details>
 
 <details><summary>3. GRPO's reward stayed flat in quick mode. What diagnostic in the log explains it, and what would you change first?</summary>

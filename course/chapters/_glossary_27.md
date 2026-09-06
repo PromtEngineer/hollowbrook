@@ -1,6 +1,6 @@
 - **harness** — the program around a model that decides what it may do, verifies what it did, persists what happened and stops it when it should; "the harness is the product" (Ch. 27)
 - **permission gate** — the check (`Agent._permitted`) that decides whether a proposed tool call may run, by policy and, for `ask`, by a human's answer (Ch. 27)
-- **permission policy** — `allow_all`, `allow_read_only` (only tools flagged `read_only`) or `ask` (defer to a `permission_fn`; deny if none) (Ch. 27)
+- **permission policy** — `allow_all`; `allow_read_only` (tools flagged `read_only` pass, everything else is treated as `ask`); or `ask` (defer every call to a `permission_fn`; deny if none) (Ch. 27)
 - **hook** — a function the harness owner attaches to a point in the loop; code, not prompt text, so it cannot be argued with (Ch. 27)
 - **pre-tool hook** — a hook run before a tool call; returns `None` to allow or a string to block the call with that reason (Ch. 27)
 - **post-tool hook** — a hook run on a tool result; may return a replacement (truncate, redact, log) and runs even for blocked calls (Ch. 27)
@@ -19,3 +19,4 @@
 - **observability** — being able to answer what the agent did and why it cost that much without re-running it: the event stream, `harness.log`, backend records (Ch. 27)
 - **cost control** — the limits on turns, sessions, tool-result size, context budget and estimated tokens that bound what a run can spend (Ch. 27)
 - **context rot** — the degradation of an agent's judgement as its window fills with stale tool output, even when the relevant facts are still present (Ch. 27)
+- **context budget** — the token limit an agent's window is kept under by compaction (Chapter 25); in a harness the plan and progress files hold what compaction would delete (Ch. 27)

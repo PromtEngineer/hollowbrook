@@ -43,11 +43,12 @@ Read it as: the plan is written once; sessions and verifications alternate; the 
 
 ## The idea in code
 
-The library files are `llm/agent/harness.py` (the loop, gate and hooks, from Chapter 24) and `llm/agent/miniharness.py` (132 lines, this chapter). The imports for every snippet:
+The library files are `llm/agent/harness.py` (the loop, gate and hooks, from Chapter 24) and `llm/agent/miniharness.py` (140 lines, this chapter). The imports for every snippet:
 
 ```python
-import os, json, shutil
-from llm.agent import (Agent, AgentConfig, Hooks, MiniHarness, ScriptedBackend,
+import os, json, shutil, time
+from typing import Optional
+from llm.agent import (Agent, AgentConfig, Hooks, MiniHarness, ScriptedBackend, ToolCall,
                        make_builtin_tools, run_subagent, estimate_tokens)
 from llm.agent.context import message_text
 ```
@@ -65,7 +66,7 @@ tools = make_builtin_tools(box)                         # read_file, write_file,
 
 ### Step 1: the permission gate
 
-A **permission gate** decides whether a proposed tool call may run at all. `Agent._permitted` asks the **permission policy** first: `allow_all` says yes; `allow_read_only` says yes only for tools that declared `read_only=True`; `ask` defers to a `permission_fn`, which in a real harness is the prompt you see on screen. With no function to ask, the answer is no.
+A **permission gate** decides whether a proposed tool call may run at all. `Agent._permitted` asks the **permission policy** first: `allow_all` says yes to everything; `allow_read_only` says yes to tools that declared `read_only=True` and treats every other call the way `ask` does; `ask` defers each call to a `permission_fn`, which in a real harness is the prompt you see on screen. With no function to ask, the answer is no. So under `allow_read_only` a `write_file` is denied outright only when no `permission_fn` was given, which is the case in the first run below.
 
 ```python
 script = [call("write_file", path="notes.txt", content="hello"), "ok"]
@@ -111,7 +112,7 @@ def protect_tests(call_):
     return None
 guard = Hooks()
 guard.pre_tool.append(protect_tests)
-h = MiniHarness(backend, box, AgentConfig(max_turns=6), extra_hooks=guard)   # merged before the built-in hooks
+h = MiniHarness(ScriptedBackend([]), box, AgentConfig(max_turns=6), extra_hooks=guard)   # your hooks run before the built-in ones
 ```
 
 A blocked call still costs a turn and still produces a tool result (`Blocked by hook: ...`), so the model learns the rule from inside the conversation. The post-tool hook runs even for blocked calls, which is why `harness.log` records the attempt.
@@ -144,19 +145,21 @@ Read it as: keep starting sessions until the evidence says yes or the budget say
 
 A **plan file** (`PLAN.md`) is written once by an initializer and read by every session; it is the task decomposed into steps and it does not change. A **progress file** (`PROGRESS.md`) is appended after every session by the harness: the model's summary, then the verifier's verdict and the tail of the test output. Together they are the whole state of the job, and they are all a new session gets:
 
-```python
+````python
 def run_session(self, max_turns=None, task=None) -> Transcript:
     if not self.has_plan():
         self.plan(task or "Make the tests pass.")
     prompt = ("PLAN.md:\n" + self._read("PLAN.md") + "\n\nPROGRESS.md:\n" + self._read("PROGRESS.md")
               + "\n\nContinue the plan from where PROGRESS.md leaves off.")
+    cfg = AgentConfig(**{**self.config.__dict__, "max_turns": max_turns or self.config.max_turns})
     agent = Agent(self.backend, self.tools, cfg, hooks=self._hooks(), system_prompt=SESSION_SYSTEM)
     t = agent.run(prompt)
     ok, report = self.verify()
+    n = self._read("PROGRESS.md").count("\n## Session ") + 1          # numbered from the file, not the object
     self._append("PROGRESS.md", f"\n## Session {n} ({t.stop_reason}, {t.turns} turns, {t.tool_calls_made} tool calls)\n"
                                 f"{t.final_text.strip() or '(no summary)'}\n\nVerification: {'PASS' if ok else 'FAIL'}\n```\n{report.strip()[-800:]}\n```")
     return t
-```
+````
 
 The planner is itself an agent, restricted to `list_dir`, `read_file` and `search` under `allow_read_only`, with six turns. The restriction is the point: a planner that can edit will start editing.
 
@@ -226,11 +229,11 @@ A few findings that recur in 2025–2026 reports, stated with the confidence the
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab27_miniharness.py            # quick: scripted runs + the nano model, about 30 s
-python3 labs/lab27_miniharness.py --full     # the same with the small model, about 40 s
+python3 labs/lab27_miniharness.py            # quick: scripted runs + the nano model, about 35 s on a shared 4-core machine
+python3 labs/lab27_miniharness.py --full     # the same with the small model, also about 35 s (no training: both base models are loaded)
 ```
 
-The lab builds a sandbox repository with `mathlib.py` (a `mean` that divides by `len(xs) - 1` and no `median`) and `tests/test_math.py` (three tests, two of which fail at import). Section 1 is the honest run:
+The lab builds a sandbox repository with `mathlib.py` (a `mean` that divides by `len(xs) - 1` and no `median`) and a `test_math.py` under `tests/` (three tests, two of which fail at import). Section 1 is the honest run:
 
 ```
 loop() -> True after 1 session(s) in 1.4s; session 1: stop_reason=done, turns=4, tool_calls=3
@@ -258,7 +261,7 @@ cost: 7 model calls, ≈3,803 estimated input tokens (chars/4 over every call's 
 
 Seven model calls for a four-turn session: three went to the planner, which listed the directory and read the test before writing the plan. The `Verification: PASS` line was written by the harness, after its own `run_tests`, not copied from the model's summary.
 
-Section 2 is the run that motivates the chapter. The scripted agent tries to overwrite `tests/test_math.py` with a test that always passes, half-fixes the module, and declares victory without running anything:
+Section 2 is the run that motivates the chapter. The scripted agent tries to overwrite the test file under `tests/` with a test that always passes, half-fixes the module, and declares victory without running anything:
 
 ```
 session 1: stop_reason=done, the model's last words: 'Done. mean() is fixed and median() is implemented; all tests pass.'
@@ -323,12 +326,12 @@ An earlier version of the backend returned an empty string here, silently; a lou
 ```
 session 1: stop=done, turns=1, tool calls=0, said: '=  +  =  =  =  =  +  +  +  +  +  +  +  +  +  +  +  +  +  +'   (nano, quick)
 session 1: stop=done, turns=1, tool calls=0, said: 'and Nora looked for the drum?\nAnswer: Jack was hat is red book.'   (small, --full)
-loop() -> False in 20.0s
+loop() -> False in 24.0s
 ✅ a base model produces no tool calls; the harness records two failed sessions and stops
 ✅ PROGRESS.md says FAIL, not the model
 ```
 
-A base model has never seen a tool call and cannot follow a plan; the point of the section is that the harness contains this without a crash, a false PASS, or an unbounded loop. Chapter 29 trains a model that can call a tool.
+(The two `said:` strings are what the two modes produced on this machine; a base model's babble at positions it was never trained on is not stable across runs, and the timing depends on the load.) A base model has never seen a tool call and cannot follow a plan; the point of the section is that the harness contains this without a crash, a false PASS, or an unbounded loop. Chapter 29 trains a model that can call a tool.
 
 The interactive `interactive/27_harness_anatomy.html` draws the same anatomy as the first figure as a clickable diagram: select any block to read its role, the failure it prevents, and the line of `llm/agent/` that implements it. Below it, a session timeline steps through the initializer → coder → verifier pattern (and the planner → generator → evaluator variant) while showing `PLAN.md` staying fixed and `PROGRESS.md` growing, and an MCP handshake panel replays the JSON-RPC messages of Chapter 26. The Challenge asks which component stops the agent marking a task done without evidence; answer it before you click.
 
@@ -351,7 +354,7 @@ The interactive `interactive/27_harness_anatomy.html` draws the same anatomy as 
 
 <details><summary>2. What is the difference between a pre-tool hook returning a string and the permission gate returning <code>False</code>?</summary>
 
-Both stop the call and both produce a tool-result message the model can read. A hook is arbitrary code written by the harness owner and runs first; it blocks with a specific reason (`Blocked by hook: tests/ is read-only ...`). The gate applies the configured policy (`allow_all`, `allow_read_only`, `ask`) using each tool's `read_only` flag and, for `ask`, a human's answer; it denies with a generic message naming the policy.
+Both stop the call and both produce a tool-result message the model can read. A hook is arbitrary code written by the harness owner and runs first; it blocks with a specific reason (`Blocked by hook: tests/ is read-only ...`). The gate applies the configured policy (`allow_all`, `allow_read_only`, `ask`) using each tool's `read_only` flag and, for `ask` or for a non-read-only tool under `allow_read_only`, a `permission_fn`'s answer (no function, no permission); it denies with a generic message naming the policy.
 </details>
 
 <details><summary>3. Why is <code>resume()</code> just a call to <code>run_session()</code>? What kind of state would break this design?</summary>
@@ -380,7 +383,7 @@ A system prompt is always present. A skill is a folder of instructions whose one
 
 ## Going deeper
 
-- 🆕 Anthropic, "Effective harnesses for long-running agents" (November 2025). The initializer/coder pattern, feature lists, progress files and clean git state per session. Summarised with commentary at https://addyosmani.com/blog/long-running-agents/
+- 🆕 Anthropic, "Effective harnesses for long-running agents" (November 2025). The initializer/coder pattern, feature lists, progress files and clean git state per session. https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents ; summarised with commentary at https://addyosmani.com/blog/long-running-agents/
 - 🆕 InfoQ, "Anthropic's three-agent harness" (April 2026). The planner/generator/evaluator variant, as reported. https://www.infoq.com/news/2026/04/anthropic-three-agent-harness-ai/
 - Anthropic, "Building effective agents" (December 2024) and "Effective context engineering for AI agents" (September 2025). The design vocabulary this chapter uses.
 - 🆕 "Diagnosing and Mitigating Context Rot in Long-horizon Search" (2026), https://arxiv.org/abs/2606.29718 ; LOCA-bench (2026), https://arxiv.org/abs/2602.07962 ; AgentSwing (2026), https://arxiv.org/abs/2603.27490 . Evidence that long contexts degrade agents even when the facts are present.

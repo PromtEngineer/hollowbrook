@@ -45,7 +45,7 @@ The funnel above is the lab's `--full` run: 7,743 documents in, 6,045 out. Each 
 
 ### Heuristic quality filters
 
-A **heuristic filter** is a hand-written rule that drops a document for a measurable property, without any learned model. The two canonical rule sets are from C4 (2019: keep lines that end in punctuation, drop pages with "lorem ipsum" or curly braces, drop pages with fewer than three sentences) and Gopher (2021: drop documents outside 50–100,000 words, with mean word length outside 3–10 characters, with more than 10% of lines starting with a bullet, more than 30% ending in an ellipsis, with too many symbols, or where fewer than 80% of words contain an alphabetic character). FineWeb added rules for repeated lines and repeated n-grams, which is what catches spam that pads itself with `free free free`. `gopher_reason()` in the library implements a small subset (word count, mean word length, symbol ratio, duplicated lines, repeated trigrams, boilerplate phrases) and returns the *reason* a document fails, so the report can show you which rule fired.
+A **heuristic filter** is a hand-written rule that drops a document for a measurable property, without any learned model. The two canonical rule sets are from C4 (2019: keep only lines that end in terminal punctuation and have at least three words, drop pages with "lorem ipsum" or curly braces, drop pages with fewer than five sentences) and Gopher (2021: drop documents outside 50–100,000 words, with mean word length outside 3–10 characters, with more than 90% of lines starting with a bullet, more than 30% ending in an ellipsis, with too many symbols, or where fewer than 80% of words contain an alphabetic character). FineWeb added rules for repeated lines and repeated n-grams, which is what catches spam that pads itself with `free free free`. `gopher_reason()` in the library implements a small subset (word count, mean word length, symbol ratio, duplicated lines, repeated trigrams, boilerplate phrases) and returns the *reason* a document fails, so the report can show you which rule fired.
 
 Prose rules are wrong for non-prose. `gopher_reason("75 + 80 = 155")` returns `'odd_word_length'` (mean word length 1.4, below the 2–12 range that catches character-salad spam), and the same rule rejects most code. That is a **false positive** — a good document dropped by a filter — and it is why `heuristic_filter` takes `skip_sources=("math", "code")` and passes those documents through untouched. The real-pipeline version of this decision is bigger than one flag: maths and code get their *own* curation streams (their own extractors, their own quality classifiers trained on labelled maths and code, their own dedup thresholds), and the prose pipeline never sees them. The lab runs the pipeline on the clean corpus and reports every drop, which is how you find false positives before they cost you a training run.
 
@@ -77,7 +77,7 @@ $$P[\text{candidate}] = 1 - (1 - J^{r})^{b} = 1 - (1 - J^4)^{16}$$
 
 Read this as: a pair becomes a candidate if any band matches, and a band matches only if every row in it matches. Worked out: *J* = 0.3 gives 0.12, *J* = 0.5 gives 0.64, *J* = 0.8 gives 0.9998, *J* = 0.9 rounds to 1. The curve is S-shaped with its steep part near (1/*b*)<sup>1/*r*</sup> = 0.5, so nearly everything above the 0.8 threshold surfaces and most unrelated pairs never get compared. Candidates are then verified with the exact Jaccard (step 5) and dropped if *J* ≥ 0.8. Production systems (the `datatrove` library behind FineWeb, NVIDIA's NeMo Curator) use 5-word shingles, 112–260 hashes and a threshold of 0.7–0.8; the mechanism is identical to the 40 lines in `minhash_dedup`.
 
-One consequence you will see in the lab: the threshold is on *Jaccard*, not on "how many words changed". Swapping one word in a 40-word story leaves *J* ≈ 0.86 and the copy is dropped; swapping one word in an 11-word arithmetic question leaves *J* ≈ 0.7 and the copy survives. Short documents need a lower threshold or a different similarity, and real pipelines tune this per source.
+One consequence you will see in the lab: the threshold is on *Jaccard*, not on "how many words changed". Swapping one word in a 40-word story leaves *J* ≈ 0.86 and the copy is dropped; swapping one word in an 11-word arithmetic question leaves *J* somewhere between 0.5 and 0.8 depending on where the word sits, and the copy usually survives. Short documents need a lower threshold or a different similarity, and real pipelines tune this per source.
 
 ### Model-based quality classifiers
 
@@ -100,13 +100,13 @@ Finally **packing** concatenates all documents into one token stream separated b
 
 ### 🆕 What changed in 2025–2026
 
-**Synthetic rephrasing.** Nemotron-CC (NVIDIA, Dec 2024) noticed that aggressive quality filtering discards 90% of the crawl, which is fine for a 1T-token run but starves a 15T-token run of unique tokens. Their fix: keep more of the crawl, but have an LLM *rephrase* low-quality pages into clean prose and generate Q&A, summaries and "distilled" versions of high-quality ones. The resulting 6.3T tokens (of which 1.9T synthetic) trained an 8B model that beat DCLM by ~5 points on MMLU at 1T tokens, and — the key finding — beat it by a larger margin in the long-horizon 15T-token setting where diversity matters more than aggressive filtering (https://arxiv.org/abs/2412.02595).
+**Synthetic rephrasing.** Nemotron-CC (NVIDIA, Dec 2024) noticed that aggressive quality filtering discards 90% of the crawl, which is fine for a 1T-token run but starves a 15T-token run of unique tokens. Their fix: keep more of the crawl, but have an LLM *rephrase* low-quality pages into clean prose and generate Q&A, summaries and "distilled" versions of high-quality ones. The result is 6.3T tokens (of which 1.9T synthetic). Its high-quality subset trained an 8B model that beat DCLM by ~5 points on MMLU at 1T tokens, and — the key finding — for long-horizon training (15T tokens) the full, less strictly filtered set was the better choice, because there unique tokens matter more than aggressive filtering (https://arxiv.org/abs/2412.02595).
 
-**Synthetic instructions at pretraining scale.** FineInstructions (Jan 2026) converts web documents into instruction–response pairs during pretraining, so the base model already has the format before SFT (https://arxiv.org/abs/2601.22146). A systematic 2026 study of synthetic pretraining data finds that the prompt design and the generator model matter more than the volume, and that source-document grounding is what keeps synthetic text from collapsing in diversity (https://arxiv.org/abs/2604.13977).
+**Synthetic instructions at pretraining scale.** FineInstructions (Jan 2026) converts web documents into instruction–response pairs during pretraining, so the base model already has the format before SFT (https://arxiv.org/abs/2601.22146). A systematic 2026 study of synthetic pretraining data treats the three design choices — the prompt design, the generator model and the source documents it is grounded in — as first-class variables to be measured rather than defaults (https://arxiv.org/abs/2604.13977); its specific recommendations are recent and should be read as reported, not settled.
 
-**Pipelines that curate themselves.** DataEvolve ("Data Darwinism II", Mar 2026) has an AI agent propose, run and evaluate modifications to the curation pipeline itself — new filters, new thresholds, new rephrasing prompts — scored by the downstream loss of small proxy models (https://arxiv.org/abs/2603.14420). The current evidence suggests this beats hand-tuned pipelines at equal compute, but the reported gains are from one group and one proxy-model scale; treat it as promising rather than settled.
+**Pipelines that curate themselves.** DataEvolve ("Data Darwinism II", Mar 2026) has an AI agent propose, run and evaluate modifications to the curation pipeline itself — new filters, new thresholds, new rephrasing prompts — scored by the downstream loss of small proxy models (https://arxiv.org/abs/2603.14420). The authors report that this beats their hand-tuned pipelines at equal compute, but the gains are from one group and one proxy-model scale; treat it as promising rather than settled.
 
-**The quality-vs-diversity debate.** For runs of 15T tokens or more, the current evidence (Nemotron-CC, FineWeb-2, the DataComp follow-ups) is that the optimal filter is *less* strict than FineWeb-Edu's, because repeating a small high-quality set more than ~4 epochs is worse than adding lower-quality unique text. Where exactly the crossover sits depends on model size and is an open question.
+**The quality-vs-diversity debate.** For runs of 15T tokens or more, the current evidence (Nemotron-CC, FineWeb-2, the DataComp follow-ups) is that the optimal filter is *less* strict than FineWeb-Edu's, because repeating a small high-quality set more than ~4 epochs is worse than adding lower-quality unique text (Muennighoff et al., 2023, measured the value of repeated tokens falling to near zero after about four epochs). Where exactly the crossover sits depends on model size and is an open question.
 
 ### Licensing, ethics and robots.txt
 
@@ -154,7 +154,7 @@ b = shingles("mia had a red kite and took it to the beach on a sunny day")
 print(len(a), len(a & b), jaccard(a, b))                  # 13 10 0.625
 sig_a, sig_b = minhash_signature(a, 64), minhash_signature(b, 64)   # each (64,) int64
 print(sig_a.shape, (sig_a == sig_b).mean())               # (64,) 0.578  (true J = 0.625, ± 0.06)
-print(1 - (1 - 0.625 ** 4) ** 16)                         # P(LSH candidate) = 0.92
+print(1 - (1 - 0.625 ** 4) ** 16)                         # P(LSH candidate) = 0.93
 ```
 
 **A quality classifier from a few hundred labels.** Good = clean documents, bad = the planted junk; the features are hashed word counts, the model is logistic regression trained by gradient descent:
@@ -187,7 +187,7 @@ print(len(curated), tokens.shape)                          # 1511 torch.Size([92
 
 ## Worked example 🧪
 
-Run `python3 labs/lab08_curate.py` (quick: 1,500 clean documents, 16 s) and then `--full` (6,000 documents, 33 s; both measured with two CPU threads on a shared 4-core VM). The report table from the full run:
+Run `python3 labs/lab08_curate.py` (quick: 1,500 clean documents, 15 s) and then `--full` (6,000 documents, 28 s; both measured with two CPU threads on a shared 4-core VM). The report table from the full run:
 
 ```
 stage                           kept  dropped  planted problems caught
@@ -199,13 +199,13 @@ minhash_dedup                   6080      359  exact_dup:8, near_dup:110, pii:74
 quality_classifier              6048       32  near_dup:7, pii:25
 decontaminate                   6045        3  contaminated:3
 
-7,743 raw -> 6,045 curated documents in 12.2s
+7,743 raw -> 6,045 curated documents in 10.5s
 ```
 
 What to look at:
 
 1. **The cheap filters do the language work** — the language filter catches all 180 foreign documents and 268 of 300 spam documents (spam has few English stopwords); the Gopher rules catch the other 32 spam documents (`symbol_heavy`, `boilerplate`) and all 180 fragments (`too_short`). Run on the *clean* corpus alone, the two stages drop nothing, because bare equations bypass the language test and `source="math"` bypasses the prose rules. Section 2 of the lab shows what happens without the routing: `gopher_reason('75 + 80 = 155') = 'odd_word_length'`.
-2. **Dedup counts are not what they look like.** 600 exact duplicates were planted, but `exact_dedup` reports catching 327 tagged copies and dropping 644 documents. The corpus is shuffled, so for about half the pairs the *copy* came first and was kept, and the original was dropped — the lab reports that of the 480 clean documents that "disappear", 388 live on as their planted twin. (The other 40 are genuine duplicates: the generator drew the same equation twice.) The right check is the one the lab makes: every curated text is unique, and no surviving pair has Jaccard ≥ 0.8.
+2. **Dedup counts are not what they look like.** 600 exact duplicates were planted, but `exact_dedup` reports catching 327 tagged copies and dropping 644 documents. The corpus is shuffled, so for about half the pairs the *copy* came first and was kept, and the original was dropped — the lab reports that of the 480 clean documents that "disappear", 388 live on as their planted twin. (The other 92 were duplicates *within the clean corpus*: 37 exact repeats — the generator drew the same equation twice — and 55 near-duplicates at *J* ≥ 0.8 of another surviving document, usually a story that shares most of its sentences.) The right check is the one the lab makes: every curated text is unique, and no surviving pair has Jaccard ≥ 0.8.
 3. **PII is caught 282 times for 180 planted documents.** 180 rewrites, then 3 + 74 + 25 of the scrubbed copies dropped by later stages as near-duplicates of their originals. A document can be touched by several stages; a "caught" count is per stage, not per document.
 4. **The MinHash scatter** (`figures/generated/lab08_minhash.png`) shows the 64-hash estimate against the true Jaccard on 200 pairs: mean error 0.031, maximum 0.134, matching the √(J(1−J)/64) theory. The red line at 0.8 is the drop threshold.
 5. **The classifier thresholds:** `0.3 keeps 100% of clean, rejects 61% of junk · 0.5: 100% / 92% · 0.7: 76% / 100%`. Pick 0.5 here; a real pipeline would pick by the downstream loss of a proxy model.
@@ -213,7 +213,7 @@ What to look at:
 
 The quick run gives the same picture at a quarter of the size (1,938 raw → 1,511 curated, 92,720 tokens). Both end with `22/22 checks passed`.
 
-🎛️ In `interactive/08_data_pipeline.html`, paste a paragraph of your own text and watch it pass through each stage: the language score, which Gopher rule fires (if any), the shingle set and MinHash signature next to a second document you edit, and the LSH candidate probability as you drag the band/row sliders. The challenge is to find the smallest edit to a 40-word paragraph that makes its copy survive dedup at threshold 0.8.
+🎛️ In `interactive/08_data_pipeline.html`, twelve documents go through the same stages in the same order, each implemented in JavaScript to mirror `llm/data.py`. Click a stage column to see exactly which documents it dropped and which rule fired, with the numbers (language score, symbol ratio, Jaccard). Then pick a document, edit its text and press *Re-run*: can you rescue the too-short document, or sneak the spam past the heuristics? The challenge is to write a spam document that passes every heuristic rule but is still dropped by the quality classifier — and to say why a learned classifier is used on top of hand rules.
 
 ## Try it yourself ✍️
 

@@ -5,7 +5,7 @@
 - **softmax** — exponentiate each score and divide by the sum, turning a row of scores into positive weights that sum to 1 (Ch. 05)
 - **causal mask** — setting scores for future positions to −∞ so that token i can only attend to tokens 0..i (Ch. 05)
 - **decoder-only** — a Transformer that uses causal attention throughout and is trained to predict the next token (Ch. 05)
-- **multi-head attention** — running h independent attentions on slices of width head_dim = d/h and concatenating their outputs (Ch. 05)
+- **multi-head attention (MHA)** — running h independent attentions on slices of width head_dim = d/h and concatenating their outputs (Ch. 05)
 - **rotary position embeddings (RoPE)** — rotating pairs of channels of q and k by angles proportional to position so that scores depend only on relative offset (Ch. 05)
 - **KV cache** — the stored keys and values of past tokens, so each generation step only computes the newest token's q, k, v (Ch. 05)
 - **grouped-query attention (GQA)** — h query heads share h_kv < h key/value heads, shrinking k/v parameters and the KV cache (Ch. 05)

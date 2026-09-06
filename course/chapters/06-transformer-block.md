@@ -9,6 +9,7 @@ Imports used by every snippet in this chapter:
 
 ```python
 import math, torch
+import torch.nn as nn, torch.nn.functional as F
 from llm.config import preset, TinyLMConfig
 from llm.model import TinyLM, Block, RMSNorm, MLP, Attention
 from llm.pipeline import get_tokenizer, get_base_model
@@ -21,8 +22,8 @@ In Chapter 5 you built attention: a layer that lets every token look at the toke
 its own, one attention layer is a weak model. A modern language model stacks dozens of
 **Transformer blocks** — a fixed pair of sub-layers (attention, then a small feed-forward network)
 wrapped around a shared running vector — and it is the *stacking* that makes the model capable.
-Every model on a 2026 leaderboard, whether it has 1 billion or 1.6 trillion parameters, is this
-block repeated, with the same three or four design decisions made the same way. If you can draw
+Every model on a 2026 leaderboard, whether it has 1 billion or (as reported for DeepSeek-V4) 1.6
+trillion parameters, is this block repeated, with the same three or four design decisions made the same way. If you can draw
 one block and say where every parameter lives, you can read any model card: "80 layers, d=8192,
 64 heads, 8 KV heads, SwiGLU" becomes a sentence you can turn into a parameter count and a FLOP
 count on a napkin. This chapter builds the block, then the whole of TinyLM, counts everything by
@@ -97,11 +98,12 @@ one score per possible next token (the **logits**). Chapter 7 turns those logits
 
 🎛️ **Interactive: `interactive/06_block_dataflow.html`.** Open it now. Press *Step* to move one
 token's vector through the block one stage at a time and read the tensor shape at each stage; the
-shapes follow the config sliders on the right, which start at TinyLM's real `nano` and `small`
-presets. Then drag `d_model` and `vocab` and watch the parameter budget bar: the attention and
-MLP slices grow with `d²`, the embedding slice only with `V·d`. Confirm that the `small` preset
-shows 393,600 parameters per block — the number the table below derives by hand — and try the
-page's *Challenge*: find a configuration where the embedding is more than half of all parameters,
+shapes follow the configuration panel on the right, whose preset buttons load TinyLM's real
+`nano`, `small` and `medium` configs. Then change `d_model` and `vocab V` and watch the
+embedding's share of the parameter budget: the attention and MLP rows grow with `d²`, the
+embedding row only with `V·d`. Confirm that the `small` preset's table shows 393,600 parameters
+in the "one block" row — the number the table below derives by hand — and try the page's
+*Challenge*: find a configuration where the embedding is more than half of all parameters,
 then the smallest change that brings it under a quarter. (That is why scaling laws in Chapter 9
 count *non-embedding* parameters.)
 
@@ -298,8 +300,8 @@ the two matrices that *write* — `o_proj` and `down_proj` — are initialised w
 deviation `0.02/√(2L)`:
 
 ```python
-# from TinyLM.__init__ in llm/model.py
-for name, p in self.named_parameters():
+# the loop from TinyLM.__init__ in llm/model.py, applied to the `model` built above
+for name, p in model.named_parameters():
     if name.endswith("o_proj.weight") or name.endswith("down_proj.weight"):
         nn.init.normal_(p, mean=0.0, std=cfg.init_std / math.sqrt(2 * cfg.n_layers))
 ```
@@ -339,11 +341,12 @@ ids = torch.tensor([tok.encode("At the park, Mia met")])  # (1, 6)
 logits, _ = model(ids)
 print(logits.shape)                                       # torch.Size([1, 6, 871])
 x, y = ids[:, :-1], ids[:, 1:]                            # inputs and next-token targets
-print(model(x, y)[1].item(), math.log(tok.vocab_size))    # ≈ 6.65 (seed-dependent)  vs  ln(871) = 6.77
+print(model(x, y)[1].item(), math.log(tok.vocab_size))    # 6.7–7.0 on 5 tokens (seed-dependent)  vs  ln(871) = 6.77
 ```
 
-The loss of an untrained model sits within a few hundredths of `ln V` (the lab measures 6.79 on
-512 tokens against `ln 871 = 6.77`). That is not a coincidence: with
+Averaged over enough tokens, the loss of an untrained model sits within a few hundredths of
+`ln V` (the lab measures 6.79 on 512 tokens against `ln 871 = 6.77`; on five tokens the estimate
+is noisier). That is not a coincidence: with
 weights of size 0.02 the logits are all near zero, the softmax is uniform, and the surprise at a
 uniform guess over `V` options is `ln V`. Every pretraining run in this course starts from this
 number; if yours starts much higher, the init is wrong.
@@ -420,8 +423,8 @@ python3 labs/lab06_build_tinylm.py --full     # small base model (trains runs/ba
 
 ### What to look at (quick run, nano base model)
 
-The quick run takes about 7 seconds on an idle 4-core CPU (about 20 s when the CPU is shared with
-other jobs). Section 2 is the parameter table, printed by the lab from the same formulas
+The quick run takes well under a minute (36 s with two threads on a shared 4-core VM; a few
+seconds on an idle laptop). Section 2 is the parameter table, printed by the lab from the same formulas
 as the table above and checked against the library:
 
 ```
@@ -527,8 +530,8 @@ information can cross between positions any more.
 ### The full run (small base model)
 
 `--full` loads `runs/base_small.pt` — the 6-layer model whose parameters you counted, trained for
-700 steps (about 5 minutes on an idle laptop CPU; 26 s for the lab itself once the checkpoint
-exists). Sections 1–6 are identical; sections 7 and 8 change:
+700 steps (about 5 minutes on an idle laptop CPU; the lab itself then takes 30–90 s depending on
+how busy the machine is). Sections 1–6 are identical; sections 7 and 8 change:
 
 ```
 --- 7. Load the pretrained base model and generate ---

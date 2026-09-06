@@ -13,3 +13,6 @@
 - **mHC** — manifold-constrained hyper-connections: several parallel residual streams with learned mixing, used by DeepSeek-V4 in place of plain residual addition (Ch. 06)
 - **bf16** — bfloat16, a 16-bit floating-point format with float32's exponent range and 8 bits of mantissa; the default for training and storing models (Ch. 06)
 - **nats** — the unit of cross-entropy loss when the logarithm is natural; an untrained model scores `ln V` nats (Ch. 06)
+- **multi-token prediction (MTP)** — extra output heads that predict tokens t+2, t+3, … from the same residual stream during training (`TinyLMConfig(mtp_heads=k)`); also usable as a self-draft for speculative decoding (Ch. 06)
+- **mixture of experts (MoE)** — replacing the MLP with several MLPs and a router that sends each token to a few of them, so parameters grow without per-token FLOPs growing (`TinyLMConfig(use_moe=True)`) (Ch. 06)
+- **hyper-connections** — several parallel residual streams with learned mixing between them in place of one shared stream (ByteDance, 2024); DeepSeek-V4's mHC is a constrained variant (Ch. 06)

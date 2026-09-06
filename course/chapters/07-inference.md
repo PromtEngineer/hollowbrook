@@ -78,14 +78,16 @@ flowchart LR
 Read it as a loop: one forward pass per generated token, only the last position's logits
 matter, and the sampler chooses one id from them. Every box is a function in `llm/generate.py`.
 
-🎛️ **Interactive: `interactive/07_sampling_playground.html`.** It shows a real next-token
-distribution as a bar chart and lets you drag temperature, top-k, top-p and min-p sliders and
-watch the bars reshape and the entropy read-out change. Try this sequence. Slide temperature from
-1.0 down to 0.1 and watch the tallest bar swallow the others; slide it to 3.0 and watch the tail
-rise. Reset to 1.0, then set top-p to 0.5 and count the surviving bars; now pick a *confident*
-distribution from the preset menu and note that the same top-p keeps far fewer. Finally compare
-top-k = 5 with min-p = 0.1 on both presets — the *Challenge* asks you to find a setting where
-they keep exactly the same set of tokens, and one where they differ.
+🎛️ **Interactive: `interactive/07_sampling_playground.html`.** It shows a 20-token next-token
+distribution as a bar chart (three presets: *peaked*, *flat* and a *two-way tie*, or edit the
+logits by hand) and applies temperature, top-k, min-p and top-p in exactly the order
+`sample_next` does, with the entropy of the raw and of the final distribution read out in bits.
+Try this sequence. On the *peaked* preset slide temperature from 1.0 down toward 0 and watch the
+tallest bar swallow the others and the entropy fall toward 0; slide it to 3 and watch the tail
+rise. Reset to 1.0, then on the *flat* preset compare top-p = 0.9 with top-k = 5: one cuts by
+probability mass, the other by count. Press *Sample 100 times* to see what the sampler actually
+emits. The *Challenge* asks for three different single-knob settings under which the second-best
+token can never be sampled, and for a setting where temperature alone cannot achieve that.
 
 ## The idea in code
 
@@ -222,7 +224,8 @@ for _ in range(max_new_tokens):
 Correctness is easy to check and the lab does: the logits from one full-sequence forward pass
 and from prefill-then-one-token-at-a-time agree to `1e-5`, and greedy generation produces
 identical ids with `use_cache=True` and `False`. Speed is measured by `benchmark_decode`, which
-times both loops.
+runs each loop three times and reports tokens per second from the fastest run, to reduce
+timing noise.
 
 ### How big is the cache?
 

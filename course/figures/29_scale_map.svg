@@ -15,19 +15,19 @@
   <g font-size="11.5" font-weight="700" fill="#0f172a" text-anchor="middle">
     <rect x="150" y="78" width="140" height="44" rx="8" fill="#16a34a" fill-opacity="0.12" stroke="#16a34a" stroke-width="1.5"/>
     <text x="220" y="96">TinyLM (this course)</text>
-    <text x="220" y="112" font-weight="400" font-size="10" fill="#64748b">2.5M · 1M tokens · $0, CPU</text>
+    <text x="220" y="112" font-weight="400" font-size="8.5" fill="#64748b">2.5M · 0.4M-token corpus · $0, CPU</text>
     <rect x="300" y="78" width="140" height="44" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
     <text x="370" y="96">nanochat</text>
-    <text x="370" y="112" font-weight="400" font-size="10" fill="#64748b">~560M · ~11B tok · $100, 8×H100 4h</text>
+    <text x="370" y="112" font-weight="400" font-size="8.5" fill="#64748b">~560M · ~11B tok · $100, 8×H100</text>
     <rect x="450" y="78" width="140" height="44" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
     <text x="520" y="96">1B</text>
-    <text x="520" y="112" font-weight="400" font-size="10" fill="#64748b">~20–100B tok · $10k · 1 node</text>
+    <text x="520" y="112" font-weight="400" font-size="8.5" fill="#64748b">20–100B tok · ~$10k · 1 node</text>
     <rect x="600" y="78" width="140" height="44" rx="8" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b" stroke-width="1.5"/>
     <text x="670" y="96">10B</text>
-    <text x="670" y="112" font-weight="400" font-size="10" fill="#64748b">~1T tok · $1M · 100s of GPUs</text>
+    <text x="670" y="112" font-weight="400" font-size="8.5" fill="#64748b">~1T tok · ~$1M · 100s of GPUs</text>
     <rect x="750" y="78" width="140" height="44" rx="8" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626" stroke-width="1.5"/>
     <text x="820" y="96">100B+ (MoE, 1T+)</text>
-    <text x="820" y="112" font-weight="400" font-size="10" fill="#64748b">10–30T tok · $10M+ · 1000s</text>
+    <text x="820" y="112" font-weight="400" font-size="8.5" fill="#64748b">10–30T tok · $10M+ · 1000s of GPUs</text>
   </g>
 
   <!-- rows -->
@@ -52,8 +52,8 @@
     <text x="155" y="146">synthetic Storyland,</text><text x="155" y="160">10-stage pipeline in RAM</text>
     <text x="305" y="146">FineWeb-Edu shards,</text><text x="305" y="160">download + shuffle</text>
     <text x="455" y="146">dedup + classifier over</text><text x="455" y="160">100B tok: a cluster job</text>
-    <text x="605" y="146">multi-source mix, decontam,</text><text x="605" y="160">curriculum, synthetic rephrase</text>
-    <text x="755" y="146">10T+: diversity &gt; filtering,</text><text x="755" y="160">AI-evolved curation pipelines</text>
+    <text x="605" y="146">multi-source mix, decontam,</text><text x="605" y="160">curriculum, rephrasing</text>
+    <text x="755" y="146">10T+: diversity &gt; filtering,</text><text x="755" y="160">AI-evolved curation</text>
 
     <!-- tokenizer -->
     <text x="155" y="201">byte BPE, 871 ids</text><text x="155" y="215">(saturates!)</text>
@@ -74,20 +74,20 @@
     <text x="305" y="311">DDP over 8 GPUs,</text><text x="305" y="325">FlashAttention</text>
     <text x="455" y="311">FSDP/ZeRO on one node;</text><text x="455" y="325">MFU 40–50 %</text>
     <text x="605" y="311">TP + PP + DP across</text><text x="605" y="325">nodes; checkpoint restarts</text>
-    <text x="755" y="311">4-D (TP·PP·EP·DP) +</text><text x="755" y="325">context parallel; fault tolerance</text>
+    <text x="755" y="311">4-D (TP·PP·EP·DP) +</text><text x="755" y="325">CP; fault tolerance</text>
 
     <!-- post-training -->
     <text x="155" y="366">SFT · DPO · GRPO · OPD</text><text x="155" y="380">on 7 toy tasks, minutes</text>
     <text x="305" y="366">SFT + a little GRPO</text><text x="305" y="380">on GSM8K</text>
     <text x="455" y="366">RLVR on math/code;</text><text x="455" y="380">DAPO/Dr.GRPO/GSPO fixes</text>
-    <text x="605" y="366">async rollouts, containerised</text><text x="605" y="380">envs, rubric + judge rewards</text>
-    <text x="755" y="366">agentic RL at scale (verl,</text><text x="755" y="380">SkyRL), OPD from a big teacher</text>
+    <text x="605" y="366">async rollouts, container</text><text x="605" y="380">envs, rubric/judge rewards</text>
+    <text x="755" y="366">agentic RL at scale (verl,</text><text x="755" y="380">SkyRL); OPD from a teacher</text>
 
     <!-- evals -->
     <text x="155" y="421">exact match + ppl,</text><text x="155" y="435">bootstrap CI (Lab 23)</text>
     <text x="305" y="421">CORE score, ARC, GSM8K,</text><text x="305" y="435">HumanEval, MMLU</text>
     <text x="455" y="421">+ contamination checks,</text><text x="455" y="435">held-out internal evals</text>
-    <text x="605" y="421">agentic: SWE-bench Verified,</text><text x="605" y="435">Terminal-Bench, tool use</text>
+    <text x="605" y="421">agentic: SWE-bench Verif.,</text><text x="605" y="435">Terminal-Bench, tool use</text>
     <text x="755" y="421">HLE, ARC-AGI-3, BenchJack</text><text x="755" y="435">audits; evals as the product</text>
 
     <!-- safety / serving -->
@@ -95,12 +95,13 @@
     <text x="305" y="476">a chat UI; no safety</text><text x="305" y="490">training</text>
     <text x="455" y="476">refusal SFT, red-team set,</text><text x="455" y="490">quantised serving</text>
     <text x="605" y="476">constitution / model spec,</text><text x="605" y="490">RLAIF, KV-cache paging</text>
-    <text x="755" y="476">agentic-autonomy evals,</text><text x="755" y="490">MCP/A2A threat models, interp audits</text>
+    <text x="755" y="476">agentic-autonomy evals,</text><text x="755" y="490">MCP/A2A threat models</text>
   </g>
 
   <!-- what stays the same -->
   <rect x="20" y="515" width="860" height="70" rx="10" fill="#16a34a" fill-opacity="0.08" stroke="#16a34a" stroke-width="1.2"/>
   <text x="35" y="536" font-size="12" font-weight="700" fill="#0f172a">what does not change</text>
-  <text x="35" y="553" font-size="10.5" fill="#0f172a">the next-token loss · byte BPE · a pre-norm Transformer block with RoPE, GQA and SwiGLU · a KV cache at inference · loss-masked SFT · a KL-anchored preference loss · group-relative advantages · a verifier as the reward</text>
-  <text x="35" y="570" font-size="10.5" fill="#64748b">Every function you ran in Lab 29 has a name in a frontier codebase. What scales is the data volume, the infrastructure around each function, and the number of people whose job is one row of this table.</text>
+  <text x="35" y="551" font-size="9.5" fill="#0f172a">the next-token loss · byte BPE · a pre-norm Transformer block with RoPE, GQA and SwiGLU · a KV cache at inference · loss-masked SFT · a KL-anchored preference loss · group-relative advantages · a verifier as the reward</text>
+  <text x="35" y="566" font-size="9.5" fill="#64748b">Every function you ran in Lab 29 has a name in a frontier codebase. What scales is the data volume, the infrastructure around each function,</text>
+  <text x="35" y="579" font-size="9.5" fill="#64748b">and the number of people whose job is one row of this table.</text>
 </svg>
