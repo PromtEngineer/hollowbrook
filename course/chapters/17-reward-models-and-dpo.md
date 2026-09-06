@@ -229,71 +229,57 @@ Two related 2026 ideas. A **generative reward model** (also *critic model*) is a
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab17_reward_dpo.py            # quick: nano model, about 2 min (plus ~2 min of SFT the first time)
+python3 labs/lab17_reward_dpo.py            # quick: nano model, about 2 min after a one-off ~3 min SFT warm start
 python3 labs/lab17_reward_dpo.py --full     # small model, see the timing note below
 ```
 
-The lab needs a model that can *sometimes* add, so it first looks for an SFT checkpoint that can (Lab 15's `sft_nano.pt` is multi-task and scores 0.00 on sums, so it is rejected) and otherwise trains its own on 341 of the 441 possible "What is a + b?" prompts with a, b ≤ 20, holding out 100 that no lab in Chapters 17–19 ever trains on. All numbers below are from the runs pasted here; on a shared, heavily loaded CPU (load average 12–28 on 4 cores) wall-clock times were several times what a laptop would show.
+The lab needs a model that can *sometimes* add. It first looks for an SFT checkpoint that can (Lab 15's `sft_nano.pt` is multi-task and scores 0.00 on sums, so it is rejected and reported) and otherwise trains its own on 400 random "What is a + b?" draws with a, b ≤ 20. Only 441 such sums exist, so the 100 fresh draws used for every evaluation in Chapters 17–19 overlap the SFT prompts (52 of the 100 in this run); the numbers measure accuracy on the task distribution, not generalisation to unseen sums, and the lab prints the overlap so this is never hidden. (With a strict 341/100 split the small model memorises its training sums and scores 0.05–0.09 on the rest; that experiment is Chapter 19's exercise 8.) All numbers below are pasted from the runs.
 
 ### Quick mode (nano, 295k parameters)
 
 ```
-   greedy accuracy [SFT warm start]: 0.22  (95% CI [0.14, 0.31], n=100)
-      'What is 14 + 13?'     -> '14 + 13 = 29'
-      'What is 3 + 4?'       -> '3 + 4 = 6'
-      'What is 2 + 14?'      -> '2 + 14 = 15'
+   greedy accuracy [SFT warm start]: 0.23  (95% CI [0.16, 0.32], n=100)
+   240 pairs from 120 prompts (2 failure styles each): 192 train / 48 val
+   held-out pair accuracy: 0.00 (zero head: every margin is 0) -> 0.71   [24s]
+   accuracy by failure style: empty=1.00 (n=12), junk=1.00 (n=6), off_by_one=0.44 (n=9), verbose=1.00 (n=8), wrong=0.31 (n=13)
 ```
 
-The warm start answers in the right shape every time and is right about a fifth of the time. Section (b) builds 240 synthetic pairs (two failure styles per prompt) and trains the reward model for 60 steps:
+Read the last line before the one above it. The reward model is perfect on every *style* failure (empty, junk, verbose) and worse than a coin flip on `wrong` and `off_by_one`: a 295k-parameter Transformer learns "a good answer is one short equation" long before it learns arithmetic. That is not a bug in the loop; it is what a proxy trained on shape-heavy pairs is. Section (c) does what Gao et al. did: sample 16 answers per prompt and pick the best under a proxy.
 
 ```
-   held-out pair accuracy: 0.00 (zero head: every margin is 0) -> 0.69   [27s]
-✅ reward model ranks 69% of held-out synthetic pairs correctly (chance = 50%)
-   accuracy by failure style: empty=1.00 (n=12), junk=1.00 (n=6), off_by_one=0.44 (n=9), verbose=1.00 (n=8), wrong=0.23 (n=13)
-```
-
-Read the second line before the first. The reward model is perfect on every *style* failure (empty, junk, verbose) and worse than a coin flip on `wrong` and `off_by_one`: a 295k-parameter Transformer learns "a good answer is one short equation" long before it learns arithmetic. That is not a bug in the training loop; it is what a proxy trained on shape-heavy data is. Section (c) then does what Gao et al. did: sample 16 answers per prompt and pick the best under a proxy.
-
-```
-   16 held-out prompts x 16 samples at T=1: sample accuracy 0.08
+   16 held-out prompts x 16 samples at T=1: sample accuracy 0.13
      N | RM pick: proxy  gold | rubric pick: proxy  gold | any correct
-     1 |           0.30  0.06 |               0.99  0.06 |        0.06
-     4 |           0.32  0.12 |               1.00  0.06 |        0.25
-    16 |           0.33  0.12 |               1.00  0.06 |        0.62
-   extract_answer leniency: verify('14 + 13 = 1 2 3 27') = 1.0  (the LAST number after '=' is graded)
-   rubric exploit: rubric_reward('0 + 0 = 0') = 1.00 for 'What is 14 + 13?' (the rubric checks shape, never the number); verify = 0.0
+     1 |           0.29  0.00 |               0.96  0.00 |        0.00
+     4 |           0.34  0.19 |               1.00  0.00 |        0.38
+    16 |           0.34  0.25 |               1.00  0.00 |        1.00
+   extract_answer leniency: verify('2 + 18 = 1 2 3 20') = 1.0  (the LAST number after '=' is graded)
+   rubric exploit: rubric_reward('0 + 0 = 0') = 1.00 for 'What is 2 + 18?' (the rubric checks shape, never the number); verify = 0.0
 ```
 
-The right-hand column is the ceiling: with 16 samples, 62 % of prompts have a correct answer *somewhere*. Picking by the rubric reaches a proxy score of 1.00 and a gold accuracy of 0.06, no better than picking at random, because the rubric never looks at the number. Picking by the reward model does a little better (0.12) and then flattens while its own score keeps creeping up: the proxy is still being optimised after the goal has stopped improving. That flattening-then-diverging pair of curves is the overoptimisation picture of Gao et al. (2022) at toy scale. The two static lines show the graders' blind spots directly: the verifier reads the *last* number after `=`, so a policy that lists several candidates is graded on its final guess, and the rubric is satisfied by an equation that ignores the question.
+The right-hand column is the ceiling: with 16 samples every prompt has a correct answer *somewhere*. Picking by the rubric reaches a proxy score of 1.00 and a gold accuracy of 0.00, because the rubric never looks at the number. Picking by the reward model reaches 0.25 and its own score flattens at 0.34 by N = 4: the proxy stops discriminating long before the ceiling. That flattening is the overoptimisation picture of Gao et al. (2022) at toy scale. The two static lines show the graders' blind spots directly: the verifier reads the *last* number after `=`, so a policy that lists candidates is graded on its final guess, and the rubric is satisfied by an equation that ignores the question.
 
-Section (d) samples four answers per prompt from the SFT model and pairs a correct one with a wrong one:
-
-```
-   51/120 prompts yield a pair; 0 were all-correct (nothing to rank), 69 all-wrong (no positive example)
-      chosen='0 + 6 = 5'      rejected='y1 + 5 = 7'
-```
-
-Only 51 of 120 prompts produce a pair, and the first pair shows the leniency again: `0 + 6 = 5` was the answer to "What is 0 + 5?" and counts as correct. Sections (e)–(g) run DPO, the displacement experiment and SimPO:
+Section (d) samples four answers per prompt and pairs a correct one with a wrong one; sections (e)–(g) run DPO, the displacement experiment and SimPO:
 
 ```
---- (e) DPO on 41 on-policy pairs, 40 steps ---
+   53/120 prompts yield a pair; 0 were all-correct (nothing to rank), 67 all-wrong (no positive example)
+      chosen='2 + 8 = 10'     rejected='1 + 7 = 13'
+--- (e) DPO on 43 on-policy pairs, 40 steps ---
    before: val pair acc 0.50 | margin +0.000 | loss 0.693  (= log 2: policy == reference)
-   after:  val pair acc 0.30 | margin -0.054 | loss 0.722   [11s]
-   train pairs: acc 1.00 | margin +0.519
-   greedy accuracy: SFT 0.22 -> DPO 0.12  (100 held-out prompts; CI is about +-0.10, read small moves as noise)
+   after:  val pair acc 0.20 | margin +0.008 | loss 0.690   [10s]
+   train pairs: acc 0.95 | margin +0.500
+   greedy accuracy: SFT 0.23 -> DPO 0.23
 --- (f) likelihood displacement: 60 DPO steps at lr 5e-5 on 24 pairs ---
-   train pair accuracy 1.00, margin +0.61
-   mean log pi(chosen):     -4.11 ->   -5.23   (DOWN by 1.12 nats)
-   mean log pi(rejected):  -10.02 ->  -17.23   (down by 7.21 nats)
-   greedy accuracy: SFT 0.22 -> 0.08
-   -> likelihood displacement: the CHOSEN answers became less likely, the gap just grew faster on the rejected side
+   train pair accuracy 1.00, margin +0.48
+   mean log pi(chosen):     -3.15 ->   -3.20   (DOWN by 0.05 nats)
+   mean log pi(rejected):  -13.21 ->  -18.08   (down by 4.87 nats)
+   greedy accuracy: SFT 0.23 -> 0.19
 --- (g) SimPO vs DPO ---
    method val pair acc   margin  greedy acc
-   DPO            0.30   -0.054        0.12
-   SimPO          0.90   +0.881        0.08
+   DPO            0.20   +0.008        0.23
+   SimPO          0.80   +0.376        0.22
 ```
 
-Three things to read. DPO separates every training pair (accuracy 1.00, margin +0.52) and none of the ten held-out ones: with 41 pairs that differ only in a number, the nano model memorises which string was chosen rather than learning anything about sums. The displacement run is the module's headline result: after 60 steps on 24 pairs the pairs are perfectly separated *and* the chosen answers have become 1.12 nats less likely than they were under the reference; the loss fell because the rejected answers fell 7.21 nats, six times further. Greedy accuracy on held-out sums dropped from 0.22 to 0.08. This is likelihood displacement (Razin et al., 2024) reproduced in a minute: DPO optimises a difference, and the cheapest way to widen it here was to make everything less likely. SimPO reaches 0.90 held-out pair accuracy where DPO reached 0.30, because its length-normalised, reference-free reward is closer to what greedy decoding uses, but its task accuracy is no better.
+Three things to read. DPO separates the training pairs (0.95, margin +0.50) and none of the ten held-out ones: with 43 pairs that differ only in a number, the nano model memorises which string was chosen. The displacement run shows the mechanism in miniature: after 60 steps on 24 pairs the pairs are perfectly separated, the rejected answers have fallen 4.87 nats, and the chosen answers did not rise at all (−0.05 nats); the whole margin came from pushing the rejected side down, and greedy accuracy slipped from 0.23 to 0.19. SimPO reaches 0.80 held-out pair accuracy where DPO reached 0.20, because its length-normalised, reference-free reward is closer to what greedy decoding uses, but its task accuracy is no better. The full run below, on the larger model, is where the displacement becomes a collapse.
 
 <!-- FULL_MODE_17 -->
 
