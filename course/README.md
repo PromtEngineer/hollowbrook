@@ -57,8 +57,8 @@ Python 3.10+ and any CPU. A GPU is never required; where one helps, the chapter 
 ## Verifying everything
 
 ```bash
-python3 -m pytest tests -q          # library tests (~3 min on CPU)
-python3 labs/run_all_labs.py        # every lab in --quick mode (~15 min)
+python3 -m pytest tests -q          # library tests (88 tests, ~2 min on CPU)
+python3 labs/run_all_labs.py        # every lab in --quick mode (~8 min on a 4-core CPU)
 ```
 
 ## Currency
