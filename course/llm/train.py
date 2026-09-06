@@ -159,13 +159,14 @@ def train(model: TinyLM, train_tokens: Tensor, val_tokens: Optional[Tensor], cfg
             on_step(step, loss_acc)
 
         # --- validation & checkpoint --------------------------------------
-        if val_tokens is not None and (step % cfg.eval_every == 0 or step == cfg.steps - 1) and step > 0:
+        is_eval_step = (step % cfg.eval_every == 0 or step == cfg.steps - 1) and step > 0
+        if val_tokens is not None and is_eval_step:
             vl = estimate_loss(model, val_tokens, cfg.batch_size, cfg.seq_len, cfg.eval_batches, device=device)
             history.val_step.append(step)
             history.val_loss.append(vl)
             if verbose:
                 print(f"   val loss {vl:.4f}  (perplexity {math.exp(vl):.1f})", flush=True)
-            if cfg.ckpt_path:
-                save_checkpoint(cfg.ckpt_path, model, optimizers, step + 1, cfg, history)
+        if cfg.ckpt_path and is_eval_step:              # checkpoint even when there is no validation set
+            save_checkpoint(cfg.ckpt_path, model, optimizers, step + 1, cfg, history)
     model.eval()
     return history

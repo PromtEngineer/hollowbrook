@@ -139,7 +139,7 @@ A 300k-parameter model learns it in a minute on a CPU, the arithmetic gives late
 | `small` | 192 | 6 | 6 (2) | 2,361,792 (2,529,024 total) | ~5–10 min CPU (the course model) |
 | `medium` | 384 | 12 | 12 (4) | ~18.9 M (~19.2 M total) | a GPU |
 
-The parameter counts are tiny by 2026 standards (a frontier model is a million times larger), but the *code path* is the same: the pretraining loop in Chapter 10 uses Muon, warmup and a WSD schedule; the RL loop in Chapter 19 is GRPO with the DAPO fixes. What changes at scale is the subject of Chapter 11 and the capstone.
+The parameter counts are tiny by 2026 standards (a frontier model is a million times larger), but the *code path* is the same: the pretraining loop in Chapter 10 supports AdamW and Muon, warmup, and cosine or WSD schedules (the shared base model is trained with Muon + WSD); the RL loop in Chapter 19 is GRPO with the DAPO fixes. What changes at scale is the subject of Chapter 11 and the capstone.
 
 ## Worked example 🧪
 
