@@ -79,8 +79,13 @@ def build_sft_dataset(tok: BPETokenizer, examples: Sequence[TaskExample], max_le
     everything else — system prompt, user turn, role tags — is 0 and contributes
     nothing to the loss.
     """
-    return [build_sft_example(tok, ex.messages(with_answer=True, system=system), max_len)
-            for ex in examples]
+    out = []
+    for ex in examples:
+        # accept either a TaskExample or a raw conversation (list of {"role","content"} dicts),
+        # so tool-use traces (Chapters 21, 27) can use the same training loop
+        msgs = ex if isinstance(ex, (list, tuple)) else ex.messages(with_answer=True, system=system)
+        out.append(build_sft_example(tok, msgs, max_len))
+    return out
 
 
 def describe_mask(tok: BPETokenizer, ids: Sequence[int], mask: Sequence[int]) -> str:

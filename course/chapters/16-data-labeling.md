@@ -19,7 +19,7 @@ The two panels below the workflow are the chapter's two measurement tools. The l
 
 ### Three label formats
 
-**Pairwise comparison** shows two answers to one prompt and asks which is better (or tie). It is the format of the interactive, of InstructGPT's data, and of DPO. Its strength is that people are far more consistent at "which is better?" than at "how good is this?"; its cost is that a set of n answers needs on the order of n² comparisons to rank fully. **Likert rating** asks for a score on a fixed scale (1–5 or 1–7) for one answer at a time. It is cheap and gives an absolute number, but annotators drift (one person's 4 is another's 3) and the scale compresses at the top. **Ranking** shows k answers and asks for a full order; InstructGPT used k between 4 and 9 and converted each ranking into all of its pairwise comparisons for training the reward model. In 2026 the pragmatic combination is pairwise labels with a rubric attached, so that each comparison also records *why*: the rubric ticks are what later lets you train a rubric-based reward model (Chapter 17).
+**Pairwise comparison** shows two answers to one prompt and asks which is better (or tie): the format of the interactive, of InstructGPT's data, and of DPO. People are far more consistent at "which is better?" than at "how good is this?"; the cost is that ranking n answers fully needs on the order of n² comparisons. **Likert rating** scores one answer on a fixed scale (1–5 or 1–7): cheap and absolute, but annotators drift (one person's 4 is another's 3) and the scale compresses at the top. **Ranking** orders k answers at once; InstructGPT used k between 4 and 9 and expanded each ranking into all its pairwise comparisons. The 2026 default is pairwise labels with a rubric attached, so each comparison also records *why*; the rubric ticks are what later trains a rubric-based reward model (Chapter 17).
 
 ### Cohen's kappa
 
@@ -258,7 +258,6 @@ What is settled: measure agreement before scaling; run the swap test on every LL
 4. **A verbosity-aware check.** Write `verbosity_check(judge, pairs)` that reports the judge's win-rate for the longer answer, split by whether the longer answer is the chosen one. Run it on the three judges. Which of them does the swap test miss and this catch?
 5. **Short-prompt dedup.** Replace `shingles` with character 5-grams (a copy of the function using `text[i:i+5]`) and re-run the dedup section. Does the ` please` near-duplicate get caught at 0.8 now? What happens to the story near-duplicates?
 6. **Rejection sampling at temperature.** After Lab 15, call `make_preference_pairs_from_model` on the SFT model at temperatures 0.5, 1.0 and 1.5 with 8 samples. Plot `n_pairs` and `sample_accuracy` against temperature. Why is the best temperature for *pairs* not the best for *accuracy*?
-7. **Gold items.** Add ten gold items (pairs where the rejected answer is `empty`) to the noisy annotator's stream and compute their accuracy on gold only. At what flip rate would you stop trusting them, and how many gold items do you need before that decision is reliable?
 
 ## Check yourself ✅
 

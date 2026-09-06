@@ -31,8 +31,10 @@ SESSION_SYSTEM = ("You are a coding agent working in a sandboxed repository. Fol
 
 
 class MiniHarness:
-    def __init__(self, backend: Backend, workdir: str, config: Optional[AgentConfig] = None) -> None:
+    def __init__(self, backend: Backend, workdir: str, config: Optional[AgentConfig] = None,
+                 extra_hooks: Optional[Hooks] = None) -> None:
         self.backend = backend
+        self.extra_hooks = extra_hooks              # caller-supplied hooks, merged into _hooks()
         self.workdir = os.path.realpath(workdir)
         os.makedirs(self.workdir, exist_ok=True)
         cfg = config or AgentConfig()
@@ -60,6 +62,10 @@ class MiniHarness:
     # ------------------------------------------------------------- hooks
     def _hooks(self) -> Hooks:
         hooks = Hooks()
+        if self.extra_hooks is not None:
+            hooks.pre_tool += list(self.extra_hooks.pre_tool)
+            hooks.post_tool += list(self.extra_hooks.post_tool)
+            hooks.on_event += list(self.extra_hooks.on_event)
 
         def guard_writes(call: ToolCall) -> Optional[str]:
             # Rule 1: the plan is the human's contract; the model may not rewrite it.
@@ -106,7 +112,9 @@ class MiniHarness:
         t = agent.run(prompt)
         self.sessions.append(t)
         ok, report = self.verify()
-        n = len(self.sessions)
+        # Number sessions from the file, not from this object: a *new process* resuming on
+        # the same directory (the whole point of PROGRESS.md) must continue the count.
+        n = self._read("PROGRESS.md").count("\n## Session ") + 1
         self._append("PROGRESS.md", f"\n## Session {n} ({t.stop_reason}, {t.turns} turns, {t.tool_calls_made} tool calls)\n"
                                     f"{t.final_text.strip() or '(no summary)'}\n\n"
                                     f"Verification: {'PASS' if ok else 'FAIL'}\n```\n{report.strip()[-800:]}\n```")

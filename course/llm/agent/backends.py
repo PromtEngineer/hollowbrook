@@ -25,6 +25,7 @@ Each backend translates this format to and from its own wire format.
 from __future__ import annotations
 
 import json
+import threading
 import os
 import re
 import uuid
@@ -94,6 +95,7 @@ class ScriptedBackend:
         self.script = [self._coerce(item) for item in script]
         self.calls: list[dict] = []
         self.index = 0
+        self._lock = threading.Lock()               # workers in threads (Ch. 28) share one script
 
     @staticmethod
     def _coerce(item: ScriptItem) -> AssistantMessage:
@@ -105,12 +107,13 @@ class ScriptedBackend:
         return AssistantMessage(text=item.get("text", ""), tool_calls=calls)
 
     def complete(self, messages: list[dict], tools: list[dict], system: str) -> AssistantMessage:
-        self.calls.append({"messages": [dict(m) for m in messages], "tools": tools, "system": system})
-        if self.index >= len(self.script):
-            return AssistantMessage(text="(script exhausted)")
-        msg = self.script[self.index]
-        self.index += 1
-        return msg
+        with self._lock:                            # thread-safe: workers may share one script
+            self.calls.append({"messages": [dict(m) for m in messages], "tools": tools, "system": system})
+            if self.index >= len(self.script):
+                return AssistantMessage(text="(script exhausted)")
+            msg = self.script[self.index]
+            self.index += 1
+            return msg
 
 
 # -------------------------------------------------------------------- TinyLM
