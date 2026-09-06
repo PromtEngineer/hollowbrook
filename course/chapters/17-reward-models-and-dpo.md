@@ -240,11 +240,11 @@ The lab needs a model that can *sometimes* add. It first looks for an SFT checkp
 ```
    greedy accuracy [SFT warm start]: 0.23  (95% CI [0.16, 0.32], n=100)
    240 pairs from 120 prompts (2 failure styles each): 192 train / 48 val
-   held-out pair accuracy: 0.00 (zero head: every margin is 0) -> 0.71   [24s]
-   accuracy by failure style: empty=1.00 (n=12), junk=1.00 (n=6), off_by_one=0.44 (n=9), verbose=1.00 (n=8), wrong=0.31 (n=13)
+   held-out pair accuracy: 0.00 (zero head: every margin is 0) -> 0.81   [21s]
+   accuracy by failure style: empty=1.00 (n=12), junk=1.00 (n=6), off_by_one=0.67 (n=9), verbose=1.00 (n=8), wrong=0.54 (n=13)
 ```
 
-Read the last line before the one above it. The reward model is perfect on every *style* failure (empty, junk, verbose) and worse than a coin flip on `wrong` and `off_by_one`: a 295k-parameter Transformer learns "a good answer is one short equation" long before it learns arithmetic. That is not a bug in the loop; it is what a proxy trained on shape-heavy pairs is. Section (c) does what Gao et al. did: sample 16 answers per prompt and pick the best under a proxy.
+Read the last line before the one above it. The headline 0.81 hides a split: the reward model is perfect on every *style* failure (empty, junk, verbose) and barely above a coin flip on `wrong` (0.54) and `off_by_one` (0.67): a 295k-parameter Transformer learns "a good answer is one short equation" long before it learns arithmetic. That is not a bug in the loop; it is what a proxy trained on shape-heavy pairs is. Section (c) does what Gao et al. did: sample 16 answers per prompt and pick the best under a proxy.
 
 ```
    16 held-out prompts x 16 samples at T=1: sample accuracy 0.13

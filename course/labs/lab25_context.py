@@ -84,13 +84,22 @@ check(largest <= 2000 // 4 + 20, f"every tool result was already capped at max_t
 print("\n   what an over-full window does to TinyLM (nano, 128-token window):")
 from llm.pipeline import get_base_model              # noqa: E402  (torch import deferred until here)
 from llm.agent import TinyLMBackend                   # noqa: E402
+from llm.agent.backends import ContextTooLongError     # noqa: E402
 model, tok = get_base_model(quick=True, verbose=False)
 tiny = TinyLMBackend(model, tok, max_new_tokens=16)
 short = tiny.complete([{"role": "user", "content": "What is 2 + 3?"}], [], "Answer briefly.")
-long_ = tiny.complete(t_off.messages[:8], [], "Answer briefly.")
 print(f"   short prompt ({len(tok.encode('What is 2 + 3?'))} tokens): raw reply {short.raw!r}")
-print(f"   8 messages ({budget.used(t_off.messages[:8]) - budget.fixed:,} est. tokens): raw reply {long_.raw!r}")
-check(long_.raw == "" and short.raw != "", "past its window the model returns an EMPTY reply, which the loop would read as 'done'")
+try:
+    tiny.complete(t_off.messages[:8], [], "Answer briefly.")
+    err = None
+except ContextTooLongError as e:                       # a direct .complete() call must catch this
+    err = e
+print(f"   8 messages ({budget.used(t_off.messages[:8]) - budget.fixed:,} est. tokens): {type(err).__name__}: {err}")
+check(err is not None, "past its window the backend REFUSES with ContextTooLongError instead of replying")
+# inside the loop the same error ends the run cleanly, with a stop_reason you can act on
+t_over = Agent(tiny, tools, no_compact).run("Summarise everything in log.txt, data/ and config.txt in detail: " + "x" * 600)
+check(t_over.stop_reason == "error" and "ContextTooLongError" in t_over.events[-1].data["error"],
+      f"Agent.run turns it into stop_reason={t_over.stop_reason!r} ({t_over.events[-1].data['error'][:60]}...)")
 
 
 # =============================================================== (b) compaction on
@@ -119,18 +128,30 @@ print(f"   the final answer still says 4242 only because it was scripted; a real
 
 # compaction with a summariser keeps facts, at the cost of a summarising call
 def rule_summariser(older: list[dict]) -> str:
-    """A stand-in for a model call: list what was done and keep any key=value facts."""
-    calls = [f"{c['name']}({json.dumps(c['arguments'])})" for m in older if m["role"] == "assistant"
-             for c in m.get("tool_calls", [])]
-    facts = sorted({line.strip() for m in older if m["role"] == "tool_result"
-                    for line in m["content"].splitlines() if "=" in line and len(line) < 40})
-    return f"Ran {len(calls)} tool calls ({', '.join(sorted(set(c.split('(')[0] for c in calls)))}). Facts: {'; '.join(facts)}"
+    """A stand-in for a model call: list what was done and keep every key=value fact.
+    Facts are mined from ALL older messages, including an earlier summary, so that a
+    summary of a summary does not lose them (a model summariser needs that instruction too)."""
+    import re
+    calls = [c["name"] for m in older if m["role"] == "assistant" for c in m.get("tool_calls", [])]
+    facts = sorted({f for m in older for f in re.findall(r"\b[a-z_]+=[A-Za-z0-9]+\b", m.get("content", ""))})
+    return f"Ran {len(calls)} tool calls ({', '.join(sorted(set(calls)))}). Facts: {'; '.join(facts)}"
 
 
 summarised = compact(t_off.messages, keep_last=6, summarizer=rule_summariser)
-print(f"   with a summariser: {len(t_off.messages)} messages -> {len(summarised)}; {budget.used(t_off.messages):,} -> {budget.used(summarised):,} tokens")
+print(f"   compact() with a summariser: {len(t_off.messages)} messages -> {len(summarised)}; {budget.used(t_off.messages):,} -> {budget.used(summarised):,} tokens")
 print(f"   summary message: {summarised[1]['content'][:160]!r}")
 check("4242" in summarised[1]["content"], "the summariser carried db_port=4242 across the compaction")
+# the same summariser wired into the harness: AgentConfig.summarizer is passed to compact() by Agent.run
+on_sum = AgentConfig(permission_policy="allow_read_only", max_turns=N_TURNS + 5, context_budget_tokens=WINDOW,
+                     summarizer=rule_summariser)
+backend_sum = ScriptedBackend(episode_script(N_TURNS))
+t_sum = Agent(backend_sum, tools, on_sum).run("Find the db port and count the errors.")
+summaries = [m for m in t_sum.messages if m["content"].startswith("[Summary of earlier work]")]
+usage_sum = [budget.used(c["messages"]) for c in backend_sum.calls]
+print(f"   Agent.run with summarizer: {sum(e.kind == 'compaction' for e in t_sum.events)} compactions, "
+      f"{len(summaries)} summary message(s) in the final context, peak {max(usage_sum):,} tokens, {len(t_sum.messages)} messages")
+print(f"   final context's summary: {summaries[-1]['content'][:150]!r}" if summaries else "   (no summary)")
+check(summaries and "4242" in summaries[-1]["content"], "inside the loop the summary kept db_port=4242 through every compaction")
 
 
 # =============================================================== (c) memory file

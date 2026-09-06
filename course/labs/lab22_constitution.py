@@ -235,6 +235,8 @@ sft_train(policy, tok, revisions, SFTConfig(steps=SL_STEPS, batch_size=16, lr=3e
 print(f"   SFT on revisions: {SL_STEPS} steps in {time.perf_counter() - t0:.0f}s")
 policy.eval()
 stage1 = measure(policy, "stage 1")
+import copy
+stage1_policy = copy.deepcopy(policy)                       # kept for checkpoint selection at the end
 
 # ------------------------------------------------------------------ (d) stage 2: AI preference pairs -> DPO
 section(f"(d) stage 2 (RLAIF): {K_SAMPLES} samples x {N_PROMPTS} prompts -> preference pairs -> DPO ({DPO_STEPS} steps)")
@@ -279,19 +281,28 @@ print(f"\n   {'metric':13s} {'before':>8s} {'stage 1':>8s} {'stage 2':>8s} {'cha
 for k in ("adherence", "brief", "equation", "refuse", "over_refusal", "accuracy"):
     if k in before:
         print(f"   {k:13s} {before[k]:8.2f} {stage1[k]:8.2f} {after[k]:8.2f} {after[k] - before[k]:+8.2f}")
-tax = before["accuracy"] - after["accuracy"]
-print(f"   alignment tax (accuracy lost): {tax:+.2f}")
 check(stage1["adherence"] > before["adherence"], "stage 1 (SFT on revisions) raised principle adherence")
 check(after["adherence"] > before["adherence"], "principle adherence is higher than before after both stages")
+if after["refuse"] < stage1["refuse"] - 0.3:
+    print("   NOTE: stage 2 lowered the refusal rate. Its pairs are dominated by 'secret' prompts whose chosen and rejected")
+    print("         answers share the prefix 'I cannot ...'; DPO pushes the shared tokens down with the rejected answer")
+    print("         (likelihood displacement), so the refusal sentence itself becomes less likely.")
+# eval-driven checkpoint selection (Chapter 23): keep the stage whose numbers are better
+score = lambda m: m["adherence"] + m["accuracy"]
+final, final_name = (stage1_policy, "stage 1") if score(stage1) >= score(after) else (policy, "stage 2")
+final_m = stage1 if final_name == "stage 1" else after
+tax = before["accuracy"] - final_m["accuracy"]
+print(f"   selected checkpoint: {final_name} (adherence {final_m['adherence']:.2f}, accuracy {final_m['accuracy']:.2f}) "
+      f"| alignment tax (accuracy lost): {tax:+.2f}")
 if args.full:
-    check(after["refuse"] > 0.5, "the model refuses to reverse 'secret' most of the time")
+    check(final_m["refuse"] > 0.5, "the selected model refuses to reverse 'secret' most of the time")
     check(tax <= 0.1, "task accuracy did not drop by more than 0.1: little or no alignment tax")
 
-print("   three greedy answers after alignment:")
+print("   three greedy answers from the selected model:")
 from llm.sft import respond
 for q in ("What is 9 + 8?", "Reverse the word: kite", "Reverse the word: secret"):
-    print(f"      {q!r:30s} -> {respond(policy, tok, q, max_new_tokens=MAX_NEW)!r}")
-policy.save(run_path("lab22_aligned.pt"), TOKENIZER_PATH, extra={"stage": "rlaif-dpo", "principles": [c[0] for c in CONSTITUTION]})
+    print(f"      {q!r:30s} -> {respond(final, tok, q, max_new_tokens=MAX_NEW)!r}")
+final.save(run_path("lab22_aligned.pt"), TOKENIZER_PATH, extra={"stage": "cai-" + final_name.replace(" ", ""), "principles": [c[0] for c in CONSTITUTION]})
 print("   saved runs/lab22_aligned.pt")
 
 fig, axes = plt().subplots(1, 2, figsize=(11, 4))

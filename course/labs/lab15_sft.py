@@ -15,6 +15,7 @@ What you will see:
 from _common import setup, check, banner, section, savefig, done, plt
 
 import copy
+import random
 import time
 
 import torch
@@ -23,7 +24,8 @@ from llm.chat import build_sft_example
 from llm.evals import eval_tasks, perplexity
 from llm.model import TinyLM
 from llm.pipeline import get_tokenizer, get_base_model, get_tokens, run_path, TOKENIZER_PATH
-from llm.sft import SFTConfig, sft_train, describe_mask, apply_lora, merge_lora, trainable_params, LoRALinear, respond
+from llm.sft import (SFTConfig, sft_train, build_sft_dataset, sft_loss, describe_mask, apply_lora, merge_lora,
+                     trainable_params, LoRALinear, respond)
 from llm.tasks import make_examples
 
 args = setup("Lab 15: supervised fine-tuning (full FT vs LoRA)")
@@ -33,13 +35,14 @@ N_TRAIN = 2000
 N_VAL = 32 if args.quick else 48
 STEPS = 750 if args.quick else 800
 LR = 1e-3                      # sft.SFTConfig's default is 3e-4; TinyLM is tiny, and 1e-3 converges 3x faster here
-LORA_STEPS = 300
+LORA_STEPS = STEPS             # same budget as full FT, so the comparison is fair
 LORA_RANK = 8
-LORA_LR = 2e-3                 # adapters tolerate (and need) a higher LR than the full weights
+LORA_LR = 3e-3                 # adapters tolerate (and need) a higher LR than the full weights
 EVAL_EVERY = 150
 MAX_NEW = 16                   # every answer in these tasks fits in 12 tokens + <|end|>
 
 tok = get_tokenizer()
+pad_id = tok.special_tokens["<|pad|>"]
 base, _ = get_base_model(quick=args.quick, verbose=False)
 n_all = sum(p.numel() for p in base.parameters())
 print(f"base model: {base.num_params():,} non-embedding params ({n_all:,} total), max_seq_len {base.cfg.max_seq_len}")
@@ -155,7 +158,29 @@ for name, n, st, t, r, pp in (("full FT", n_all, STEPS, full_time, after, ppl_af
     print(f"{name:<12}{n:>12,}{st:>7}{t:>7.0f}s{t / st:>8.2f}{r.accuracy:>10.2f}{r.per_task.get('upper', 0):>7.2f}"
           f"{r.per_task.get('reverse', 0):>9.2f}{r.per_task.get('add', 0):>6.2f}{r.per_task.get('count', 0):>7.2f}{pp:>7.2f}")
 check(lora_after.accuracy > 0.0, "LoRA also learns the format")
-check(lora_time / LORA_STEPS < full_time / STEPS * 1.05, "a LoRA step is no slower than a full step (no optimizer state for frozen weights)")
+
+
+def ms_per_step(m: TinyLM, n: int = 10) -> float:
+    """Forward + backward + AdamW step on one batch, without the periodic evals (which dominate wall-clock above)."""
+    from llm.sft import _batches
+    batches = _batches(build_sft_dataset(tok, train[:64]), 16, random.Random(0))
+    params = [p_ for p_ in m.parameters() if p_.requires_grad]
+    opt = torch.optim.AdamW(params, lr=1e-4)
+    m.train()
+    for _ in range(2):                                             # warm-up
+        sft_loss(m, next(batches), pad_id, "cpu").backward(); opt.step(); opt.zero_grad()
+    t0 = time.perf_counter()
+    for _ in range(n):
+        sft_loss(m, next(batches), pad_id, "cpu").backward(); opt.step(); opt.zero_grad()
+    m.eval()
+    return 1000 * (time.perf_counter() - t0) / n
+
+
+bench_full = ms_per_step(copy.deepcopy(base))
+bench_lora = ms_per_step(apply_lora(copy.deepcopy(base), LORA_RANK))
+print(f"one training step, evals excluded: full FT {bench_full:.0f} ms | LoRA {bench_lora:.0f} ms "
+      f"(the wall-clock column above includes the periodic evals, which are slow until a model learns to stop)")
+check(bench_lora < 1.3 * bench_full, "a LoRA step costs about the same as a full step on CPU: the backward pass still runs through every layer")
 
 # ------------------------------------------------------------ figure
 fig, axes = plt().subplots(1, 3, figsize=(15, 4))

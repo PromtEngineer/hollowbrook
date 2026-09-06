@@ -32,6 +32,7 @@ class TrainConfig:
     warmup_steps: int = 50
     schedule: str = "cosine"          # "cosine" | "wsd" | "constant"
     min_lr_ratio: float = 0.1
+    decay_frac: float = 0.2           # WSD only: fraction of training spent decaying (1.0 = pure anneal)
     grad_clip: float = 1.0
     eval_every: int = 100
     eval_batches: int = 10
@@ -123,7 +124,7 @@ def train(model: TinyLM, train_tokens: Tensor, val_tokens: Optional[Tensor], cfg
     tokens_seen = 0
     for step in range(start_step, cfg.steps):
         # --- learning rate for this step ---------------------------------
-        scale = lr_at(step, cfg.steps, 1.0, cfg.warmup_steps, cfg.schedule, cfg.min_lr_ratio)
+        scale = lr_at(step, cfg.steps, 1.0, cfg.warmup_steps, cfg.schedule, cfg.min_lr_ratio, cfg.decay_frac)
         set_lr(optimizers, scale)
 
         # --- forward / backward (with gradient accumulation) --------------

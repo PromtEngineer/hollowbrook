@@ -142,7 +142,52 @@ RLVR made models better at *one* sample. A second axis is to spend more compute 
 
 Here is the argument, as of September 2026. One camp, starting from Yue et al. (2025, "Does RL really incentivize reasoning capacity beyond the base model?"), measured pass@N for large N and reported that RLVR-trained models beat their base models at small N but are matched or beaten by the base at large N: RL had *sharpened* the distribution, moving probability onto answers the base could already produce, without adding new solutions. The other camp (ProRL, NVIDIA 2025, and later work on longer runs) reported that with enough steps, KL control and periodic resets, pass@N improves even at large N on some tasks, that is, genuinely new solutions appear. Both may be right for different regimes: sharpening is the first thing RLVR does and is enough for large gains at pass@1, and whether the boundary moves after that depends on the task, the base model and the length of training. The evidence is consistent that RLVR is *sample-efficient in data* (thousands of prompts, not millions) and *expensive in compute* (rollouts), and that its benefit is largest on tasks with a clean verifier. The lab's pass@8 before and after is the smallest possible version of the sharpening test; do not over-read a 50-prompt result, but do notice what it shows.
 
-<!-- WORKED_EXAMPLE -->
+## Worked example 🧪
+
+```bash
+python3 labs/lab19_grpo.py            # quick: nano model, 20 GRPO steps, about 1.5 min
+python3 labs/lab19_grpo.py --full     # small model, 40 steps + six 10-step ablations, see timing below
+```
+
+The lab loads the SFT warm start Lab 17 made (or trains it), reports greedy accuracy on 100 fresh sums with a bootstrap confidence interval, samples 16 answers per prompt at temperature 1 for 40 of them, and only then trains. As in Chapter 17, the 441-sum world means fresh draws overlap the SFT prompts (52 of 100 here); the numbers are task-distribution accuracy.
+
+### Quick mode (nano)
+
+```
+   greedy accuracy [SFT, before RL]: 0.23  95% CI [0.15, 0.31]  (n=100)
+   at T=1 on 40 held-out prompts: sample accuracy 0.11, pass@8 0.60   [28s]
+   prompt 'What is 2 + 8?': G=8 rollouts, ids (8, 67), mask (8, 66), prompt_len 55
+      '2 + 8 = 12'           reward 0.1  advantage -0.54  (8 answer tokens incl. <|end|>)
+      'y and cake box book key rope boat pink book ball white' reward 0.0  advantage -0.76  (12 answer tokens incl. <|end|>)
+      '1 + 8 = 10'           reward 1.1  advantage +1.73  (8 answer tokens incl. <|end|>)
+      '2 + 8 = 10'           reward 1.1  advantage +1.73  (8 answer tokens incl. <|end|>)
+   mean 0.338, std 0.441; advantages sum to +3.0e-07; Dr. GRPO would use [-0.24, -0.24, -0.34, 0.76, ...]
+```
+
+The first two lines are the sharpening baseline: one greedy answer is right 23 % of the time, one random sample 11 %, but among 8 samples a correct one exists for 60 % of prompts. The rollout group is the figure of the "idea in pictures" with real numbers: two correct answers get +1.73, the five formatted-but-wrong ones −0.54, the ramble −0.76 (Dr. GRPO's un-normalised version is the last line). Note `'1 + 8 = 10'`: the verifier reads only the final number, so a misquoted operand is still rewarded; that leniency is a small reward-hacking channel the policy is free to use.
+
+```
+--- (c) GRPO: 20 steps x 4 prompts x G=8, lr 0.0001, clip 0.2/0.28, ppo_epochs 1, dynamic sampling on, token-level loss, no KL ---
+   20 steps in 30s (1.5s/step, of which rollouts 0.9s)
+   training reward, first 3 steps 0.266 -> last 3 0.254 | entropy 1.06 -> 0.72 | mean clip frac 0.000 | mean skipped 0.21 | resp len 8.2 -> 8.0
+✅ with ppo_epochs=1 every ratio is exactly 1, so the clip never fires (by construction)
+               greedy         95% CI  sample acc  pass@8
+   before        0.23 [0.15, 0.31]        0.11    0.60
+   after         0.15 [0.08, 0.22]        0.08    0.53
+```
+
+Twenty steps on a 295k-parameter model do not teach it to add: the training reward is flat, entropy falls from 1.06 to 0.72 nats per token (the policy is committing, not improving), a fifth of the groups are skipped as all-wrong, and greedy accuracy moves from 0.23 to 0.15 with overlapping intervals. The clip fraction is exactly zero because quick mode uses one PPO epoch, in which π_old = π_θ; the full run uses two epochs so the clip is real. This is the honest small-scale result: at this size GRPO from a 23 %-accurate start has little to sharpen, and we tried lr 1e-4 with two epochs and 2e-4 first, both of which pushed greedy accuracy *down* (to 0.06–0.10) with KL spikes, which is why the defaults are conservative.
+
+```
+     N | majority (before) majority (after) | pass@N (before) pass@N (after)
+     1 |              0.17             0.15 |            0.17           0.15
+     4 |              0.20             0.15 |            0.38           0.28
+    16 |              0.15             0.05 |            0.78           0.80
+```
+
+The test-time-compute table separates two ideas. pass@N, the oracle, climbs to 0.78–0.80 at N = 16: the model *can* produce the right sum for four prompts in five if something else picks it out. Majority voting cannot, and even falls with N, because the per-sample accuracy (≈ 0.1) is below the frequency of the model's favourite wrong answer; voting needs the right answer to be the mode. Self-consistency is a technique for models that are usually right and sometimes slip, not for models that are usually wrong.
+
+<!-- FULL_MODE_19 -->
 
 ## Try it yourself ✍️
 

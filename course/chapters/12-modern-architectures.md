@@ -44,7 +44,7 @@ flowchart TD
     ADD2 --> OUT[to next block<br/>+ MTP head at the top]
 ```
 
-Compare this with Chapter 6's block: the two residual additions, the two norms and the attention-then-MLP order are unchanged. What changed is *inside* the two sub-layers.
+Compared with Chapter 6's block, the two residual additions, the two norms and the attention-then-MLP order are unchanged; what changed is *inside* the sub-layers.
 
 ## The idea in code
 
@@ -80,7 +80,7 @@ def moe_forward(self, x):                                   # x: (B, T, d)
     return out.view(B, T, d)
 ```
 
-Three things to notice. Routing is per **token**, not per sequence, which is why the tensor is flattened to `(B*T, d)`. The expert loop is a Python `for` because this is teaching code; production kernels sort tokens by expert and run one grouped matrix multiply, and with expert parallelism (Chapter 11) the `flat[token_idx]` gather becomes an all-to-all across devices. And `topk_p` is renormalised so that, with top-2 routing, a token whose two chosen experts scored 0.5 and 0.3 mixes them 0.625 : 0.375.
+Three things to notice. Routing is per **token**, not per sequence, hence the flatten to `(B*T, d)`. The expert loop is a Python `for` because this is teaching code; production kernels sort tokens by expert and run one grouped matrix multiply, and with expert parallelism (Chapter 11) the `flat[token_idx]` gather becomes an all-to-all. And `topk_p` is renormalised: with top-2 routing, experts scored 0.5 and 0.3 are mixed 0.625 : 0.375.
 
 The **load-balancing auxiliary loss** on the second-to-last line is the Switch Transformer form:
 
@@ -103,7 +103,7 @@ print(f"one MoE layer: total {total:,} | active per token {active:,} | router {c
 # one MoE layer: total 369,024 | active per token 147,840 | router 384
 ```
 
-Per-token compute follows active parameters (6 × active FLOPs per token, Chapter 9), while what the model *knows* follows total parameters. That is why MoE wins per FLOP: DeepSeek-V3 stores 671B parameters and computes with 37B; 🆕 reported 2026 figures are 744B/40B for GLM-5.2, ~2.8T/104B for Kimi K3 and 2.4T/95B for Qwen3.8's sparse model ([wavect](https://wavect.io/blog/open-weight-llm-comparison-2026/), [morphllm](https://www.morphllm.com/best-open-source-llm)), ratios of 16–27×. **DeepSeekMoE** (2024) pushed two refinements now standard: **fine-grained experts** (many small experts, top-8 of 256 in V3, so the combinations a token can select are far more numerous) and the **shared expert**. The costs are real: all those parameters must live somewhere (memory, hence expert parallelism), the router's decisions cause imbalanced device loads, and training is touchier than dense. Note that TinyLM's MoE, as configured in the lab, has *more* active parameters than the dense model it is compared to (the shared expert is extra), so the lab's fair comparison is on total parameters and wall-clock, not a per-FLOP match; exercise 2 fixes that.
+Per-token compute follows active parameters (6 × active FLOPs per token, Chapter 9), while what the model *knows* follows total parameters. That is why MoE wins per FLOP: DeepSeek-V3 stores 671B parameters and computes with 37B; 🆕 reported 2026 figures are 744B/40B for GLM-5.2, ~2.8T/104B for Kimi K3 and 2.4T/95B for Qwen3.8's sparse model ([wavect](https://wavect.io/blog/open-weight-llm-comparison-2026/), [morphllm](https://www.morphllm.com/best-open-source-llm)), ratios of 16–27×. **DeepSeekMoE** (2024) pushed two refinements now standard: **fine-grained experts** (many small experts, top-8 of 256 in V3, so the combinations a token can select are far more numerous) and the **shared expert**. The costs are real: the parameters must live somewhere (memory, hence expert parallelism), routing imbalances device loads, and training is touchier than dense. TinyLM's MoE as configured in the lab has *more* active parameters than the dense model (the shared expert is extra), so the lab compares at equal steps, not equal FLOPs; exercise 2 fixes that.
 
 ### Sparse attention: choose which keys to look at
 
@@ -119,7 +119,7 @@ print(causal_mask(T=6, S=6, past=0, window=3, device="cpu").int())
 #  [0,0,0,1,1,1]]
 ```
 
-A window bounds the KV cache but throws away everything older, so windows are used for *some* layers (Gemma, gpt-oss alternate windowed and full layers) or as one branch of a richer scheme. The 2025–26 schemes select keys by *content*:
+A window bounds the KV cache but discards everything older, so windows are used in *some* layers (Gemma and gpt-oss alternate windowed and full layers) or as one branch of a richer scheme. The 2025–26 schemes select keys by *content*:
 
 - **NSA** (Native Sparse Attention, DeepSeek 2025) runs three branches per query, compressed block summaries, the top-n selected blocks by score, and a sliding window, and gates them; it is trained sparse from the start rather than sparsified afterwards.
 - **DSA** (DeepSeek Sparse Attention, DeepSeek-V3.2, 2025) adds a **Lightning Indexer**: a tiny, cheap attention (few heads, low precision) that scores every past key for each query, keeps the top-k (2048 in V3.2), and then runs ordinary attention over only those keys. Cost per token becomes roughly T × (indexer) + k × (full), and the indexer is small enough that the total is far below T².
@@ -181,15 +181,15 @@ Read the comment as: the extra head looks at the hidden state at position t, who
 
 ### Hyper-connections and the residual stream
 
-Every architecture in this chapter still has the residual stream from Chapter 6: one vector per token that each sub-layer reads and adds to. **Hyper-connections** (2024) widen it to n parallel streams with small learned matrices that mix them at every layer, so the network can choose, per layer, how much of each stream to read and write. 🆕 DeepSeek-V4 reports **manifold-constrained hyper-connections (mHC)**, which restrict those mixing matrices to a well-behaved set so that signals neither blow up nor vanish across hundreds of layers ([arXiv 2606.19348](https://arxiv.org/abs/2606.19348)); the claim is better stability at scale, and it is too new to call settled.
+Every architecture here still has Chapter 6's residual stream: one vector per token that each sub-layer reads and adds to. **Hyper-connections** (2024) widen it to n parallel streams mixed by small learned matrices at every layer. 🆕 DeepSeek-V4 reports **manifold-constrained hyper-connections (mHC)**, which restrict those mixing matrices to a well-behaved set so that signals neither blow up nor vanish across hundreds of layers ([arXiv 2606.19348](https://arxiv.org/abs/2606.19348)); the claim is better stability at scale, and it is too new to call settled.
 
 ### Diffusion language models: a different generation loop entirely
 
-Everything above is **autoregressive**: one token at a time, left to right. **Diffusion language models** (LLaDA and LLaDA-MoE, 2025, among others) instead start from a fully masked sequence and iteratively un-mask tokens in parallel, refining over a few dozen steps, with a bidirectional Transformer underneath. The attractions are parallel decoding and the ability to edit the middle of a sequence; the open questions are whether they match autoregressive quality at frontier scale and whether their step count really beats the KV-cached decode loop in wall-clock. As of 2026 they are an active research direction, not the mainstream recipe.
+Everything above is **autoregressive**: one token at a time, left to right. **Diffusion language models** (LLaDA and LLaDA-MoE, 2025, among others) instead start from a fully masked sequence and un-mask tokens in parallel over a few dozen refinement steps, with a bidirectional Transformer underneath. The attractions are parallel decoding and editing the middle of a sequence; the open questions are whether they match autoregressive quality at frontier scale and whether their step count beats a KV-cached decode loop in wall-clock. As of 2026 they are a research direction, not the mainstream recipe.
 
 ### Long context to 1M tokens
 
-The 1M-token context lengths of 🆕 DeepSeek-V4 and Kimi K3 (reported) come from stacking this chapter's ideas: sparse/compressed attention and hybrids to keep per-token cost and cache size bounded, GQA/MLA to shrink what is cached, context parallelism (Chapter 11) to train on long sequences, and RoPE frequency scaling plus a dedicated long-context training phase, which is Chapter 13's subject.
+The 1M-token contexts of 🆕 DeepSeek-V4 and Kimi K3 (reported) stack this chapter's ideas: sparse/compressed attention and hybrids to bound per-token cost and cache size, GQA/MLA to shrink what is cached, context parallelism (Chapter 11) to train on long sequences, and RoPE frequency scaling with a dedicated long-context phase, Chapter 13's subject.
 
 ### What stayed the same since 2017
 
@@ -227,7 +227,7 @@ The training objective, the residual-stream-plus-sub-layer skeleton, the embeddi
 ✅ dense and MoE reach comparable val loss (2.444 vs 2.097)
 ```
 
-The MoE reaches a lower validation loss (2.10 versus 2.44) for the same steps, but read the parameter columns before drawing the per-FLOP conclusion: with one routed expert plus one shared expert it has 1.6× the dense model's *active* parameters and 3.3× its total, so this is "more capacity at the same step count", not "same compute". Exercise 2 makes the active counts equal. The tokens-per-second column is what a Python `for` loop over experts costs on a contended CPU; production MoE kernels group tokens by expert and run one matrix multiply per expert, and on a quiet machine the dense model is the faster of the two per step.
+The MoE reaches a lower validation loss (2.10 versus 2.44) for the same steps, but read the parameter columns first: with one routed plus one shared expert it has 1.6× the dense model's *active* parameters and 3.3× its total, so this is "more capacity at the same step count", not "same compute"; exercise 2 equalises the active counts. The tokens-per-second column reflects a contended CPU and a Python `for` loop over experts; production kernels group tokens by expert and run one matrix multiply each.
 
 ```text
 --- 2. expert utilisation per layer, with and without the load-balancing loss ---
@@ -255,7 +255,7 @@ With the balancing loss on, every expert in every layer takes 22–27% of the to
 ✅ the MTP head does not wreck next-token prediction
 ```
 
-Honest reporting: at this scale the MTP head *hurts* next-token prediction (2.71 versus 2.44 after the same 120 steps). A 0.38M-parameter model has little spare capacity, the extra head's gradient (weight 0.3) competes for it, and the run is far too short for the "plan ahead" benefit to appear. The reported gains for MTP come from billion-parameter models trained for trillions of tokens with a dedicated MTP block; the lab shows the mechanism and the cost, not the payoff. The t+2 head's own loss (3.65) being well above the t+1 loss is the expected ordering: two tokens ahead is harder than one.
+Honest reporting: at this scale the MTP head *hurts* next-token prediction (2.71 versus 2.44 after 120 steps). A 0.38M-parameter model has little spare capacity, the extra head's gradient (weight 0.3) competes for it, and the run is too short for any "plan ahead" benefit. MTP's reported gains come from billion-parameter models trained for trillions of tokens with a dedicated MTP block; the lab shows the mechanism and the cost, not the payoff. The t+2 head's own loss (3.65) sits well above the t+1 loss, as expected.
 
 ```text
 --- 4. sliding-window attention on the pretrained base model (trained with FULL attention) ---
@@ -275,7 +275,22 @@ Honest reporting: at this scale the MTP head *hurts* next-token prediction (2.71
 
 Part 4 is the "trained in, not bolted on" point: forcing an 8-token window on a model trained with full attention raises its loss (1.069 → 1.082). The effect is small because Storyland documents are about 80 tokens long, so most useful keys are close anyway; a window of 32 costs almost nothing here, and a model trained *with* a window (exercise 4) pays nothing at all. Part 5 is the arithmetic behind long context: the same 80-layer model needs 344 GB of KV cache at 128k tokens with plain multi-head attention, 43 GB with GQA, and 12 GB with an MLA-style latent, and for a DeepSeek-V3-shaped model (128 heads, no GQA) the MLA latent is the difference between 524 GB and 9 GB.
 
-<!-- LAB12_FULL -->
+**Full mode (`--full`: 250 steps at 32 × 128 tokens per variant, small base for part 4; 1,673 s on the shared machine):**
+
+```text
+   variant       total     active  val loss  val ppl    tok/s
+   dense       379,200    379,200     1.105      3.0    1,422
+   moe       1,265,088    601,536     1.107      3.0    1,723
+   least-used expert share: with aux 0.227, without aux 0.145
+   val loss: with aux 1.107, without aux 1.073
+   next-token val loss: dense 1.105 | with MTP head 1.139 | the t+2 head's own loss: 1.466
+   window None: val loss 0.718 | perplexity   2.05
+   window   32: val loss 0.743 | perplexity   2.10
+   window    8: val loss 0.923 | perplexity   2.52
+8/8 checks passed in 1673.2s
+```
+
+With eight times the training tokens the quick-mode gaps mostly close: dense and MoE land at the same validation loss (1.105 versus 1.107), so at this scale the extra 886k stored parameters buy nothing on Storyland, a corpus too small to need them; the no-aux MoE is again slightly better (1.073) with its least-used expert at 14.5%; and the MTP model's next-token loss is now only 0.034 behind dense. Part 4 on the *small* base is the clearest result of the lab: a 32-token window costs 0.025 nats and an 8-token window costs 0.2 nats (perplexity 2.05 → 2.52) on a model whose heads were trained to look further back.
 
 ## Try it yourself ✍️
 

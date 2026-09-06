@@ -191,7 +191,71 @@ In a game or robot, actions have consequences the agent observes: the state chan
 
 Putting the pieces in order: (1) SFT on demonstrations; (2) collect comparisons of the SFT model's samples and train a reward model (Chapter 17); (3) run PPO where the policy starts at the SFT model, the reward is the RM score minus β times the per-token KL to the SFT model, a critic network estimates the value baseline, ratios are clipped at ε = 0.2, and a small amount of pretraining loss is mixed in to prevent forgetting. In 2026 the shape of the loop is unchanged, but the reward is often a verifier or rubric rather than an RM, the critic is replaced by a group baseline, and the KL term is frequently zero. Chapter 19 is that modern version.
 
-<!-- WORKED_EXAMPLE -->
+## Worked example 🧪
+
+```bash
+python3 labs/lab18_reinforce.py            # quick: nano model, about 35 s once the warm start exists
+python3 labs/lab18_reinforce.py --full     # small model, 30 REINFORCE steps, about 2 min
+```
+
+### Quick mode (nano)
+
+The bandit comes first because everything about it can be computed exactly. Five arms with hidden success probabilities 0.25–0.90, a softmax policy over five logits, α = 0.2, 600 steps, 20 trials per setting:
+
+```
+   no baseline : final P(best arm) 0.88 | median steps to P(best)>=0.9:  176 | runs stuck on a wrong arm at step 600: 2/20
+   baseline    : final P(best arm) 0.97 | median steps to P(best)>=0.9:  199 | runs stuck on a wrong arm at step 600: 0/20
+   at a fixed policy, no baseline     : E[update] = [-0.047 -0.031 -0.008  0.014  0.071]  E||g||^2 = 0.481  Var = 0.472
+   at a fixed policy, baseline b=E[r] : E[update] = [-0.047 -0.031 -0.008  0.014  0.071]  E||g||^2 = 0.187  Var = 0.179
+```
+
+The two E[update] rows are identical to three decimals, as Step 3 promised: the baseline is invisible in expectation. The variance is 2.6× smaller with it. The median convergence time barely differs (176 vs 199 steps: the expected drift dominates an easy bandit), but the *tail* does: two of twenty no-baseline runs lock onto a wrong arm and never recover, none with the baseline. A lurch of α·1·(1 − π_a) on a lucky pull of a bad arm early on is what a baseline prevents. (This is also the interactive's Challenge.)
+
+Then REINFORCE on TinyLM, six prompts, eight samples each, twelve steps:
+
+```
+   6 prompts x 8 samples per step, 12 steps, lr 0.0001; log pi(correct) before: -2.78
+   step   0 | mean reward 0.104 | log pi(reference answer)  -2.80 | grad norm 4.33 | 1s
+   step   6 | mean reward 0.250 | log pi(reference answer)  -2.70 | grad norm 4.24 | 3s
+   step  11 | mean reward 0.312 | log pi(reference answer)  -2.68 | grad norm 5.15 | 6s
+   mean reward, first 3 steps 0.160 -> last 3 steps 0.243; log pi(reference answer) -2.78 -> -2.68
+   rewarded samples in the last batch (what REINFORCE actually pushed up): ['8 + 8 = 10', '6 + 17 = 10', '2 + 20 = 10', '2 + 8 = 10', '11 + 11 = 10']
+```
+
+The sampled reward rises from 0.16 to 0.24 in twelve steps, and the log-probability of the *reference* answers edges up by 0.1 nats. The last line is the one to remember: REINFORCE raised the probability of whatever *it* sampled and the verifier accepted, and four of those five samples misquote the operands. `tasks.verify` grades only the last number, so `8 + 8 = 10` is a rewarded answer to "What is 2 + 8?". The policy is not being taught the reference string; it is being taught its own rewarded behaviour, blind spots of the grader included. Chapter 17's Goodhart lesson, now in the RL loop.
+
+```
+   no baseline : ||mean grad|| 0.698 | mean ||g_i - mean||^2 (variance) 0.512
+   baseline    : ||mean grad|| 0.681 | mean ||g_i - mean||^2 (variance) 0.537
+```
+
+On TinyLM the five-batch variance estimate did *not* fall with the batch-mean baseline this time. With rewards that are mostly 0, the baseline is about 0.2 and the two estimators are nearly the same; five batches cannot resolve the difference. The bandit's exact computation is the reliable statement; the TinyLM measurement is there so you see how noisy such estimates are in practice.
+
+```
+   close (small KL): true KL(p || q) = 0.0842 over V=10 symbols, 20,000 samples from p
+      k1: mean 0.0850 | std 0.393 | fraction of negative samples 0.33 | bias +0.0007
+      k2: mean 0.0807 | std 0.109 | fraction of negative samples 0.00 | bias -0.0036
+      k3: mean 0.0826 | std 0.125 | fraction of negative samples 0.00 | bias -0.0016
+   far (large KL): true KL(p || q) = 0.6815 over V=10 symbols, 20,000 samples from p
+      k1: mean 0.6692 | std 1.047 | fraction of negative samples 0.23 | bias -0.0123
+      k2: mean 0.7720 | std 0.566 | fraction of negative samples 0.00 | bias +0.0904
+      k3: mean 0.6869 | std 1.090 | fraction of negative samples 0.00 | bias +0.0054
+   TinyLM, REINFORCE'd policy vs SFT reference, per answer token: k1=0.0873, k2=0.1234, k3=0.0889
+```
+
+For nearby distributions every claim of Step 6 holds: k₁ is unbiased but a third of its samples are negative and its standard deviation is three times k₃'s; k₂ is smooth but biased; k₃ is unbiased, never negative, and low-variance. The far case is the caveat textbooks skip: at KL 0.68 the exp(log r) inside k₃ blows up on rare tokens and its variance exceeds k₁'s. The low-variance claim is a small-KL statement, which is the regime a KL penalty keeps a policy in. On TinyLM after twelve REINFORCE steps the policy is 0.09 nats per token from the SFT model, and k₁ and k₃ agree.
+
+```
+   sigma of log-ratio | clip frac 0.2/0.2 | clip frac 0.2/0.28 | approx KL (k3)
+                 0.05 |             0.001 |              0.000 |         0.0012
+                 0.20 |             0.139 |              0.100 |         0.0187
+                 0.40 |             0.309 |              0.274 |         0.0840
+   row with ratio 1.65 and A>0: clip_frac 0.50, grad on that row = [0.0, 0.0, 0.0, 0.0], grad on the ratio-1 row = [-0.125, -0.125, -0.125, -0.125]
+```
+
+With synthetic per-token log-ratios drawn from N(0, σ²), the clip fraction is the fraction of tokens outside the window: negligible at σ = 0.05, 14 % at σ = 0.2, 31 % at σ = 0.4, and always lower with clip-higher because the upper window is wider. The last line is the figure's claim made literal: the row whose ratio is 1.65 with a positive advantage receives a gradient of exactly zero on every token.
+
+<!-- FULL_MODE_18 -->
 
 ## Try it yourself ✍️
 

@@ -187,7 +187,28 @@ Two things to notice in part (a). The mix line is the token-versus-document poin
 
 Part (b) reads top to bottom as three states of the same model. With the RoPE tables merely lengthened (θ = 10,000), positions 128–512 are 0.13 nats worse than positions 0–128, and the per-64 bins show the loss rising steadily past the trained length. Raising θ to 50,000 *without any training* already helps the far positions (1.202 → 1.161) and, as predicted, slightly hurts the near ones (1.074 → 1.088), because every pair's angles shifted. Twenty steps at sequence length 512 then bring the far positions to 1.095 and the near ones back to 1.083: the short-versus-long gap shrinks from 0.13 to 0.01 nats. The gap is small in absolute terms because RoPE is *relative* and Storyland documents are ~80 tokens long, so a query rarely needs a key more than 128 positions back; on real long documents the untrained-position penalty is far larger.
 
-<!-- LAB13_FULL -->
+**Full mode (`--full`: the small base, 250 anneal steps at 32 × 128, 60 extension steps at 8 × 512; 4,040 s on the shared machine, roughly 6–8 minutes on a quiet laptop):**
+
+```text
+base model: 2,361,792 params, max_seq_len 256, rope_theta 10000
+--- (a) anneal: 250 steps on the math-heavy mix, LR decaying linearly to 0 ---
+   BEFORE: math loss 1.522 (ppl 4.6) | stories loss 0.692 (ppl 2.0)
+   AFTER:  math loss 1.285 (ppl 3.6) | stories loss 0.714 (ppl 2.0)   [3081s]
+   change: math -0.237 | stories +0.021
+✅ annealing on a math-heavy mix lowers the held-out MATH loss
+✅ ...without a large regression on stories (change +0.021; replay keeps it small)
+
+--- (b) long context: 256 -> 512 positions with RoPE theta 50000 ---
+   tables extended, theta=10000       pos 0-128: 0.694 | pos 128-512: 1.007 | per-64 bins ['0.78', '0.61', '0.64', '0.86', '1.06', '0.99', '1.36', '1.12']
+   theta=50000, before fine-tune      pos 0-128: 0.713 | pos 128-512: 0.864 | per-64 bins ['0.80', '0.63', '0.69', '0.77', '0.75', '0.76', '1.17', '1.04']
+   theta=50000, after 60 steps        pos 0-128: 0.697 | pos 128-512: 0.688 | per-64 bins ['0.79', '0.60', '0.63', '0.66', '0.71', '0.62', '0.72', '0.78']
+   long-position loss: 1.007 (naive) -> 0.864 (ABF) -> 0.688 (ABF + fine-tune)   [677s]
+
+   final held-out (seq 128): math 1.290 | stories 0.730
+5/5 checks passed in 4040.0s
+```
+
+The larger model makes both effects sharper. The anneal takes held-out math from 1.522 to 1.285 nats (perplexity 4.6 → 3.6) for a 0.021-nat cost on stories, a trade any lab would take. In part (b) the untrained-position penalty is now 0.31 nats (0.694 → 1.007), and the per-64 bins show it growing with distance past the 128-token training length; ABF alone recovers almost half of it (0.864) and 60 steps at 512 recover all of it (0.688), with positions 128–512 ending slightly *better* than 0–128 because the first bin of any window has no context to condition on. The final line is what the course carries forward: `runs/lab13_annealed.pt` is a 512-context, math-annealed base, the checkpoint the post-training chapters start from.
 
 ## Try it yourself ✍️
 
@@ -243,4 +264,4 @@ Because the stable phase never decays, any checkpoint on it is a valid branch po
 - 🆕 *FineInstructions* (2026), https://arxiv.org/abs/2601.22146 , instruction data at pretraining scale; 🆕 a systematic study of synthetic pretraining data (2026), https://arxiv.org/abs/2604.13977 .
 - 🆕 DeepSeek-AI, *DeepSeek-V4* (2026), https://arxiv.org/abs/2606.19348 , for how a million-token context is reached on top of compressed attention.
 
-← [Chapter 12](12-modern-architectures.md) · [Course home](../README.md) · [Chapter 14](14-post-training-pipeline.md) →
+← [Chapter 12](12-modern-architectures.md) · [Course home](../README.md) · [Chapter 14](14-posttraining-pipeline.md) →

@@ -161,26 +161,37 @@ check(n_requests == n_replies, f"{n_requests} requests got {n_replies} replies; 
 
 
 # =============================================================== (c) MCP tools inside the Agent
-section("(c) the Agent uses MCP tools exactly like local ones")
-remote = mcp_tools_to_registry(client)                       # read_only=False for everything (the default)
-print(f"   registry from the server: {remote.names()}")
-print(f"   read_only flags: { {n: remote.get(n).read_only for n in remote.names()} }")
-backend = ScriptedBackend([call("calculator", expression="6 * 7"), "42."])
-t = Agent(backend, remote, AgentConfig(permission_policy="allow_read_only")).run("What is 6 * 7?")
-print("   under allow_read_only:", t.messages[2]["content"][:90])
-check(t.messages[2]["content"].startswith("Permission denied"),
-      "with the conservative default (read_only=False) even the calculator is denied under allow_read_only")
+section("(c) the Agent uses MCP tools exactly like local ones; readOnlyHint feeds the permission gate")
+listing = client.list_tools()
+hints = {t["name"]: (t.get("annotations") or {}).get("readOnlyHint") for t in listing}
+print(f"   annotations.readOnlyHint from the server: {hints}")
+remote = mcp_tools_to_registry(client)                       # honours the server's readOnlyHint
+print(f"   registry read_only flags: { {n: remote.get(n).read_only for n in remote.names()} }")
+check(remote.get("calculator").read_only and not remote.get("write_file").read_only,
+      "the client copied the hint: calculator is read-only, write_file is not")
 
-backend = ScriptedBackend([call("calculator", expression="6 * 7"), "42."])
-t = Agent(backend, remote, AgentConfig(permission_policy="allow_all")).run("What is 6 * 7?")
+backend = ScriptedBackend([call("calculator", expression="6 * 7"), call("write_file", path="x.txt", content="42"), "42."])
+t = Agent(backend, remote, AgentConfig(permission_policy="allow_read_only")).run("What is 6 * 7? Save it.")
 print(t.pretty())
-check(t.messages[2]["content"] == "42" and t.final_text == "42.", "allow_all: the tool result 42 came back through the subprocess")
+check(t.messages[2]["content"] == "42", "under allow_read_only the remote calculator ran (result 42 came back through the subprocess)")
+check(t.messages[4]["content"].startswith("Permission denied: 'write_file'"), "...and the remote write_file was denied by the gate")
 
-trusted = mcp_tools_to_registry(client, read_only=True)      # only if you *know* the server is read-only
-backend = ScriptedBackend([call("calculator", expression="6 * 7"), "42."])
-t = Agent(backend, trusted, AgentConfig(permission_policy="allow_read_only")).run("What is 6 * 7?")
-check(t.messages[2]["content"] == "42", "read_only=True registry: allowed under allow_read_only")
-print("   (and write_file is now wrongly marked read-only too: the flag is per-registry, not per-tool -- see the chapter)")
+# A hint is a claim by the server. If a server sends no annotations (many do not), nothing is
+# read-only unless YOU say so: read_only_tools is the client-side allowlist for that case.
+class NoHints:
+    """The same client with the annotations stripped, as an older or lazier server would send them."""
+    def __init__(self, c): self.c = c
+    def list_tools(self):
+        return [{k: v for k, v in t.items() if k != "annotations"} for t in self.c.list_tools()]
+    def call_tool(self, name, arguments=None): return self.c.call_tool(name, arguments)
+
+bare = mcp_tools_to_registry(NoHints(client))
+print(f"   without annotations: { {n: bare.get(n).read_only for n in bare.names()} }")
+check(not any(bare.get(n).read_only for n in bare.names()), "no hint -> nothing is read-only (the conservative default)")
+allow = mcp_tools_to_registry(NoHints(client), read_only_tools=["calculator", "read_file"])
+check(allow.get("calculator").read_only and not allow.get("write_file").read_only,
+      "read_only_tools=[...] is the client's own allowlist: a trust decision you make per tool")
+print("   (read_only=True would mark every tool read-only, write_file included: use it only for a server you know is read-only)")
 
 client.proc.stdin = client.proc.stdin.stream               # unwrap before closing
 client.proc.stdout = client.proc.stdout.stream

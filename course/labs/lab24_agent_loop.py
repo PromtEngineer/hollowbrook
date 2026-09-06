@@ -172,21 +172,33 @@ calc_only = tools.subset(["calculator"])
 SYS = "Use the calculator tool, then answer."
 question = "What is 17 + 25?"
 
-# How long is the prompt the library backend would build?  Longer than the window.
-full_prompt = render(TinyLMBackend.to_chat_messages([{"role": "user", "content": question}], calc_only.schemas(), SYS))
-n_full = len(tok.encode(full_prompt))
+# How long is the prompt with the tool schemas pasted in?  Longer than the window.
+from llm.agent.backends import ContextTooLongError        # noqa: E402
+from llm.chat import encode_chat                          # noqa: E402
+msgs = [{"role": "user", "content": question}]
+n_full = len(encode_chat(tok, TinyLMBackend.to_chat_messages(msgs, calc_only.schemas(), SYS, compact_tools=False), add_generation_prompt=True))
+n_compact = len(encode_chat(tok, TinyLMBackend.to_chat_messages(msgs, calc_only.schemas(), SYS), add_generation_prompt=True))
 print(f"   nano model: {base.num_params():,} params, window {base.cfg.max_seq_len} tokens")
-print(f"   prompt with ONE tool schema pasted in: {n_full} tokens -> does not fit")
-probe = TinyLMBackend(base, tok, max_new_tokens=8).complete([{"role": "user", "content": question}], calc_only.schemas(), SYS)
-check(n_full > base.cfg.max_seq_len and probe.raw == "", "with the schema in the prompt the model returns an EMPTY reply (0 new tokens): a silent failure")
+print(f"   prompt with ONE full JSON schema (compact_tools=False): {n_full} tokens; with the compact listing (default): {n_compact} tokens")
+try:
+    TinyLMBackend(base, tok, max_new_tokens=8, compact_tools=False).complete(msgs, calc_only.schemas(), SYS)
+    err = None
+except ContextTooLongError as e:
+    err = e
+print(f"   -> {type(err).__name__}: {err}")
+check(n_full > base.cfg.max_seq_len and err is not None, "an over-long prompt raises ContextTooLongError instead of silently generating nothing")
+t_err = Agent(TinyLMBackend(base, tok, max_new_tokens=8, compact_tools=False), calc_only, AgentConfig(permission_policy="allow_all"), system_prompt=SYS).run(question)
+check(t_err.stop_reason == "error" and "ContextTooLongError" in t_err.events[-1].data["error"], f"inside Agent.run the same error becomes stop_reason={t_err.stop_reason!r}")
 
 
-class CompactTinyLMBackend(TinyLMBackend):
-    """Work-around for this lab: name the tool in the system prompt instead of pasting
-    the JSON schemas (which overflow TinyLM's 128-token window). See the chapter's note."""
+class NoListingBackend(TinyLMBackend):
+    """For the nano models below: name the tool in the system prompt and send NO tool listing.
+    Even the compact listing costs ~50 of nano's 128 tokens, and the tool-trained checkpoints
+    (Chapter 21, and the one --full trains) were fine-tuned with the tool named in the system
+    prompt only, so the listing is out-of-distribution for them (the lab measured 0/4 with it)."""
 
     @staticmethod
-    def to_chat_messages(messages, tools, system):
+    def to_chat_messages(messages, tools, system, compact_tools=True):
         return TinyLMBackend.to_chat_messages(messages, [], system)
 
 
@@ -200,7 +212,7 @@ def calc_registry(tool_name: str) -> ToolRegistry:
 def try_model(model, label: str, system: str, tool_name: str, questions) -> tuple[int, int]:
     """Probe a model on fresh questions: how many replies parse as a tool call, and how many
     of those carry the RIGHT expression. Returns (well_formed, correct_args)."""
-    be = CompactTinyLMBackend(model, tok, max_new_tokens=64)      # a full tool call is ~55 Storyland tokens
+    be = NoListingBackend(model, tok, max_new_tokens=64)      # a full tool call is ~55 Storyland tokens
     well_formed = correct = 0
     for a, b_ in questions:
         r = be.complete([{"role": "user", "content": f"What is {a} + {b_}?"}], [], system)
@@ -213,7 +225,7 @@ def try_model(model, label: str, system: str, tool_name: str, questions) -> tupl
 
 
 def run_agent(model, system: str, tool_name: str, q: str):
-    return Agent(CompactTinyLMBackend(model, tok, max_new_tokens=64), calc_registry(tool_name),
+    return Agent(NoListingBackend(model, tok, max_new_tokens=64), calc_registry(tool_name),
                  AgentConfig(permission_policy="allow_all", max_turns=3), system_prompt=system).run(q)
 
 
