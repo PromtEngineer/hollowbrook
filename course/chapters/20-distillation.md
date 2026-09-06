@@ -83,8 +83,11 @@ The catch is the one the figure made: the text came from a dataset, and the stud
 **Sequence-level distillation** (Kim and Rush, 2016) replaces the dataset with teacher samples. Its modern form adds a verifier and is called **rejection-sampling SFT**: sample several answers per prompt from the teacher, keep those the verifier marks correct, fine-tune the student on the survivors with the ordinary masked SFT loss of Chapter 15. This is how the DeepSeek-R1-Distill models of January 2025 were made (about 800k reasoning traces sampled from R1, filtered, then SFT into Qwen and Llama models of 1.5–70B parameters).
 
 ```python
+teacher = TinyLM.load(run_path("lab20_teacher_strong.pt"))      # the lab's warm-starts (made on its first run):
+student = TinyLM.load(run_path("lab20_student_sft_nano.pt"))    # a small model that can add, a nano one that half can
+examples = tasks.make_examples(16, seed=22, tasks=["add"], max_value=20)
 out = offline_distill(student, teacher, tok, examples, n_samples=4, sft_steps_n=50, max_new_tokens=16)
-print(out["keep_rate"], len(out["sft_losses"]))   # fraction of teacher samples that were correct; 50 losses
+print(out["keep_rate"], len(out["sft_losses"]))   # 0.875 (56 of 64 teacher samples were correct), 50 losses
 ```
 
 `offline_distill` does the three steps in ten lines: `sample_group` from the teacher, `tasks.verify` to reject, then `sft_steps` (a compact copy of `sft_train`, with the same warmup-then-cosine learning-rate schedule from `llm.optim.lr_at`) on the kept conversations. Two things to notice. If the teacher's keep rate is low, most of the sampling budget is wasted, and the student still never trains on its own mistakes.
@@ -126,22 +129,24 @@ Three properties follow directly from this code. *Dense signal*: `adv` has one e
 Running it is one call:
 
 ```python
+student = TinyLM.load(run_path("lab20_student_sft_nano.pt"))    # a fresh copy of the warm-start
 cfg = OPDConfig(steps=40, group_size=4, prompts_per_step=4, max_new_tokens=16, lr=2e-4)
 history = opd_train(student, teacher, tok, examples, cfg)
-# opd step    0 | reverse KL 0.5123 | acc 0.05 | len  10.2 | 1.9s
-# ...
+# opd step    0 | reverse KL 0.8849 | acc 0.12 | len   8.6 | 0.8s
+# opd step    1 | reverse KL 0.4229 | acc 0.38 | len   8.1 | 1.2s
+# ...                                                            (sampling is stochastic: your curve will differ)
 ```
 
-Each step samples `group_size × prompts_per_step` answers from the student, grades them with the teacher, and takes one AdamW step. `history[i]["reverse_kl"]` is the curve to watch: it should fall, and accuracy should rise with it if the teacher is competent.
+Each step samples `group_size × prompts_per_step` answers from the student, grades them with the teacher, and takes one AdamW step. `history[i]["reverse_kl"]` is the curve to watch: it should fall, and accuracy should rise with it if the teacher is competent. The worked example shows how far that "should" holds at this scale.
 
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab20_opd.py            # quick: 8 OPD steps, about 3 min once the warm-starts are cached (most of it evaluation)
-python3 labs/lab20_opd.py --full     # 60 OPD steps + the offline and two-stage recipes, about 3.5 min
+python3 labs/lab20_opd.py            # quick: 8 OPD steps, ~3 min on an idle laptop CPU once the warm-starts are cached (11 min on our shared box)
+python3 labs/lab20_opd.py --full     # 60 OPD steps + the offline and two-stage recipes, ~4 min idle (17 min shared)
 ```
 
-The first run trains the two warm-starts and caches them (teacher: `base_small.pt` fine-tuned on 1,200 addition prompts for 1,500 steps, about 23 minutes, reaching 98%; student: `base_nano.pt` on 400 prompts for 600 steps, about 2.5 minutes, reaching 33%). If another lab has left `runs/grpo_small.pt`, `runs/sft_small.pt` or `runs/sft_nano.pt` behind, the lab evaluates them on the task and uses them instead when they are good enough. All numbers below are from one CPU thread on a busy machine.
+The first run trains the two warm-starts and caches them (teacher: `base_small.pt` fine-tuned on 1,200 addition prompts for 1,500 steps, about 23 minutes, reaching 98%; student: `base_nano.pt` on 400 prompts for 600 steps, about 2.5 minutes, reaching 33%). If another lab has left `runs/grpo_small.pt`, `runs/sft_small.pt` or `runs/sft_nano.pt` behind, the lab evaluates them on the task and uses them instead when they are good enough. All numbers below are from two CPU threads on a busy shared machine; the timings are inflated, the numbers are not.
 
 **The two models.** With `max_value=20` there are only 441 distinct addition problems, so this is a small memorise-and-generalise task, and it is deliberately one the nano model half-knows:
 

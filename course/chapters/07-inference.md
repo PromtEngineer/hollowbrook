@@ -380,7 +380,7 @@ python3 labs/lab07_generate.py --full     # small base model; longer benchmark; 
 
 ### What to look at (quick run, nano base model)
 
-The quick run takes about 7 seconds on an idle CPU. Section 1 prints the model's belief about the
+The quick run takes about 5 seconds when the checkpoints exist (two threads on a shared 4-core VM). Section 1 prints the model's belief about the
 token after `"At the park, Mia met"`:
 
 ```
@@ -449,8 +449,8 @@ from 2.8 to 8.0 bits — that is the whole tail of the vocabulary being switched
 `T=1.5` above produced garbage. `figures/generated/lab07_temperature_entropy.png` plots the curve
 against the uniform limit of 9.77 bits.
 
-Section 4 verifies the cache and times it (numbers from a single-threaded run on an otherwise
-idle CPU):
+Section 4 verifies the cache and times it (two CPU threads on a shared 4-core VM; your absolute
+numbers will differ, the ratio should not):
 
 ```
 --- 4. KV cache: same numbers, fewer FLOPs ---
@@ -458,14 +458,15 @@ idle CPU):
 cache.pos after prefill+decode = 38 (= sequence length 38)
 max |logits_full - logits_incremental| = 4.77e-06
 ✅ cached incremental logits == full-sequence logits (allclose)
-greedy 32 tokens: cache  191.8 tok/s   no cache  159.4 tok/s   speed-up 1.20x
-benchmark_decode(32 tokens): {'cache': 209.7, 'no_cache': 159.2}
+greedy 32 tokens: cache  352.4 tok/s   no cache  223.4 tok/s   speed-up 1.58x
+benchmark_decode(32 tokens): {'cache': 416.95673391093317, 'no_cache': 323.84363206278255}
+✅ the KV cache is faster than recomputing
 ```
 
 The numbers agree to `5e-6` — floating-point rounding from summing in a different order — and
-the ids are identical. The speed-up of 1.2–1.3× is modest because a 300 K-parameter model
-generating 32 tokens is dominated by Python overhead per step, not by the recomputation the cache
-avoids; the full run below, with the larger model and 96 tokens, shows the gap widening. On a GPU
+the ids are identical. The speed-up of 1.3–1.6× (the two timings differ because `benchmark_decode` keeps the best of
+three runs) is modest because a 300 K-parameter model generating 32 tokens is dominated by Python
+overhead per step, not by the recomputation the cache avoids; the full run below, with the larger model and 96 tokens, shows the gap widening. On a GPU
 serving a real model it is the difference between usable and unusable. (Timings on a CPU shared
 with other jobs are noisy; if your speed-up comes out below 1, run the lab again on a quiet
 machine.)
@@ -516,7 +517,8 @@ it did see in pretraining) and never `<|end|>` (which it did not).
 ### The full run (small base model)
 
 `--full` uses `runs/base_small.pt` (2.4 M parameters), generates 96 tokens in the cache
-benchmark, and runs the speculative-decoding demo; it takes about 80 s on a shared 4-core CPU.
+benchmark, and runs the speculative-decoding demo; it takes about 8 s on a shared 4-core VM once
+both checkpoints exist.
 The distribution after the prompt is now sharper (4.0 bits; "Ella" leads at 7.9%), and the knob
 table shows a model that can hold a story together:
 
@@ -553,7 +555,8 @@ penalised, arithmetic is what is left.
 cache.pos after prefill+decode = 102 (= sequence length 102)
 max |logits_full - logits_incremental| = 9.54e-06
 ✅ cached incremental logits == full-sequence logits (allclose)
-benchmark_decode(96 tokens): {'cache': 45.4, 'no_cache': 28.4}
+greedy 96 tokens: cache  178.6 tok/s   no cache   83.4 tok/s   speed-up 2.14x
+benchmark_decode(96 tokens): {'cache': 638.3393898655364, 'no_cache': 404.42658206441337}
 ✅ the KV cache is faster than recomputing
 
 --- 7. Speculative decoding: nano drafts, small verifies (greedy acceptance rule) ---
@@ -564,8 +567,8 @@ plain greedy: ' Ella. Ella was sleepy because Ella lost a shell. Mia went home a
 ✅ speculative output == target's plain greedy output (lossless)
 ```
 
-With 96 tokens and the 8×-larger model the cache's advantage grows to 1.6× (45 vs 28 tok/s in
-`benchmark_decode`; the lab's own first timing pair was noisy on the shared CPU). Section 7 is
+With 96 tokens and the 8×-larger model the cache's advantage grows to 1.6–2.1× (638 vs 404 tok/s
+in `benchmark_decode`, best of three runs; 179 vs 83 in the lab's own single timing). Section 7 is
 the chapter's most satisfying check: the nano model drafts four tokens at a time, the small model
 verifies them in one pass each, 43% of drafts are accepted, and the small model is called 15
 times instead of 40 — while the output is byte-for-byte identical to plain greedy decoding. A

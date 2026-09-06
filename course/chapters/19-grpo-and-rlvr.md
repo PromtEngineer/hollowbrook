@@ -159,12 +159,12 @@ The lab loads the SFT warm start Lab 17 made (or trains it), reports greedy accu
    prompt 'What is 2 + 8?': G=8 rollouts, ids (8, 67), mask (8, 66), prompt_len 55
       '2 + 8 = 12'           reward 0.1  advantage -0.54  (8 answer tokens incl. <|end|>)
       'y and cake box book key rope boat pink book ball white' reward 0.0  advantage -0.76  (12 answer tokens incl. <|end|>)
-      '1 + 8 = 10'           reward 1.1  advantage +1.73  (8 answer tokens incl. <|end|>)
+      '1 + 8 = 10'           reward 1.1  advantage +1.73  (8 answer tokens incl. <|end|>)  <- strict_verify: 0 (operands misquoted)
       '2 + 8 = 10'           reward 1.1  advantage +1.73  (8 answer tokens incl. <|end|>)
    mean 0.338, std 0.441; advantages sum to +3.0e-07; Dr. GRPO would use [-0.24, -0.24, -0.34, 0.76, ...]
 ```
 
-The first two lines are the sharpening baseline: one greedy answer is right 23 % of the time, one random sample 11 %, but among 8 samples a correct one exists for 60 % of prompts. The rollout group is the figure of the "idea in pictures" with real numbers: two correct answers get +1.73, the five formatted-but-wrong ones −0.54, the ramble −0.76 (Dr. GRPO's un-normalised version is the last line). Note `'1 + 8 = 10'`: the verifier reads only the final number, so a misquoted operand is still rewarded; that leniency is a small reward-hacking channel the policy is free to use.
+The first two lines are the sharpening baseline: one greedy answer is right 23 % of the time, one random sample 11 %, but among 8 samples a correct one exists for 60 % of prompts. The rollout group is the figure of the "idea in pictures" with real numbers: two correct answers get +1.73, the five formatted-but-wrong ones −0.54, the ramble −0.76 (Dr. GRPO's un-normalised version is the last line). Note `'1 + 8 = 10'`: `tasks.verify` reads only the final number, so a misquoted operand is still rewarded and pushed up exactly as hard as the genuine answer; that leniency is a small reward-hacking channel the policy is free to use, and Lab 18 showed REINFORCE using it. The lab flags such rollouts with `tasks.strict_verify`, the grader that also checks the operands; exercise 3 swaps it in as the reward.
 
 ```
 --- (c) GRPO: 20 steps x 4 prompts x G=8, lr 0.0001, clip 0.2/0.28, ppo_epochs 1, dynamic sampling on, token-level loss, no KL ---
@@ -232,7 +232,7 @@ Every variant lands on the same accuracy (0.52–0.54, the SFT start's 0.54), wh
 
 1. **Group size.** Rerun the GRPO section with `group_size` 4 and 16 at the same number of steps. Compare the fraction of skipped groups, the variance of the per-step reward and the final greedy accuracy. Why does a larger group make dynamic sampling skip less?
 2. **KL back on.** Set `kl_coef=0.05` and pass the SFT model as `ref`. Log `kl_ref` per step and compare the entropy curve with the β = 0 run. Does the penalty slow the reward, and does it change the final accuracy on the held-out set?
-3. **Reward hacking with a verifier.** Replace `default_reward` with `lambda e, t, i: float(len(i))` (reward = answer length) for 15 steps. Watch response length and entropy, then look at the completions. This is what a mis-specified reward does in under a minute.
+3. **Two graders.** First close the hole: pass `reward_fn=lambda e, t, i: tasks.strict_verify(e, t) + 0.1 * tasks.format_reward(e, t)` to `grpo_train` and compare the skipped fraction and final accuracy with the lenient default (fewer groups have a rewarded sample, so more are skipped). Then open a bigger one: `lambda e, t, i: float(len(i))` (reward = answer length) for 15 steps. Watch response length and entropy, then look at the completions. This is what a mis-specified reward does in under a minute.
 4. **Entropy collapse on purpose.** Sample rollouts at `temperature=0.6` while training (the loss still assumes T = 1, a deliberate mismatch) with a symmetric clip. Plot entropy per step against the default run. At what step does the skipped fraction go to 1?
 5. **CISPO.** Implement `cispo_loss(logp, old_logp, adv, mask, eps_high)` that computes `w = clip(ratio, max=1+eps_high).detach()` and returns `-masked_mean(w * adv * logp, mask)`. Verify that no token ever has an exactly-zero gradient and compare its training curve with `ppo_clip_loss` for `ppo_epochs=4`.
 6. **Sharpening test, larger.** Run pass@N for N up to 64 on 50 held-out prompts for the SFT model, the GRPO'd model and the DPO'd model from Lab 17. Plot the three curves. Which model has the highest ceiling, and at what N do the curves cross, if they do?
