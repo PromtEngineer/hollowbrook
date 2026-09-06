@@ -48,10 +48,11 @@ args = setup("Lab 29: capstone — TinyLM end to end", extra=lambda p: p.add_arg
 TAG = "nano" if args.quick else "small"
 T_LAB = time.perf_counter()
 
-# On a busy machine several PyTorch threads spin-wait on each other and a 300k-parameter
-# model runs *slower* with 2 threads than with 1 (tests/test_rl.py makes the same choice).
+# On a heavily oversubscribed machine several PyTorch threads spin-wait on each other and a
+# 300k-parameter model runs *slower* with 2 threads than with 1 (tests/test_rl.py makes the
+# same choice); fall back to one thread only when the load is well past the core count.
 load = os.getloadavg()[0]
-if load > os.cpu_count():
+if load > 3 * os.cpu_count():
     torch.set_num_threads(1)
 print(f"{device_summary()} | load average {load:.1f} on {os.cpu_count()} cores -> using {torch.get_num_threads()} thread(s)")
 

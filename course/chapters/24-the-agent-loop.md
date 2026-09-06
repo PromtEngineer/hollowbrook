@@ -7,7 +7,7 @@
 
 ## Why this matters
 
-Everything you have built so far is a function from text to text: give TinyLM a prompt, get a completion. An **agent** is that same function inside a loop that lets it *act*: the model writes a request such as "run the calculator on `(17 + 25) * 3`", a program runs it, the answer `126` is pasted back into the conversation, and the model reads it and decides what to do next. Claude Code fixing a failing test, a research assistant reading forty pages, a browsing agent booking a ticket: each is this loop with different tools. The loop itself is short. `Agent.run` in `llm/agent/harness.py` is forty lines, and the first half of this chapter walks through it line by line. The second half is about the machinery around it that makes the difference between a demo and something you would let touch your files: the schemas that tell the model what tools exist, the parser that turns the model's text into a call, the stop conditions, the rule that errors are observations rather than crashes, the permission gate, and the **backend** abstraction that lets the same loop drive a scripted fake (for tests), your own TinyLM, or a frontier model behind an API. The lab ends with an honest experiment: the base model you pretrained in Part II cannot call a tool at all, because tool calling is a trained behaviour, not a parsing trick.
+Everything you have built so far is a function from text to text: give TinyLM a prompt, get a completion. An **agent** is that same function inside a loop that lets it *act*: the model writes a request such as "run the calculator on `(17 + 25) * 3`", a program runs it, the answer `126` is pasted back into the conversation, and the model reads it and decides what to do next. Claude Code fixing a failing test, a research assistant reading forty pages, a browsing agent booking a ticket: each is this loop with different tools. The loop itself is short. `Agent.run` in `llm/agent/harness.py` is forty lines, and the first half of this chapter walks through it line by line. The second half is about the machinery around it that makes the difference between a demo and something you would let touch your files: the schemas that tell the model what tools exist, the parser that turns the model's text into a call, the stop conditions, the rule that errors are observations rather than crashes, the permission gate, and the **backend** abstraction that lets the same loop drive a scripted fake (for tests), your own TinyLM, or a frontier model behind an API. The lab ends with an honest experiment: the instruction-tuned model of Chapter 15 cannot call a tool at all, Chapter 21's tool-trained model can, and a quick fine-tune in between learns the format but not the meaning; tool calling is a trained behaviour, not a parsing trick.
 
 ## The idea in pictures 📐
 
@@ -156,7 +156,7 @@ Here is the loop, with only the event bookkeeping removed (the full version is `
 #     t.stop_reason = "max_turns"; return t                                 # 11. the other way out
 ```
 
-Line 1: the context is a list and the first entry is the task; `compact` (Chapter 25) will never remove it. Line 2: the system prompt and schemas are computed once and re-sent on every call; `_system` also splices in the memory file if there is one. Line 3: `max_turns` (20 by default) is the outer stop condition; without it a model that always calls a tool would run forever. Line 4 is the only place the model is consulted. Line 5: if the backend itself throws (a network timeout, an exhausted quota), the run ends with `stop_reason="error"` and a transcript you can inspect; the loop does not retry, because retry policy belongs to the backend. Line 6: the reply is appended *before* checking for tool calls, so the transcript always contains what the model said. Line 7 is the inner stop condition. Lines 8–9: one `tool_result` per call, in order, paired by id; a turn with three calls produces three results. Line 10 keeps the context under budget. Line 11: if the loop falls off the end, `final_text` is set to the last assistant text and the reason is `max_turns`.
+Line 1: the context is a list whose first entry is the task; `compact` (Chapter 25) never removes it. Line 2: the system prompt and schemas are computed once and re-sent on every call; `_system` also splices in the memory file if there is one. Line 3: `max_turns` (20 by default) is the outer stop condition; without it a model that always calls a tool would run forever. Line 4 is the only place the model is consulted. Line 5: if the backend throws (a timeout, an exhausted quota), the run ends with `stop_reason="error"` and an inspectable transcript; retry policy belongs to the backend. Line 6: the reply is appended *before* the check, so the transcript always contains what the model said. Line 7 is the inner stop condition. Lines 8–9: one `tool_result` per call, in order, paired by id. Line 10 keeps the context under budget. Line 11: falling off the end sets `final_text` to the last assistant text and the reason to `max_turns`.
 
 The `Transcript` it returns holds the messages, the **events** (one record per thing that happened, which the interactive replays), the final text, the counts and the stop reason. `transcript.pretty()` prints the conversation, which is what the lab shows.
 
@@ -225,8 +225,8 @@ Claude Code, the Claude Agent SDK and their equivalents from other labs are repo
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab24_agent_loop.py            # quick: about 15 s (8 s of it importing torch)
-python3 labs/lab24_agent_loop.py --full     # adds a tool-call fine-tune of the nano model: about 4.5 min (201 s of it is the SFT)
+python3 labs/lab24_agent_loop.py            # quick: about 8 s on an idle laptop CPU (15 s when busy)
+python3 labs/lab24_agent_loop.py --full     # adds a 150-step tool-call SFT of the nano model: about 80 s
 ```
 
 Part (1) runs the two-tool task with a scripted model and prints the transcript and the events:
@@ -292,7 +292,7 @@ Part (3) attaches three hooks and prints the live trace from `on_event`:
 ✅ the file on disk is untouched
 ```
 
-Part (4) puts a real model on the other side. The first thing it finds is a limitation of the library worth knowing:
+Part (4) puts real models on the other side. The first thing it finds is a limitation of the library worth knowing:
 
 ```
    nano model: 295,584 params, window 128 tokens
@@ -300,42 +300,39 @@ Part (4) puts a real model on the other side. The first thing it finds is a limi
 ✅ with the schema in the prompt the model returns an EMPTY reply (0 new tokens): a silent failure
 ```
 
-`TinyLMBackend.to_chat_messages` pastes the full JSON schemas into the system prompt (`backends.py` lines 133–135); with the Storyland tokenizer, which compresses JSON poorly, one schema is already about 300 tokens against the nano model's 128-token window, and `generate` then produces zero tokens, with only a `UserWarning` on stderr that nothing in the loop reads. The lab works around it with a subclass that names the tool in the system prompt and omits the schemas. Then the honest experiment:
+`TinyLMBackend.to_chat_messages` pastes the full JSON schemas into the system prompt (`backends.py` lines 133–135); with the Storyland tokenizer, which compresses JSON poorly, one schema is already about 300 tokens against the nano model's 128-token window, and `generate` then produces zero tokens, with only a `UserWarning` on stderr that nothing in the loop reads. The lab works around it with a subclass that names the tool in the system prompt and omits the schemas. Then three models, in order of how much tool training they have had:
 
 ```
-   base model: raw reply to 'What is 17 + 25?': ' +   78.'
-   base model: parsed: NO TOOL CALL
-   base model: on 4 other questions: 0/4 well-formed tool calls, 0/4 with the right expression
-   base model in the loop: stop_reason='done', tool calls 0, final '+   78.'  (3.4s)
-✅ the loop terminated cleanly whatever the base model produced
-   -> a pretrained-only model did NOT emit a valid <|tool_call|>: tool use is a trained behaviour (Chapters 15, 21)
+   instruction-SFT model (Lab 15, no tool data): on 3 questions: 0/3 well-formed tool calls, 0/3 with the right expression
+   instruction-SFT model (Lab 15, no tool data) in the loop: raw '75 + 75 = 105' -> stop_reason='done', tool calls 0
+   -> a model with no tool training did NOT emit a valid <|tool_call|>: tool use is a trained behaviour (Chapters 15, 21)
+   Chapter 21 model (runs/lab21_tool_grpo.pt): on 3 questions: 3/3 well-formed tool calls, 3/3 with the right expression
+USER: What is 17 + 5?
+ASSISTANT:
+  -> call calc({"expression": "17 + 5"})
+  <- result: 22
+ASSISTANT: 17 + 5 = 22
+[done after 2 turns, 1 tool calls]
+✅ Chapter 21's model called calc({'expression': '17 + 5'}) and the harness returned 22
+✅ its final answer uses the result: '17 + 5 = 22'
 ```
 
-The base model, which has only ever predicted the next token of stories and arithmetic, produces a fragment of an arithmetic line. It has never seen `<|tool_call|>`. The loop does not care: no tool calls means "done", and the run ends with a wrong answer rather than a crash. `--full` trains the missing behaviour: 600 conversations in the exact format of Step 3, 150 steps of SFT on the nano model, and the same probe:
+The instruction-tuned model of Lab 15 follows instructions but has never seen `<|tool_call|>`; asked "What is 17 + 25?" with a calculator on offer, it answers `75 + 75 = 105` directly, and the loop reads a reply with no tool calls as "done" and ends with a wrong answer rather than a crash. Chapter 21's model (700 steps of SFT on tool traces, then 30 GRPO steps with a verifiable reward, on sums up to 20) is the successful case: it emits a well-formed call with the *right* expression, the harness runs `calc`, the result comes back as a `<|tool_result|>` turn, and the model answers from it. (If `runs/lab21_tool_grpo.pt` is missing, run Lab 21 first.) `--full` adds a third model, a 150-step SFT on 600 traces trained inside this lab (74 s):
 
 ```
-   --full: fine-tuning the nano base on 600 tool-call traces (150 steps)...
-[sft] 600 examples | 150 steps | batch 8 | 379,200 trainable params
-step     0 | loss 9.3819 | lr 1.00e-04 | grad_norm 14.06 | 878 tok/s
-step   149 | loss 0.5617 | lr 1.00e-04 | grad_norm 0.40 | 622 tok/s
-   SFT done in 201s: loss 9.38 -> 0.56
-   saved runs/lab24_toolsft_nano.pt
-   tool-SFT model: raw reply to 'What is 17 + 25?': '<|tool_call|>{"name": "calculator", "arguments": {"expression": "21 + 34"}}<|end|><|end|>"'
-   tool-SFT model: parsed: [{'id': 'call_fda1d906', 'name': 'calculator', 'arguments': {'expression': '21 + 34'}}]
-   tool-SFT model: on 4 other questions: 4/4 well-formed tool calls, 0/4 with the right expression
+   SFT done in 74s: loss 9.38 -> 0.56
+   150-step tool-SFT model: on 3 questions: 3/3 well-formed tool calls, 0/3 with the right expression
 USER: What is 17 + 25?
 ASSISTANT:
   -> call calculator({"expression": "21 + 34"})
   <- result: 55
 ASSISTANT: 21 + 34 = 34
 [done after 2 turns, 1 tool calls]
-✅ the tool-SFT model emitted a well-formed call, the harness parsed it and ran calculator('21 + 34') -> '55'
-✅ well-formed tool calls on 4 fresh questions: tool-SFT 4/4 vs base 0/4
-✅ the loop fed the result back and the model answered in turn 2: '21 + 34 = 34'
-   expression correct for 'What is 17 + 25?': False (expected '17 + 25'); on the other 4: 0/4
+✅ the 150-step model emitted a well-formed call; the harness ran calculator('21 + 34') -> '55'
+   expression correct for 'What is 17 + 25?': False (expected '17 + 25'); on the other 3: 0/3
 ```
 
-Read the two halves separately. The *syntax* is learned: after 150 steps every reply is a well-formed `<|tool_call|>` with the right tool name and parseable JSON; the harness parses it, the gate passes it, the calculator runs, the result comes back as a `<|tool_result|>` turn, and the model answers without another call. The loop of Step 4 is exercised end to end by a model you trained. The *semantics* are not learned: the expression is `21 + 34` whatever the question, and the harness cannot tell, because the call was valid. A 0.3M-parameter, three-layer model after 2,400 examples has memorised the template, not the copying of two numbers from the user turn into the JSON (250 steps on the 0–20 range gave the same 6/6 well-formed, 0/6 correct). That gap, a valid call with ungrounded arguments, is what Chapter 21's RL with a verifiable reward trains against, and why a harness should verify outcomes (Chapter 27) rather than trust that a tool was called. The saved `runs/lab24_toolsft_nano.pt` is picked up by later quick runs.
+Read the two halves of that separately. The *syntax* is learned in 150 steps: every reply is a well-formed `<|tool_call|>` with the right tool name and parseable JSON, the gate passes it, the calculator runs, and the model answers in turn 2. The *semantics* are not: the expression is `21 + 34` whatever the question, and the harness cannot tell, because the call was valid. A 0.3M-parameter model after 2,400 examples has memorised the template, not the copying of two numbers from the user turn into the JSON (250 steps on the 0–20 range gave the same result). What closes the gap is Chapter 21's recipe: more SFT, a narrower range, and then RL with a reward that checks the *answer*. That gap, a valid call with ungrounded arguments, is also why a harness should verify outcomes (Chapter 27) rather than trust that a tool was called.
 
 Part (5) prints the Anthropic-format conversion of a six-message conversation (Step 3 shows the shape), checks the reverse direction on a fake response object, and shows that `AnthropicBackend()` refuses to construct without the package. The lab saves `figures/generated/lab24_events.png`, the events of run (1) on a timeline coloured by phase.
 
@@ -377,9 +374,9 @@ Inside a *user* message, as a `tool_result` content block whose `tool_use_id` ma
 Yes: hooks run before the gate and are an independent layer, so a hook can block under any policy (the lab blocks `secrets/` under `allow_all`). No: with `allow_read_only` a non-read-only tool is denied before `permission_fn` is consulted; the function is only asked under `ask` (and under `allow_read_only` only for read-only tools, which are already allowed).
 </details>
 
-<details><summary>5. The base model produced <code>' +   78.'</code> instead of a tool call. Is that a parsing problem?</summary>
+<details><summary>5. The instruction-tuned model answered <code>75 + 75 = 105</code> instead of calling the calculator. Is that a parsing problem?</summary>
 
-No. `parse_tool_call` works (the lab checks it on valid and malformed strings); the model never emitted `<|tool_call|>` because nothing in pretraining taught it to. Tool calling is a trained behaviour: after 150 steps of SFT on tool traces the same architecture emits well-formed calls. Whether it also fills the arguments correctly is a further question the `--full` run answers.
+No. `parse_tool_call` works (the lab checks it on valid and malformed strings); the model never emitted `<|tool_call|>` because nothing in its training taught it to. Tool calling is trained: 150 steps of SFT on tool traces make the same architecture emit well-formed calls (with wrong arguments), and Chapter 21's SFT-plus-GRPO model emits well-formed calls with the right arguments.
 </details>
 
 ## Key takeaways
@@ -389,7 +386,7 @@ No. `parse_tool_call` works (the lab checks it on valid and malformed strings); 
 - Errors are observations: unknown tools, bad arguments, exceptions, denials and hook blocks all return as text the model reads.
 - Safety lives in `_execute`: pre-tool hooks, then the permission gate (`allow_all` / `allow_read_only` / `ask`), then the sandboxed tool, then truncation and post-tool hooks.
 - The scripted backend makes the harness testable; TinyLM and an API model plug into the same `complete` interface.
-- Tool calling is trained, not parsed into existence: the base model produces no valid call; a short SFT on tool traces produces well-formed ones.
+- Tool calling is trained, not parsed into existence: an instruction-tuned model produces no call, a short SFT produces well-formed calls with ungrounded arguments, and Chapter 21's RL-trained model gets both right.
 
 ## Going deeper
 

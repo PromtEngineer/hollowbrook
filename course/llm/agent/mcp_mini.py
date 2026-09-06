@@ -36,7 +36,7 @@ import json
 import os
 import subprocess
 import sys
-from typing import Any, Optional, TextIO
+from typing import Iterable, Any, Optional, TextIO
 
 from .tools import Tool, ToolRegistry
 
@@ -71,7 +71,9 @@ class MCPServer:
         if method == "ping":
             return _response(id_, {})
         if method == "tools/list":
-            tools = [{"name": t["name"], "description": t["description"], "inputSchema": t["input_schema"]}
+            tools = [{"name": t["name"], "description": t["description"], "inputSchema": t["input_schema"],
+                      # readOnlyHint is the MCP annotation a client may use for its permission gate
+                      "annotations": {"readOnlyHint": self.registry.get(t["name"]).read_only}}
                      for t in self.registry.schemas()]
             return _response(id_, {"tools": tools})
         if method == "tools/call":
@@ -168,18 +170,23 @@ class MCPClient:
         self.close()
 
 
-def mcp_tools_to_registry(client: MCPClient, read_only: bool = False) -> ToolRegistry:
+def mcp_tools_to_registry(client: MCPClient, read_only: bool = False,
+                          read_only_tools: Optional[Iterable[str]] = None) -> ToolRegistry:
     """Wrap a server's tools so ``Agent`` can use them like local ones.
 
-    The server does not tell us which tools are safe, so everything defaults to
-    ``read_only=False`` — the conservative choice for a permission gate.
+    A tool is marked read-only if the server says so (``annotations.readOnlyHint``,
+    part of the MCP spec), or if its name is in ``read_only_tools``, or if
+    ``read_only=True`` for everything. The default is the conservative choice for a
+    permission gate: nothing is trusted as read-only unless declared.
     """
     reg = ToolRegistry()
+    safe = set(read_only_tools or ())
     for t in client.list_tools():
         def fn(_name=t["name"], **kwargs) -> str:      # bind the name per tool
             return client.call_tool(_name, kwargs)
+        hint = bool((t.get("annotations") or {}).get("readOnlyHint", False))
         reg.register(Tool(t["name"], t.get("description", ""), t.get("inputSchema", {"type": "object"}),
-                          fn, read_only=read_only))
+                          fn, read_only=read_only or hint or t["name"] in safe))
     return reg
 
 

@@ -47,6 +47,7 @@ class AgentConfig:
     max_tool_result_chars: int = 2000
     memory_path: Optional[str] = None       # a MemoryFile the agent can read and append to
     verbose: bool = False
+    summarizer: Optional[Callable[[list[dict]], str]] = None   # compaction: summarise old turns (Ch. 25)
 
 
 @dataclass
@@ -190,7 +191,8 @@ class Agent:
             # ---- housekeeping: keep the context under budget
             if budget.needs_compaction(t.messages, self.config.compaction_threshold):
                 before = budget.used(t.messages)
-                t.messages = compact(t.messages, keep_last=self.config.compaction_keep_last)
+                t.messages = compact(t.messages, keep_last=self.config.compaction_keep_last,
+                                     summarizer=self.config.summarizer)
                 after = budget.used(t.messages)
                 self._emit(t, "compaction", {"tokens_before": before, "tokens_after": after}, turn)
 

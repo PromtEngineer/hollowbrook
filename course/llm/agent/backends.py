@@ -114,6 +114,10 @@ class ScriptedBackend:
 
 
 # -------------------------------------------------------------------- TinyLM
+class ContextTooLongError(RuntimeError):
+    """The prompt does not fit in the model's context window."""
+
+
 class TinyLMBackend:
     """Drive the course's own ``TinyLM`` through the chat template.
 
@@ -122,17 +126,30 @@ class TinyLMBackend:
     Chapter 15, so a model fine-tuned on tool traces (Chapter 21) can drive this loop.
     """
 
-    def __init__(self, model, tok, max_new_tokens: int = 64, temperature: float = 0.0) -> None:
+    def __init__(self, model, tok, max_new_tokens: int = 64, temperature: float = 0.0,
+                 compact_tools: bool = True) -> None:
         self.model, self.tok = model, tok
         self.max_new_tokens, self.temperature = max_new_tokens, temperature
+        self.compact_tools = compact_tools      # names + one-line descriptions instead of full schemas
 
     @staticmethod
-    def to_chat_messages(messages: list[dict], tools: list[dict], system: str) -> list[dict]:
-        """Our internal dicts -> the roles ``llm.chat.render`` understands."""
+    def to_chat_messages(messages: list[dict], tools: list[dict], system: str,
+                         compact_tools: bool = True) -> list[dict]:
+        """Our internal dicts -> the roles ``llm.chat.render`` understands.
+
+        A full JSON schema costs ~300 Storyland tokens per tool — more than TinyLM's whole
+        context — so by default tools are listed compactly (name, description, argument
+        names). A frontier model with a 200k window gets the full schemas (see AnthropicBackend).
+        """
         sys_text = system
         if tools:
             sys_text += "\nTools (call with <|tool_call|>{\"name\":..,\"arguments\":{..}}<|end|>):\n"
-            sys_text += json.dumps(tools)
+            if compact_tools:
+                for t in tools:
+                    args = ", ".join((t.get("input_schema") or {}).get("properties", {}).keys())
+                    sys_text += f"- {t['name']}({args}): {t.get('description', '')}\n"
+            else:
+                sys_text += json.dumps(tools)
         out = [{"role": "system", "content": sys_text}]
         for m in messages:
             if m["role"] == "assistant" and m.get("tool_calls"):
@@ -152,7 +169,12 @@ class TinyLMBackend:
         from ..generate import generate
         # encode_chat tokenises content with allowed_special=False: tool results or user
         # text containing "<|user|>" can never be mistaken for a real role tag.
-        ids = encode_chat(self.tok, self.to_chat_messages(messages, tools, system), add_generation_prompt=True)
+        ids = encode_chat(self.tok, self.to_chat_messages(messages, tools, system, self.compact_tools),
+                          add_generation_prompt=True)
+        room = self.model.cfg.max_seq_len - len(ids)
+        if room < 4:
+            raise ContextTooLongError(f"prompt is {len(ids)} tokens but the model's window is "
+                                      f"{self.model.cfg.max_seq_len}; compact the context (Chapter 25)")
         # Keep <|end|> in the text so parse_tool_call can find "<|tool_call|>...<|end|>".
         raw = generate(self.model, self.tok, "", max_new_tokens=self.max_new_tokens,
                        temperature=self.temperature, stop=("<|eos|>",), prompt_ids=ids)
