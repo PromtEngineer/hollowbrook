@@ -227,7 +227,7 @@ Each chapter lists:
 - Covers: trajectories vs single responses, tool-call formats, environments and sandboxes,
   turn-level vs trajectory-level rewards, credit assignment, async rollouts, the 2026 frameworks
   (verl, SkyRL, AgentRL, ProRL-Agent), failure-driven data, reward hacking in agents.
-- You will build: `llm/agent/env.py` — a toy tool environment; `llm/rl.py::multi_turn_grpo`.
+- You will build: `llm/rl.py::CalculatorEnv` — a toy tool environment; `llm/rl.py::multi_turn_grpo_step`.
 - Lab: `lab21_agentic_rl.py` — TinyLM learns to call a calculator tool.
 
 ### Chapter 22: Safety, alignment and model specs

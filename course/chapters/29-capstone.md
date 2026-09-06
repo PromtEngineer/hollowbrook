@@ -62,7 +62,7 @@ paths["sft"] = p
 print(os.path.basename(p))                          # sft_nano.pt (Lab 15's checkpoint, reused) or capstone_sft_nano.pt
 ```
 
-The lab wraps each such block in a `Stage` context manager that times it and records a one-line note for the report. `existing()` checks the candidate's width (`cfg.d_model`), so a nano checkpoint is never reused in a `--full` run. **The evaluation** (Chapter 23) is the same call for every checkpoint: greedy decoding, `tasks.verify` as grader, plus perplexity on held-out Storyland:
+The lab wraps each such block in a `Stage` context manager that times it and records a one-line note for the report. `existing()` checks the candidate's width (`cfg.d_model`), so a nano checkpoint is never reused in a `--full` run. The evaluation (Chapter 23) is the same call for every checkpoint: greedy decoding, `tasks.verify` as grader, plus perplexity on held-out Storyland:
 
 ```python
 from llm.evals import eval_tasks, perplexity

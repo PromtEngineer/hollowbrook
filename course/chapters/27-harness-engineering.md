@@ -48,7 +48,7 @@ The library files are `llm/agent/harness.py` (the loop, gate and hooks, from Cha
 ```python
 import os, json, shutil, time
 from typing import Optional
-from llm.agent import (Agent, AgentConfig, Hooks, MiniHarness, ScriptedBackend, ToolCall,
+from llm.agent import (Agent, AgentConfig, Hooks, MiniHarness, ScriptedBackend, ToolCall, Transcript,
                        make_builtin_tools, run_subagent, estimate_tokens)
 from llm.agent.context import message_text
 ```
@@ -219,7 +219,7 @@ print(run_subagent(parent, "compute 2+2", tools_subset=["calculator"], max_turns
 
 ```python
 per_call = [sum(estimate_tokens(message_text(m)) for m in c["messages"]) for c in backend.calls]
-print(per_call)               # tokens in the context at each model call, e.g. [52, 59, 113, 192 | 246, 310, 399, 444]
+print(per_call)               # [42, 64, 50, 82]: two planner calls, then two session calls; the lab prints [52, 59, 113, 192 | 246, 310, 399, 444]
 ```
 
 ### Step 9: 2026 lessons from production harnesses

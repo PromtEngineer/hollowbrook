@@ -197,7 +197,7 @@ Read the last column against the rule of thumb: at n = 100 the half-width is 0.0
    over 20 prompts the 'first wins' judge shows position bias on 20/20; the rule-based judge on 0/20
 ```
 
-The swap test is two calls and a dictionary lookup, and it separates the fair judge from the position-biased one on every prompt. It does not catch the length-biased judge, whose verdict is stable under swapping and simply wrong; that one needs a controlled pair (same content, different length), which is what the third line is.
+The swap test is two calls and a dictionary lookup, and it separates the fair judge from the position-biased one on every prompt. It does not catch the length-biased judge, whose verdict is stable under swapping and wrong both times; that one needs a controlled pair (same content, different length), which is what the third line is.
 
 The lab saves `runs/eval_report.md` (the full table, plus `compare_checkpoints`' own two-column version) and `figures/generated/lab23_evals.png`.
 

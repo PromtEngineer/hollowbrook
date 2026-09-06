@@ -196,7 +196,7 @@ Putting the pieces in order: (1) SFT on demonstrations; (2) collect comparisons 
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab18_reinforce.py            # quick: nano model, 98 s (the warm start comes from Lab 17)
+python3 labs/lab18_reinforce.py            # quick: nano model, ~100 s on an idle laptop CPU (405 s on our shared box); the warm start comes from Lab 17
 python3 labs/lab18_reinforce.py --full     # small model, 30 REINFORCE steps; see the timing note below
 ```
 
@@ -222,9 +222,10 @@ Then REINFORCE on TinyLM, six prompts, eight samples each, twelve steps:
    step  11 | mean reward 0.312 | log pi(reference answer)  -2.68 | grad norm 5.15 | 6s
    mean reward, first 3 steps 0.160 -> last 3 steps 0.243; log pi(reference answer) -2.78 -> -2.68
    rewarded samples in the last batch (what REINFORCE actually pushed up): ['8 + 8 = 10', '6 + 17 = 10', '2 + 20 = 10', '2 + 8 = 10', '11 + 11 = 10']
+   of the 15 rewarded samples, tasks.strict_verify (operands must match the question) accepts 3
 ```
 
-The sampled reward rises from 0.16 to 0.24 in twelve steps, and the log-probability of the *reference* answers edges up by 0.1 nats. The last line is the one to remember: REINFORCE raised the probability of whatever *it* sampled and the verifier accepted, and four of those five samples misquote the operands. `tasks.verify` grades only the last number, so `8 + 8 = 10` is a rewarded answer to "What is 2 + 8?". The policy is not being taught the reference string; it is being taught its own rewarded behaviour, blind spots of the grader included. Chapter 17's Goodhart lesson, now in the RL loop.
+The sampled reward rises from 0.16 to 0.24 in twelve steps, and the log-probability of the *reference* answers edges up by 0.1 nats. The last two lines are the ones to remember: REINFORCE raised the probability of whatever *it* sampled and the verifier accepted, and four of the five samples shown misquote the operands; across the whole batch, only 3 of the 15 rewarded samples survive `tasks.strict_verify`. `tasks.verify` grades only the last number, so `8 + 8 = 10` is a rewarded answer to "What is 2 + 8?", and twelve steps were enough for the policy to drift toward writing `= 10` regardless of the question. The policy is not being taught the reference string; it is being taught its own rewarded behaviour, blind spots of the grader included. Chapter 17's Goodhart lesson, now in the RL loop; exercise 7 asks you to re-run this section with the strict grader.
 
 ```
    no baseline : ||mean grad|| 0.698 | mean ||g_i - mean||^2 (variance) 0.512
@@ -284,7 +285,8 @@ With 40 bandit trials the tail story holds (3 of 40 no-baseline runs stuck, none
 4. **KL vs temperature.** Sample from the SFT model at temperatures 0.7, 1.0 and 1.3 and compute k₁, k₂, k₃ against the *same* model. Which estimator is fooled by the temperature, and what does that tell you about estimating KL from samples that were not drawn from π_θ?
 5. **Clip fraction over epochs.** Take one batch of rollouts and apply `ppo_clip_loss` for 1, 2, 4 and 8 optimizer steps on the *same* samples (PPO epochs), logging `clip_frac` and `approx_kl` each time. At what epoch does the clip zero more than half the tokens?
 6. **Advantage sign check.** Construct a batch where all rewards are equal. Show that REINFORCE with the batch-mean baseline produces an exactly zero gradient, and explain why Chapter 19's dynamic sampling skips such batches.
-7. **Interactive** 🎛️: open `interactive/18_policy_gradient.html`. Press "Sample one action" a few times and check the update line against the formula θ_j ← θ_j + α(r − b)(1[j = a] − π_j). Then run 100 steps with and without the baseline and read the exact variance panel. Do the Challenge: converge to the best arm twice, once per baseline setting, then "Run comparison" to see whether your two runs were typical.
+7. **Strict grader.** Rerun section (b) with `tasks.strict_verify` in place of `tasks.verify` inside `rollouts`. Does the mean reward still rise in twelve steps? Print the rewarded samples of the last batch: the exploit should be gone, and the reward lower, because the policy can no longer be paid for `= 10` alone.
+8. **Interactive** 🎛️: open `interactive/18_policy_gradient.html`. Press "Sample one action" a few times and check the update line against the formula θ_j ← θ_j + α(r − b)(1[j = a] − π_j). Then run 100 steps with and without the baseline and read the exact variance panel. Do the Challenge: converge to the best arm twice, once per baseline setting, then "Run comparison" to see whether your two runs were typical.
 
 ## Check yourself ✅
 

@@ -140,7 +140,7 @@ class TinyLMBackend:
                          compact_tools: bool = True) -> list[dict]:
         """Our internal dicts -> the roles ``llm.chat.render`` understands.
 
-        A full JSON schema costs ~300 Storyland tokens per tool — more than TinyLM's whole
+        A full JSON schema costs ~120-170 Storyland tokens per tool — more than nano's whole
         context — so by default tools are listed compactly (name, description, argument
         names). A frontier model with a 200k window gets the full schemas (see AnthropicBackend).
         """

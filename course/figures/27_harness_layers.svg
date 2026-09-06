@@ -77,7 +77,7 @@
   <rect x="125" y="95" width="150" height="60" rx="10" fill="#7c3aed" fill-opacity="0.12" stroke="#7c3aed" stroke-width="1.5"/>
   <text x="200" y="118" text-anchor="middle" font-size="12" font-weight="700" fill="#0f172a">sub-agents</text>
   <text x="200" y="134" text-anchor="middle" font-size="10" fill="#64748b">run_subagent</text>
-  <text x="200" y="148" text-anchor="middle" font-size="9" fill="#7c3aed">fresh context, one paragraph back</text>
+  <text x="200" y="148" text-anchor="middle" font-size="8.5" fill="#7c3aed">fresh context, one paragraph back</text>
   <line x1="200" y1="155" x2="200" y2="213" stroke="#64748b" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
 
   <!-- files below -->
@@ -89,10 +89,10 @@
   <text x="212" y="372" font-size="9.5" fill="#64748b">read every session</text>
 
   <!-- verifier below tools -->
-  <rect x="590" y="390" width="230" height="70" rx="10" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626" stroke-width="1.5"/>
+  <rect x="585" y="390" width="240" height="70" rx="10" fill="#dc2626" fill-opacity="0.12" stroke="#dc2626" stroke-width="1.5"/>
   <text x="705" y="413" text-anchor="middle" font-size="12" font-weight="700" fill="#0f172a">verifier</text>
   <text x="700" y="430" text-anchor="middle" font-size="10" fill="#64748b">MiniHarness.verify → run_tests</text>
-  <text x="705" y="447" text-anchor="middle" font-size="8.5" fill="#dc2626">the harness runs it, not the model: "done" needs evidence</text>
+  <text x="705" y="447" text-anchor="middle" font-size="8.5" fill="#dc2626">run by the harness, not the model: "done" needs evidence</text>
   <path d="M 665 307 L 665 388" fill="none" stroke="#dc2626" stroke-width="1.6" marker-end="url(#arrowred)"/>
   <text x="680" y="352" font-size="9.5" fill="#dc2626">after each session</text>
   <path d="M 598 440 L 412 440" fill="none" stroke="#dc2626" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arrowred)"/>

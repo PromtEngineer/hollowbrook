@@ -68,7 +68,7 @@
   <text x="55" y="282" font-size="12" font-weight="700" fill="#0f172a">files in the workdir (the checkpoint)</text>
 
   <rect x="55" y="295" width="230" height="100" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
-  <text x="65" y="312" font-size="9" font-weight="700" fill="#7c3aed">PLAN.md   (written once, read-only for the agent)</text>
+  <text x="65" y="312" font-size="9.5" font-weight="700" fill="#7c3aed">PLAN.md — written once, agent read-only</text>
   <text x="65" y="330" font-size="10" fill="#0f172a" font-family="ui-monospace, monospace">1. Read mathlib.py.</text>
   <text x="65" y="344" font-size="10" fill="#0f172a" font-family="ui-monospace, monospace">2. Fix mean(): divide by len(xs).</text>
   <text x="65" y="358" font-size="10" fill="#0f172a" font-family="ui-monospace, monospace">3. Add median() (even n: average).</text>
@@ -76,7 +76,7 @@
   <text x="65" y="388" font-size="9.5" fill="#dc2626">hook: write_file("PLAN.md") → blocked</text>
 
   <rect x="305" y="295" width="290" height="100" rx="8" fill="#ffffff" stroke="#2563eb" stroke-width="1.2"/>
-  <text x="315" y="312" font-size="9" font-weight="700" fill="#2563eb">PROGRESS.md   (appended by the harness after every session)</text>
+  <text x="315" y="312" font-size="9.5" font-weight="700" fill="#2563eb">PROGRESS.md — appended by the harness, every session</text>
   <text x="315" y="330" font-size="10" fill="#0f172a" font-family="ui-monospace, monospace">## Session 1 (done, 3 turns, 2 tool calls)</text>
   <text x="315" y="344" font-size="10" fill="#64748b" font-family="ui-monospace, monospace">Done. mean() fixed, median() added…</text>
   <text x="315" y="358" font-size="10" fill="#dc2626" font-family="ui-monospace, monospace">Verification: FAIL  test_median_even 3 == 2.5</text>
