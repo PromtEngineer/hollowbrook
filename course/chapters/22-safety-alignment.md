@@ -60,7 +60,7 @@ CONSTITUTION = [
 ]
 ```
 
-`rubric_reward` from Chapter 17 turns a list of `(name, check)` pairs into a score in [0, 1], the average of the checks that pass. The lab's judge builds the rubric *per prompt*, because whether principle 3 applies depends on the question (this is the abridged version; the lab's has a longer list of preambles and a stricter refusal check that also rejects garbled text):
+`rubric_reward` from Chapter 17 turns a list of `(name, check)` pairs into a score in [0, 1], the average of the checks that pass. The lab's judge builds the rubric *per prompt*, because whether principle 3 applies depends on the question (this is the abridged version; the lab's has a longer list of preambles and a stricter refusal check that wants a one-sentence answer made of letters, spaces and a full stop, which still lets some garbled refusals through, as the worked example shows):
 
 ```python
 def principle_checks(prompt: str):

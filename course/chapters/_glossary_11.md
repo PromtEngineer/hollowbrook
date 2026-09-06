@@ -25,3 +25,8 @@
 - **interleaved pipeline** — a pipeline schedule in which each device holds several non-contiguous chunks of layers, shrinking the bubble at the cost of more communication (Ch. 11)
 - **DualPipe** — DeepSeek-V3's pipeline schedule that overlaps the forward and backward passes of different micro-batches to hide expert-parallel communication (Ch. 11)
 - **fault tolerance** — the checkpointing, asynchronous saving and elastic-restart machinery that lets a run survive hardware failing every few hours at cluster scale (Ch. 11)
+- **rank** — the index (0 … N−1) of one process in a distributed job; each rank holds its own data shard (Ch. 11)
+- **process group** — the set of processes that take part in a collective; created by `dist.init_process_group` with a backend such as `gloo` (CPU) or `nccl` (GPU) (Ch. 11)
+- **NVLink** — NVIDIA's direct GPU-to-GPU interconnect inside one server, hundreds of GB/s per GPU; tensor parallelism is kept within it (Ch. 11)
+- **straggler** — a device or process that finishes a step late, holding up every collective that waits for it (Ch. 11)
+- **Ring Attention** — attention computed across devices by passing key/value blocks around a ring while each device holds one stretch of the sequence; the basis of context parallelism (Ch. 11)

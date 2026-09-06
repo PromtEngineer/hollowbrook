@@ -5,7 +5,7 @@
     <marker id="al" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#16a34a"/></marker>
     <marker id="ae" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#dc2626"/></marker>
   </defs>
-  <text x="450" y="26" text-anchor="middle" font-size="17" font-weight="600" fill="#0f172a">MCP: host, client and server, and the JSON-RPC messages between them (protocol 2025-11-25)</text>
+  <text x="450" y="26" text-anchor="middle" font-size="17" font-weight="600" fill="#0f172a">MCP: host, client and server, and the JSON-RPC between them (revision 2025-11-25)</text>
 
   <!-- lifelines -->
   <rect x="30" y="44" width="200" height="40" rx="8" fill="#7c3aed" fill-opacity="0.10" stroke="#7c3aed"/>

@@ -4,7 +4,7 @@
 
   <!-- good tool -->
   <rect x="20" y="46" width="540" height="330" rx="10" fill="#16a34a" fill-opacity="0.08" stroke="#16a34a" stroke-width="1.5"/>
-  <text x="290" y="68" text-anchor="middle" font-size="13" font-weight="600" fill="#16a34a">Tool(...) as the model sees it (schema) and as the harness runs it (fn, read_only)</text>
+  <text x="290" y="68" text-anchor="middle" font-size="13" font-weight="600" fill="#16a34a">Tool(...): the schema the model sees, the fn and read_only the harness runs</text>
   <g font-family="ui-monospace, monospace" font-size="11.5" fill="#0f172a">
     <text x="34" y="96">name        = "convert_temperature"</text>
     <text x="34" y="118">description = "Convert a temperature between Celsius and Fahrenheit.</text>
@@ -23,9 +23,9 @@
     <text x="300" y="96">← verb_noun, unambiguous, searchable</text>
     <text x="300" y="150">← says what it returns and WHEN to use it</text>
     <text x="330" y="240">← every argument typed, described, with an example</text>
-    <text x="34" y="316">error = what went wrong + what to do instead + a valid example; the model reads it and retries (errors are observations)</text>
-    <text x="34" y="336">read_only lets the permission gate say "allow anything that only reads"; idempotent tools are safe to retry after a timeout</text>
-    <text x="34" y="356">keep results short and shaped (a number, a JSON line, PASS/FAIL + last lines): the model pays for every token twice (read + carry)</text>
+    <text x="34" y="316">error = what went wrong + what to do + a valid example; the model reads it and retries</text>
+    <text x="34" y="336">read_only lets the gate "allow anything that only reads"; idempotent tools are safe to retry</text>
+    <text x="34" y="356">keep results short and shaped (a number, a JSON line, PASS/FAIL + tail): every token is paid twice</text>
   </g>
 
   <!-- bad tool -->
@@ -54,5 +54,5 @@
   <text x="30" y="412" font-size="12" font-weight="600" fill="#2563eb">Checklist (Ch. 26 §The idea in code)</text>
   <text x="30" y="432" font-size="11" fill="#0f172a">1. Name = verb_noun.   2. Description says what, when, what comes back.   3. Few arguments, each typed + described + example; no overlapping tools.</text>
   <text x="30" y="450" font-size="11" fill="#0f172a">4. Errors are text with the fix in them.   5. Declare read_only honestly; make writes idempotent.   6. Bound the output (truncate, paginate, summarise).</text>
-  <text x="30" y="468" font-size="11" fill="#0f172a">7. Sandbox every path and every subprocess.   8. Treat the result as data the model reads, never as instructions (prompt injection, §5).</text>
+  <text x="30" y="468" font-size="11" fill="#0f172a">7. Sandbox every path and every subprocess.   8. Treat the result as data the model reads, never as instructions (prompt injection, Step 8).</text>
 </svg>

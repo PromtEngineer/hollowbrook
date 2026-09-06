@@ -96,7 +96,7 @@
 
   <!-- ===== 5. shared state / handoff ===== -->
   <text x="690" y="325" font-size="13" font-weight="700" fill="#0f172a">5 · shared state (hand-off)</text>
-  <text x="690" y="341" font-size="10" fill="#64748b">agents never share a context; they share files</text>
+  <text x="690" y="341" font-size="10" fill="#64748b">no shared context: they share files</text>
   <rect x="690" y="370" width="80" height="34" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
   <text x="730" y="391" text-anchor="middle" font-size="11" fill="#0f172a">agent A</text>
   <rect x="800" y="370" width="80" height="34" rx="8" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="1.5"/>
@@ -109,7 +109,7 @@
   <text x="723" y="425" font-size="9" fill="#64748b">writes</text>
   <text x="835" y="425" font-size="9" fill="#64748b">reads</text>
   <text x="785" y="515" text-anchor="middle" font-size="9.5" fill="#2563eb">the hand-off is a document, so it can be checked</text>
-  <text x="785" y="529" text-anchor="middle" font-size="9.5" fill="#dc2626">risk: runaway cost — every reader re-reads everything</text>
+  <text x="785" y="529" text-anchor="middle" font-size="9.5" fill="#dc2626">risk: runaway cost — each reader re-reads it all</text>
 
   <text x="20" y="552" font-size="10.5" fill="#64748b">purple = decides/combines · blue = does work · orange = judges · green = programs and files (ground truth, shared state) · red = a way it fails</text>
 </svg>

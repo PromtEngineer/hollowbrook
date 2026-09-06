@@ -27,7 +27,7 @@
   <text x="430" y="142" text-anchor="middle" font-size="13" font-weight="600" fill="#0f172a">Attention (GQA + RoPE)</text>
   <rect x="320" y="155" width="105" height="40" rx="5" fill="#ffffff" stroke="#2563eb"/>
   <text x="372" y="172" text-anchor="middle" font-size="11" fill="#0f172a">q_proj 192→192</text>
-  <text x="372" y="187" text-anchor="middle" font-size="10" fill="#64748b">6 heads × 32 = 36,864</text>
+  <text x="372" y="187" text-anchor="middle" font-size="10" fill="#64748b">6 h × 32 = 36,864</text>
   <rect x="435" y="155" width="105" height="40" rx="5" fill="#ffffff" stroke="#2563eb"/>
   <text x="487" y="172" text-anchor="middle" font-size="11" fill="#0f172a">k_proj 192→64</text>
   <text x="487" y="187" text-anchor="middle" font-size="10" fill="#64748b">2 kv heads: 12,288</text>

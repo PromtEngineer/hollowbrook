@@ -284,8 +284,7 @@ Call the tool (collect the bonus) and then write any answer, or even the same an
 
 - Agentic RL trains a policy over trajectories: several model turns interleaved with environment observations, encoded as one token sequence with a loss mask.
 - Tool calls are ordinary assistant turns with a marker the model must learn to emit; tool results are turns the model is given and must be masked out of the loss.
-- Multi-turn GRPO is Chapter 19's GRPO with trajectory rewards and trajectory masks; the library sums per-turn rewards and gives every generated token the same advantage.
-- Credit assignment across turns is the open problem; trajectory-level credit works on short episodes and weakens as episodes grow.
+- Multi-turn GRPO is Chapter 19's GRPO with trajectory rewards and trajectory masks; the library sums per-turn rewards and gives every generated token the same advantage, which works on short episodes and weakens as they grow (credit assignment is the open problem).
 - 🆕 2026 infrastructure is about rollouts: asynchronous generation, environment fleets as a service, failure-driven and synthesised data, curricula.
 - Agents can act, so they have more ways to hack a reward; pay shaping bonuses only when they coincide with the outcome you want.
 - The system prompt (including the tool listing) is part of the environment: build training conversations with the exact string the harness will send, or the checkpoint will not work when served.

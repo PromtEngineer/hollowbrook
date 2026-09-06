@@ -1,6 +1,6 @@
 # Appendix C: Glossary
 
-Every bold term defined in the course, with the chapter(s) that define it. 461 entries.
+Every bold term defined in the course, with the chapter(s) that define it. 502 entries.
 
 ## "
 
@@ -10,6 +10,10 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 
 - **16 bytes per parameter** — the training-state cost of a parameter under AdamW in mixed precision: 2 (bf16 weight) + 2 (bf16 gradient) + 4 (fp32 master weight) + 8 (Adam's two fp32 moments). *(Ch. 11)*
 - **1F1B** — the "one forward, one backward" pipeline schedule that caps in-flight activations at the number of stages. *(Ch. 11)*
+
+## 4
+
+- **4-D parallelism** — combining tensor, pipeline, expert and data parallelism (often with context parallelism as a fifth) to train trillion-parameter mixture-of-experts models across thousands of accelerators. *(Ch. 29)*
 
 ## 6
 
@@ -23,15 +27,16 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **active parameters** — the parameters that participate in computing one token (the visited experts plus everything dense); governs per-token compute. *(Ch. 12)*
 - **Adam** — an optimizer that normalises each parameter's step by a running estimate of its gradient's magnitude. *(Ch. 4, Ch. 10)*
 - **AdamW** — Adam with decoupled weight decay; the default LLM optimizer since 2019. *(Ch. 4)*
+- **adaptive rollout** — a 2026 budget-aware form of dynamic sampling that allocates more samples to prompts whose groups are informative and fewer to saturated ones. *(Ch. 19)*
 - **add-k smoothing** — smoothing by pretending every possible (context, next) pair was seen k extra times. *(Ch. 1)*
 - **adjusted base frequency (ABF)** — raising RoPE's θ so all channel pairs rotate more slowly and longer positions map onto angle ranges seen in training; Llama 3 used θ = 500k. *(Ch. 13)*
 - **advantage** — the reward minus a baseline: how much better than expected an answer was. *(Ch. 18)*
 - **advantage (group-relative)** — (r_i − mean(r)) / (std(r) + ε) over the G answers to one prompt; Dr. GRPO omits the division by std. *(Ch. 19)*
-- **agent** — a model used in a loop: it writes a message, the environment (tools, tests, a browser) replies, it writes again, and the whole interaction is judged. *(Ch. 21)*
+- **agent** — a model used in a loop: it writes a message, the environment (tools, tests, a browser) replies, it writes again, and the whole interaction is judged. *(Ch. 21, Ch. 24)*
 - **agent harness** — the program around a model that supplies tools, manages context, enforces permissions and loops until a task is done. *(Ch. 0)*
 - **Agent2Agent protocol (A2A)** — the protocol (Google, April 2025; v1.0 reported April 2026) by which one agent sends tasks to another agent and exchanges messages and artefacts with it. *(Ch. 26, Ch. 28)*
 - **agentic eval** — running whole trajectories in a sandbox and checking the outcome; the most relevant and the slowest, most expensive, highest-variance measurement. *(Ch. 23)*
-- **agentic model** — a model trained on multi-turn interactions with tools and environments so that it can act, observe a result, and act again. *(Ch. 14)*
+- **agentic model** — a model post-trained with agentic RL to act over many steps with tools inside a harness. *(Ch. 0, Ch. 14)*
 - **agentic RL** — RL over multi-turn interactions with tools and environments. *(Ch. 0)*
 - **agentic safety** — whether a model acting with tools stays inside its instructions when instructions and task conflict; defended by weights and by the harness together. *(Ch. 22)*
 - **alignment** — operationally, the property that a model's behaviour matches a written specification as measured by held-out evals; the "alignment tax" is the helpfulness lost (over-refusal) when safety data is over-weighted. *(Ch. 14, Ch. 22)*
@@ -43,6 +48,7 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **anneal** — (also decay phase or cooldown) the final stretch of pretraining in which the learning rate decays to zero while the data mix shifts to higher-quality, re-weighted sources. *(Ch. 13)*
 - **annotation guidelines** — the written document that tells a labeler what wins and why, with worked examples of every known trap; revised until inter-annotator agreement is acceptable. *(Ch. 16)*
 - **arithmetic intensity** — FLOPs performed per byte moved from memory; for batch-`B` decode it is about `B`. *(Ch. 7)*
+- **async rollouts** — an RL infrastructure design in which generation runs continuously on separate workers and the trainer consumes finished trajectories, tolerating a small policy lag, so long and variable-length agent episodes do not idle the trainer. *(Ch. 29)*
 - **asynchronous rollouts** — generating trajectories, running environments and training in overlapping pipelines rather than in lock-step, so the trainer never waits for the slowest environment. *(Ch. 21)*
 - **attention** — a soft, learned lookup: each token scores its query against every earlier token's key and takes a weighted average of their values. *(Ch. 5)*
 - **attention checks** — items designed so that a labeler who is not reading gets them wrong. *(Ch. 16)*
@@ -52,6 +58,7 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 
 ## B
 
+- **backend** — any object with a `complete(messages, tools, system) -> AssistantMessage` method: a scripted fake, TinyLM through its chat template, or an API model. *(Ch. 24)*
 - **backpropagation** — the algorithm that applies the chain rule over a computation graph to obtain every parameter's gradient in one backward walk. *(Ch. 4)*
 - **backward pass** — computing the gradient of the loss with respect to every parameter by walking the computation graph in reverse. *(Ch. 4)*
 - **band** — a contiguous group of r rows of a MinHash signature; a pair is a candidate if any band matches exactly, P = 1 − (1 − J^r)^b. *(Ch. 8)*
@@ -64,7 +71,7 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **bigram** — an n-gram model with one token of context (n = 2). *(Ch. 1)*
 - **bits** — the unit of −log₂ P; a probability-½ event costs 1 bit. *(Ch. 1)*
 - **boilerplate** — navigation menus, footers, cookie notices and other text repeated on every page of a site. *(Ch. 8)*
-- **bootstrap confidence interval** — resample the per-item scores with replacement many times, take the mean each time, and report the central 95% of those means; half-width ≈ 1/√n near accuracy 0.5. *(Ch. 23)*
+- **bootstrap confidence interval** — an interval for a measured accuracy obtained by resampling the evaluated items with replacement many times and reading off the spread of the resampled means; `EvalResult.table()` prints a 95% one. *(Ch. 15, Ch. 23)*
 - **Bradley–Terry model** — a model of pairwise comparisons in which each item has a hidden score and P(a beats b) = σ(r_a − r_b), the sigmoid of the score difference. *(Ch. 17)*
 - **branch point** — a checkpoint on the WSD stable plateau from which an anneal can be started, making mid-training experiments cheap to repeat. *(Ch. 13)*
 - **Byte Latent Transformer (BLT)** — a tokenizer-free model that reads bytes and groups them into variable-size patches based on next-byte predictability. *(Ch. 2)*
@@ -72,13 +79,16 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 
 ## C
 
+- **capstone** — the single script (`labs/lab29_capstone.py`) that runs every stage of the course on one model and evaluates every checkpoint on the same questions. *(Ch. 29)*
 - **catastrophic forgetting** — the loss of earlier capabilities when a network is trained further on a narrower or different distribution. *(Ch. 13, Ch. 15)*
 - **causal mask** — setting scores for future positions to −∞ so that token i can only attend to tokens 0..i. *(Ch. 5)*
 - **chain rule** — the derivative of a composition is the product of the derivatives along the path. *(Ch. 4)*
 - **chain rule of probability** — P(w₁…w_T) = ∏ P(wᵢ | w₁…wᵢ₋₁): a sequence's probability is the product of each token's probability given the tokens before it. *(Ch. 1)*
 - **character-level tokens** — one token per character: tiny vocabulary, long sequences. *(Ch. 2)*
 - **chat template** — the fixed convention for writing a multi-turn conversation as one token sequence, using special tokens for roles and turn boundaries. *(Ch. 14)*
-- **checkpoint** — a saved snapshot of model weights, optimizer state, step count, config and history, sufficient to resume training. *(Ch. 10, Ch. 11)*
+- **checkpoint** — a model's weights saved to disk at some point in training; base, instruct and reasoning models are checkpoints at different depths of the pipeline. *(Ch. 0, Ch. 10, Ch. 11)*
+- **checkpoint comparison table** — the same evaluation (task accuracy, addition accuracy, perplexity) applied to every saved checkpoint, so stages can be compared rather than admired. *(Ch. 29)*
+- **checkpoint reuse** — training only what is missing in `runs/` and loading the rest, so a pipeline can be re-run cheaply and resumed after a failure. *(Ch. 29)*
 - **checkpointing (harness)** — persisting enough state (the plan and progress files) that a fresh process can continue the job. *(Ch. 27)*
 - **Chinchilla** — the 2022 DeepMind study finding that compute-optimal training scales N and D together, about 20 tokens per parameter. *(Ch. 9)*
 - **CISPO** — a 2025 variant that clips the importance weight itself rather than zeroing token gradients, so rare tokens keep contributing. *(Ch. 19)*
@@ -89,15 +99,18 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **cold start** — a small SFT stage on a few thousand long-reasoning examples, run before RL so that RL starts from a readable format (DeepSeek-R1's term). *(Ch. 14, Ch. 15)*
 - **Common Crawl** — a non-profit monthly crawl of the public web, published as WARC files; the raw source of nearly all open pretraining datasets. *(Ch. 8)*
 - **communication versus compute** — the ratio that decides MFU: per step, compute scales with batch × parameters while gradient traffic scales only with parameters. *(Ch. 11)*
+- **compaction** — rewriting the message history to fit the budget: keep the task and the recent tail verbatim, stub or summarise the middle. *(Ch. 25)*
 - **compression ratio** — bytes of text per token; higher means each token covers more text, and it depends on the corpus. *(Ch. 2)*
 - **compute-bound** — limited by the chip's arithmetic rate; prefill and training are the canonical cases. *(Ch. 7)*
 - **compute-optimal frontier** — the line through the minima of the iso-FLOP curves: the best (N, D) for every budget. *(Ch. 9)*
 - **constitution** — the short written document of principles that drives CAI; in 2026 published as a model spec by several labs. *(Ch. 22)*
 - **Constitutional AI (CAI)** — Anthropic's 2022 recipe: write principles as a document, have the model critique and revise its own drafts against them (SFT data), then have an AI judge rank samples against them (preference data). *(Ch. 22)*
 - **contamination** — evaluation text present in training data, which inflates benchmark scores. *(Ch. 8, Ch. 23)*
-- **context** — the tokens that come before the position being predicted. *(Ch. 1)*
+- **context** — the tokens that come before the position being predicted. *(Ch. 1, Ch. 24)*
+- **context engineering** — deciding, at every model call, what is in the window: the fixed part, the history, what is compacted, what lives outside in files and sub-agents, and how to keep the prefix stable. *(Ch. 25)*
+- **context isolation** — running a noisy sub-task in a sub-agent's window so that its tool results never enter the parent's context. *(Ch. 25)*
 - **context parallelism (CP)** — splitting one long sequence across devices and passing key/value blocks around a ring (Ring Attention) so attention can span the whole sequence. *(Ch. 11)*
-- **context rot** — the degradation of an agent's judgement as its window fills with stale tool output, even when the relevant facts are still present. *(Ch. 27)*
+- **context rot** — the reported degradation of a model's accuracy as its context window fills, even when the relevant information is still present. *(Ch. 25, Ch. 27)*
 - **contextual bandit** — an RL problem with one decision per episode and a context (the prompt); the structure of single-answer LLM RL. *(Ch. 18)*
 - **continuous batching** — scheduling at the granularity of one decode step so a finished sequence's slot is refilled immediately. *(Ch. 7)*
 - **cosine decay** — a learning-rate schedule that follows half a cosine from peak down to a minimum at the last step. *(Ch. 10)*
@@ -150,11 +163,14 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **entropy** — `−Σ p_i log₂ p_i`, the average surprise of a distribution in bits; 0 when certain, `log₂ V` when uniform. *(Ch. 7, Ch. 19)*
 - **entropy collapse** — the failure in which the policy's entropy falls to near zero early in RL, every group becomes all-equal and learning stops. *(Ch. 19)*
 - **environment** — any object with `reset()` and `step(text)`; it starts the episode, answers tool calls with observations, grades final answers, and says when the episode is done. *(Ch. 21)*
+- **environment dynamics** — how the state changes after an action; for a language model, deterministic: the chosen token is appended to the prefix. *(Ch. 18)*
 - **EOS token** — the end-of-sequence special token placed between packed documents. *(Ch. 8)*
+- **errors are observations** — the harness rule that a wrong tool name, a bad argument, an exception, a denial or a hook block comes back to the model as text in a tool result, never as a raised exception. *(Ch. 24)*
 - **eval-driven development** — write and freeze the eval before training, decontaminate against it, run every checkpoint through it, change one thing at a time, read the failures. *(Ch. 23)*
 - **evals** — measurements of a checkpoint on benchmarks, with judges and with users; feed back into every training stage. *(Ch. 0)*
 - **evaluation** — producing numbers about a model's quality that survive the known traps: an unchecked task, a too-small sample, contamination, and gaming. *(Ch. 23)*
 - **evaluator** — the judging agent, which sees only the task and the candidate; replaceable by a program via `accept_fn`. *(Ch. 28)*
+- **event** — one record of something the harness did (assistant reply, tool call, tool result, hook block, permission denial, compaction, done), kept in the transcript for tracing. *(Ch. 24)*
 - **exact deduplication** — dropping documents whose normalised text hashes to a value already seen. *(Ch. 8)*
 - **exact-match eval** — generate one answer per item and have a program compare it with the reference; the verifiable reward reused as a metric. *(Ch. 23)*
 - **expert parallelism (EP)** — spreading the experts of a mixture-of-experts layer across devices and routing tokens to them with all-to-all communication. *(Ch. 11)*
@@ -166,6 +182,7 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **fault tolerance** — the checkpointing, asynchronous saving and elastic-restart machinery that lets a run survive hardware failing every few hours at cluster scale. *(Ch. 11)*
 - **fine-grained experts** — many small experts (e.g. 256, top-8) instead of a few large ones, giving the router far more combinations. *(Ch. 12)*
 - **FineWeb-Edu** — a 1.3T-token subset of FineWeb selected by a classifier trained to imitate Llama-3-70B's 0–5 "educational value" ratings. *(Ch. 8)*
+- **fixed cost** — the tokens paid on every call regardless of history: the system prompt (plus memory block) and the tool schemas. *(Ch. 25)*
 - **FlashAttention** — an exact attention implementation that processes keys in blocks and never materialises the T × T score matrix. *(Ch. 5)*
 - **FLOP** — one floating-point multiply or add; training costs about `6·N·D` FLOPs for `N` parameters and `D` tokens. *(Ch. 6, Ch. 9)*
 - **forward KL divergence** — `KL(teacher ‖ student)`: the teacher-weighted log-ratio of teacher to student probabilities; mode-covering, used in logit distillation. *(Ch. 20)*
@@ -174,6 +191,7 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **FP8 / FP4** — 8-bit (e4m3, e5m2) and 4-bit (NVFP4, MXFP4) floating-point formats with block scaling; FP8 is the 2026 training default at scale, FP4 is being validated. *(Ch. 10)*
 - **FSDP** — Fully Sharded Data Parallel, PyTorch's implementation of ZeRO stage 3. *(Ch. 11)*
 - **full fine-tuning** — updating every parameter of the model during SFT, at the cost of a full copy of the weights and optimizer state per fine-tune. *(Ch. 15)*
+- **function calling** — a model's trained ability to emit a structured request to run a tool (name plus arguments) instead of prose. *(Ch. 24)*
 
 ## G
 
@@ -202,7 +220,8 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **harness** — the program around a model that decides what it may do, verifies what it did, persists what happened and stops it when it should; "the harness is the product". *(Ch. 27)*
 - **held-out data** — text kept out of training and used only for measurement. *(Ch. 1)*
 - **heuristic filter** — a hand-written rule that drops a document for a measurable property (length, symbol ratio, repeated lines), as in the Gopher and C4 rule sets. *(Ch. 8)*
-- **hook** — a function the harness owner attaches to a point in the loop; code, not prompt text, so it cannot be argued with. *(Ch. 27)*
+- **hidden state** — the d-dimensional vector the Transformer blocks produce for a position, summarising it and its context; the input to the output layer. *(Ch. 3)*
+- **hook** — a function the harness owner attaches before a tool runs (may block), after it runs (may rewrite the result) or on every event (logging). *(Ch. 24, Ch. 27)*
 - **host** — in MCP, the application that owns the model and the agent loop and decides what the model may do. *(Ch. 26)*
 - **hybrid** — an architecture that mixes many linear/SSM layers with a few full-attention layers kept for exact recall. *(Ch. 12)*
 - **hyper-connections** — replacing the single residual stream with several streams mixed by small learned matrices at every layer. *(Ch. 12)*
@@ -229,6 +248,7 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 
 - **Jaccard similarity** — |A ∩ B| / |A ∪ B| for two sets; the fraction of shingles two documents share. *(Ch. 8)*
 - **jailbreak** — an input crafted to make a model violate its principles: role-play framings, encodings, many-shot compliance examples, or instructions hidden in tool results. *(Ch. 22)*
+- **JSON Schema** — the standard vocabulary for describing an object's typed properties and which are required; the format of every tool description in the Anthropic and OpenAI APIs and MCP. *(Ch. 24)*
 - **JSON-RPC 2.0** — the message format under MCP: a request has an id, a method and params; a response carries the same id with a result or an error object. *(Ch. 26)*
 - **judge** — any function `(prompt, answer_a, answer_b) → "A" | "B" | "tie"`; a rule, a model, or a human. *(Ch. 23)*
 
@@ -253,7 +273,7 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **length bias** — a judge's preference for the longer answer, independent of correctness. *(Ch. 23)*
 - **length control** — keeping RL-trained answers from growing without bound, via overlong shaping, un-normalised losses or length budgets. *(Ch. 19)*
 - **Lightning Indexer** — the small, low-precision scoring module in DSA that selects which keys each query attends to. *(Ch. 12)*
-- **likelihood displacement** — the DPO failure in which the pairs become well separated while the chosen answers themselves become less likely than under the reference, because only the difference of log-probabilities is constrained. *(Ch. 17)*
+- **likelihood displacement** — the DPO failure in which the pairs become well separated while the chosen answers themselves become less likely than under the reference, because only the difference of log-probabilities is constrained. *(Ch. 17, Ch. 22)*
 - **Likert rating** — a label format that scores one answer on a fixed scale (1–5 or 1–7); cheap but prone to annotator drift and ceiling effects. *(Ch. 16)*
 - **linear attention** — attention without the softmax, which can be computed as a recurrence with a fixed-size state. *(Ch. 12)*
 - **linear/state-space layer** — a sequence layer (Mamba-2, gated DeltaNet, linear attention) that keeps a fixed-size state instead of a growing KV cache. *(Ch. 12)*
@@ -263,7 +283,7 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **locality-sensitive hashing (LSH)** — bucketing signatures by bands so that similar documents collide and only bucket-mates are compared. *(Ch. 8)*
 - **log-probability** — the logarithm of a probability; turns the chain-rule product into a sum and avoids underflow. *(Ch. 1)*
 - **logit distillation** — Hinton's 2015 recipe: on fixed text, train the student's next-token distribution to match the teacher's whole distribution with a forward KL loss. *(Ch. 20)*
-- **logits** — the `V` unnormalised scores per position produced by the output head before the softmax. *(Ch. 6)*
+- **logits** — the raw scores a model outputs, one per vocabulary entry per position; softmax turns them into probabilities. *(Ch. 0, Ch. 3, Ch. 6)*
 - **long-context extension** — a short, low-LR training phase on long documents after re-scaling the positional encoding, teaching the model to use positions beyond its pretraining length. *(Ch. 13)*
 - **LoRA (low-rank adaptation)** — parameter-efficient fine-tuning that freezes each weight matrix W and trains a rank-r update B·A (scaled by α/r) added to it; B starts at zero and the update is merged into W after training. *(Ch. 15)*
 - **loss curve** — training or validation loss plotted against steps or tokens; read on a log-token axis for its power-law shape. *(Ch. 9)*
@@ -283,6 +303,7 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **maximum-likelihood estimate** — the parameter choice that makes the training data most probable; for an n-gram it is the plain count ratio count(c, w) / count(c). *(Ch. 1)*
 - **mean squared error (MSE)** — the average squared difference between predictions and targets. *(Ch. 4)*
 - **memorisation** — a model reproducing training text verbatim; grows with how often the text was repeated in training. *(Ch. 8)*
+- **memory file** — a plain-text file the agent appends notes to and that later runs read back through the system prompt; information that outlives the window. *(Ch. 25)*
 - **memory-bound** — limited by how fast bytes can be read from memory rather than by arithmetic; batch-1 decode is the canonical case. *(Ch. 7)*
 - **merge** — one learned BPE rule: a pair of symbol ids and the new id that replaces them; the ordered merge list is the tokenizer. *(Ch. 2)*
 - **MFU** — model FLOPs utilisation: the useful 6·N·D FLOPs achieved divided by the hardware's peak FLOP/s; ~40% is good for a large run. *(Ch. 9)*
@@ -298,6 +319,7 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **mode-seeking** — a divergence minimised by putting probability mass only where the target's mass is high, ignoring the rest (reverse KL). *(Ch. 20)*
 - **Model Context Protocol (MCP)** — the open standard (November 2024, revision 2025-11-25) by which an agent lists and calls tools, reads resources and fetches prompts from a separate server over JSON-RPC. *(Ch. 26)*
 - **model FLOPs utilisation (MFU)** — the fraction of the hardware's peak FLOP/s spent on the model's own 6·N·D operations; 40–50% is good at scale. *(Ch. 11)*
+- **model spec** — a lab's public, versioned document stating how its models should behave and how conflicting instructions (platform, developer, user) rank; Anthropic's constitution for Claude and OpenAI's Model Spec are the examples. *(Ch. 22)*
 - **momentum** — an optimizer that steps along a running average (velocity) of past gradients. *(Ch. 4)*
 - **monitoring** — logging and auditing agent transcripts so that violations are found after the fact even when the weights and the gates missed them. *(Ch. 22)*
 - **multi-agent system** — a program that runs several agents, each with its own context, and combines their outputs; the design decisions are who sees what and how outputs combine. *(Ch. 28)*
@@ -306,6 +328,7 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **multi-layer perceptron (MLP)** — a chain of layers, each feeding the next. *(Ch. 4)*
 - **multi-query attention (MQA)** — GQA with a single key/value head. *(Ch. 5)*
 - **multi-token prediction (MTP)** — extra heads trained to predict tokens t+2, t+3, … from the same hidden state, adding training signal and a speculative-decoding draft. *(Ch. 12)*
+- **multi-turn** — an episode in which the model chains tool calls, reads results and re-plans until it stops; the general case of the loop. *(Ch. 24)*
 - **Muon** — a 2024–2026 optimizer that orthogonalises the momentum-averaged gradient of each weight matrix before stepping. *(Ch. 4, Ch. 10)*
 - **muP** — Maximal Update Parametrisation: scaling initialisation and per-layer learning rates with width so the optimal learning rate is width-independent. *(Ch. 9)*
 
@@ -313,6 +336,7 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 
 - **n-gram model** — a language model whose context is the previous n − 1 tokens, estimated by counting. *(Ch. 1)*
 - **n-gram overlap** — the decontamination test: any document sharing an n-word window (13 in production) with an eval item is removed. *(Ch. 8)*
+- **nanochat** — Karpathy's October 2025 end-to-end pipeline that trains and serves a ~560M-parameter chat model for about $100 on 8×H100 in roughly four hours. *(Ch. 29)*
 - **nats** — the unit of cross-entropy loss when the logarithm is natural; an untrained model scores `ln V` nats. *(Ch. 6)*
 - **near-duplicate** — a document that differs from another only by a few words, a date or a byline. *(Ch. 8)*
 - **neuron** — a unit that computes an activation function of a weighted sum of its inputs plus a bias. *(Ch. 4)*
@@ -353,8 +377,9 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **parallel thinking** — producing several reasoning paths in one inference pass and merging them, reported to beat one long chain at equal token budget. *(Ch. 19)*
 - **pass@N** — the fraction of prompts for which at least one of N samples is correct; an upper bound on best-of-N selection and the standard probe for whether RL added capability or only sharpened. *(Ch. 19)*
 - **per-token advantage** — in OPD, `A_t = log π_t(y_t) − log π_s(y_t)`: how much more the teacher liked the student's token than the student itself did; positive means push the token up. *(Ch. 20)*
-- **permission gate** — a harness rule requiring human approval before destructive or irreversible actions. *(Ch. 22, Ch. 27)*
-- **permission policy** — `allow_all`, `allow_read_only` (only tools flagged `read_only`) or `ask` (defer to a `permission_fn`; deny if none). *(Ch. 27)*
+- **permission function** — the `permission_fn(call, tool) -> bool` passed to `Agent.run` that a real harness wires to a prompt on the user's screen; consulted for every call under `ask` and for non-read-only calls under `allow_read_only`. *(Ch. 24)*
+- **permission gate** — a harness rule requiring human approval before destructive or irreversible actions. *(Ch. 22, Ch. 24, Ch. 27)*
+- **permission policy** — the configured answer of the gate: `allow_all`; `allow_read_only` (tools flagged read-only run without asking, the rest go to the permission function, and are denied if there is none); or `ask` (every call goes to the permission function; deny if none). *(Ch. 24, Ch. 27)*
 - **perplexity** — 2 raised to the average bits per token; the effective number of equally likely choices per step; lower is better. *(Ch. 1, Ch. 10, Ch. 23)*
 - **PII** — personally identifiable information (e-mails, phone numbers, IDs) scrubbed or replaced with placeholder tokens before training. *(Ch. 8)*
 - **pipeline** — agents run in sequence, each stage's output being the next stage's whole input. *(Ch. 28)*
@@ -381,6 +406,7 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **probability distribution** — a set of non-negative numbers, one per possible outcome, that add up to 1. *(Ch. 1)*
 - **probability ratio** — ρ = π_θ(a)/π_old(a), how much a token's probability has changed since the policy that produced the sample. *(Ch. 18)*
 - **progress file** — `PROGRESS.md`: appended by the harness after each session with the model's summary, the verifier's PASS/FAIL and the test output tail. *(Ch. 27)*
+- **prompt cache** — a provider's reuse of the KV cache of a previous request for the longest byte-identical prefix of a new request, billed at a fraction of the input price. *(Ch. 25)*
 - **prompt caching** — reusing the KV cache of a shared prompt prefix across requests so it is prefilled once. *(Ch. 7)*
 - **prompt injection** — a jailbreak delivered through content the model reads rather than the user's message, such as a web page or a tool result. *(Ch. 22, Ch. 26)*
 - **prompts** — in MCP, reusable prompt templates with arguments that a server offers. *(Ch. 26)*
@@ -399,6 +425,8 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **random windows** — batching by taking `batch_size` random `seq_len`-token slices of the packed stream; the target is the slice shifted one token right. *(Ch. 10)*
 - **rank** — the number r of independent directions in a LoRA update; r · (d_in + d_out) trainable numbers per layer instead of d_in · d_out. *(Ch. 15)*
 - **ranking** — a label format that orders k answers to one prompt; each ranking expands into all of its pairwise comparisons for training. *(Ch. 16)*
+- **reading plan** — a routine for staying current: primary sources first (model tech reports, the papers behind each stage), a small set of aggregators second, and a habit of reproducing one claim per month at toy scale. *(Ch. 29)*
+- **readOnlyHint** — the optional MCP tool annotation by which a server claims a tool has no side effects; a client may copy it into its permission gate, but it is a claim, not a guarantee. *(Ch. 26)*
 - **reasoning model** — a model trained with RLVR to produce intermediate steps before its answer. *(Ch. 0, Ch. 14)*
 - **red-teaming** — the organised search, by people or attacker models, for inputs that make a model violate its principles. *(Ch. 22)*
 - **reference** — a frozen copy of the policy taken before training (π_ref), against which DPO measures how far the policy has moved. *(Ch. 17)*
@@ -413,6 +441,7 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **residual stream** — the width-`d` vector per token that flows straight through the model; every sub-layer reads it (through a norm) and writes to it by addition, and it is never overwritten. *(Ch. 6)*
 - **resources** — in MCP, read-only data a server exposes by URI for the host to attach to the context. *(Ch. 26)*
 - **resuming** — starting a new session from the files alone; in `MiniHarness` it is the same function as `run_session()`. *(Ch. 27)*
+- **retrieval (just-in-time context)** — keeping files, documents and tool schemas outside the window and loading them by identifier only when the agent asks. *(Ch. 25)*
 - **return** — the sum of future rewards from a state; equal to the final reward when there is only one. *(Ch. 18)*
 - **reverse KL** — `KL(student ‖ teacher)` measured on the student's own samples; mode-seeking, the objective of on-policy distillation. *(Ch. 20)*
 - **reward** — the score assigned to a trajectory; for a language model one number for the whole answer, arriving at the end. *(Ch. 18)*
@@ -435,9 +464,11 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **safety evals** — measurements of a model's behaviour against its principles: harmful-compliance rate, over-refusal rate, sycophancy rate, harmful-capability uplift, agentic-safety tests. *(Ch. 22)*
 - **safety training** — post-training that shapes refusals, honesty and behaviour under autonomy. *(Ch. 0)*
 - **sampling** — choosing the next token at random in proportion to its probability. *(Ch. 1, Ch. 26)*
-- **sandbox** — an isolated process or container in which an agent's actions cannot reach anything outside, that can be reset to a known state for every rollout. *(Ch. 21, Ch. 26)*
+- **sandbox** — an isolated process or container in which an agent's actions cannot reach anything outside, that can be reset to a known state for every rollout. *(Ch. 21, Ch. 22, Ch. 26)*
+- **scale-up map** — the table of what changes in each pipeline stage between TinyLM, a $100 run, and 1B / 10B / 100B+ models: data volume, tokenizer size, precision and optimizer, parallelism, RL infrastructure, evals, safety. *(Ch. 29)*
 - **scaling law** — an empirical power-law relationship between a model's loss and its parameters N, training tokens D, or compute C, holding across many orders of magnitude. *(Ch. 9)*
 - **score-function trick** — the identity ∇π = π ∇log π, which turns the gradient of an expected reward into an expectation over the policy's own samples. *(Ch. 18)*
+- **scripted backend** — a backend that replays a fixed list of replies and records every call it receives; it makes the harness testable without a model. *(Ch. 24)*
 - **Self-Instruct** — a synthetic-data method in which a model, seeded with a few tasks, invents new prompts and answers them; Evol-Instruct rewrites prompts to be progressively harder. *(Ch. 15)*
 - **self-preference** — a model judge's preference for answers in its own style. *(Ch. 23)*
 - **self-preference bias** — a judge's tendency to prefer text in its own style, including its own outputs; mitigated by judging with a different model family. *(Ch. 16)*
@@ -451,6 +482,7 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **sigmoid** — the S-shaped function σ(z) = 1 / (1 + e^(−z)) that maps any real number to a probability between 0 and 1. *(Ch. 17)*
 - **signature** — a fixed-length summary of a document (64 MinHash values) from which similarity can be estimated. *(Ch. 8)*
 - **SimPO** — a reference-free DPO variant whose reward is the average per-token log-probability of the answer, with a required margin γ. *(Ch. 17)*
+- **single-turn** — tool use in which the model calls one tool and then answers; two model calls, one result. *(Ch. 24)*
 - **singular values** — the stretch factors of a matrix along its principal directions; an orthogonal matrix has all singular values equal to 1. *(Ch. 10)*
 - **skill** — a folder of instructions (a `SKILL.md` plus any scripts) whose one-line description is always in context but whose body is loaded only when the task matches. *(Ch. 27)*
 - **sliding window** — a sparse-attention pattern in which each query sees only the most recent w keys. *(Ch. 12)*
@@ -462,15 +494,20 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **special token** — a reserved string such as `<|user|>` with its own id that is never split into pieces; used for chat structure and document boundaries. *(Ch. 2)*
 - **special tokens** — vocabulary ids reserved for structure (roles, turn ends, padding) that are never produced by encoding ordinary text. *(Ch. 14)*
 - **speculative decoding** — a fast draft model proposes `k` tokens and the target verifies them in one pass, accepting the matching prefix; lossless. *(Ch. 7, Ch. 12)*
+- **stable prefix** — the leading part of a request that is byte-identical to the previous request's and can therefore be served from the prompt cache. *(Ch. 25)*
+- **stage table** — the capstone's record of what each stage did, what it reused, and how long it took. *(Ch. 29)*
 - **state** — what the agent sees before choosing an action; for a language model, the prompt plus the tokens generated so far. *(Ch. 18)*
 - **static batching** — running a fixed group of requests together until the longest finishes. *(Ch. 7)*
+- **stop condition** — the rule that ends a run: a reply with no tool calls (done), reaching `max_turns`, or a backend exception (error). *(Ch. 24)*
 - **stop token** — a vocabulary entry (TinyLM: `<|end|>`) that a post-trained model emits to end its turn, halting the decode loop. *(Ch. 7)*
 - **Storyland** — the course's synthetic corpus: templated stories about a fixed cast plus two-digit arithmetic and Q&A. *(Ch. 0)*
 - **Streamable HTTP** — MCP's transport for remote servers: one HTTP endpoint that can stream replies, with OAuth for authorisation. *(Ch. 26)*
 - **strong-to-weak distillation** — training a smaller model from a larger one's outputs (off-policy) and then its token-level judgements (on-policy), as in the Qwen3 recipe. *(Ch. 14)*
+- **stub** — the one-line placeholder `[tool result truncated: N chars]` that compaction leaves in place of an old tool result. *(Ch. 25)*
 - **student** — the model being trained in distillation, usually smaller than the teacher. *(Ch. 20)*
-- **sub-agent** — a fresh `Agent` with an empty context, usually fewer tools and the same policy, whose final text alone returns to the parent; context and risk isolation. *(Ch. 27)*
+- **sub-agent** — a fresh agent with an empty context that runs one sub-task with a subset of the tools and returns only its final text to the parent. *(Ch. 25, Ch. 27)*
 - **subword tokens** — pieces between characters and words: common words are one token, rare words are split into common pieces. *(Ch. 2)*
+- **summariser** — a function (in practice a model call) that collapses the older part of a history into one message that keeps decisions and facts. *(Ch. 25)*
 - **superposition** — storing more features than dimensions by using overlapping directions in the residual stream; why single neurons rarely mean one thing. *(Ch. 6)*
 - **supervised fine-tuning (SFT)** — training on prompt → answer examples in a chat format; produces the instruct model. *(Ch. 0, Ch. 14, Ch. 15)*
 - **surprisal** — −log₂ P(token | context): how surprised the model was by the token that actually came. *(Ch. 1)*
@@ -495,26 +532,33 @@ Every bold term defined in the course, with the chapter(s) that define it. 461 e
 - **token** — the unit of text a model reads and predicts; a word or punctuation mark in Chapter 1, a learned sub-word piece from Chapter 2 on. *(Ch. 1)*
 - **token-level loss** — averaging the clipped objective over every answer token in the batch, so long answers weigh more (DAPO); the original GRPO averaged within each answer first. *(Ch. 19)*
 - **tokenizer** — the fixed mapping from text to integer ids and back that a model is trained on. *(Ch. 0, Ch. 2)*
+- **tool** — a Python function plus a name, a description and a JSON Schema for its arguments, returning text; the unit of what an agent may do. *(Ch. 24)*
 - **tool call** — an assistant turn in which the model emits a structured request (a JSON name and arguments) for the harness to execute, answered by a tool-result turn. *(Ch. 14, Ch. 21)*
 - **tool design** — the craft of naming, describing, typing and error-messaging a tool so that a model can use it correctly without training on it. *(Ch. 26)*
 - **tool search** — keeping a large tool catalogue outside the context and giving the model one tool that returns the schemas of the few tools matching a query. *(Ch. 26)*
+- **tool-SFT** — supervised fine-tuning on conversations that contain tool calls and tool results, so the model learns to emit the harness's tool-call format. *(Ch. 29)*
 - **tool-use bonus** — a small shaping reward paid when the tool was used correctly and the final answer is right; paid unconditionally it invites reward hacking. *(Ch. 21)*
 - **top-k** — sampling restricted to the `k` most probable tokens, renormalised. *(Ch. 7)*
 - **top-k sparse attention** — 🆕 each query attends to a small selected subset of keys (NSA, DeepSeek Sparse Attention, DeepSeek-V4 CSA/HCA). *(Ch. 5)*
 - **top-p** — nucleus sampling: keep the smallest set of tokens whose cumulative probability reaches `p`. *(Ch. 7)*
+- **train with the prompt you serve with** — the rule that an agent policy must be fine-tuned under the exact system prompt (instruction plus tool listing) the harness sends at serving time; a mismatch between the two silently degrades tool use. *(Ch. 21)*
 - **training step** — one trip round forward → loss → backward → optimizer step. *(Ch. 4)*
+- **training–serving skew** — any difference between the inputs a model was trained on and the inputs it receives in deployment, of which the system-prompt mismatch is the agent-specific case. *(Ch. 21)*
 - **train–test overlap** — evaluation items present in the training data; the target of decontamination. *(Ch. 8)*
 - **trajectory** — the full sequence of states and actions in one episode; for a language model, one complete answer ending in `<|end|>`. *(Ch. 18, Ch. 21)*
 - **Transformer block** — one attention sub-layer and one MLP sub-layer, each wrapped as `x = x + f(norm(x))`; the unit that is stacked `L` times to make a language model. *(Ch. 6)*
 - **transport** — the channel MCP messages travel over: stdio (one JSON object per line on a subprocess's pipes) or Streamable HTTP. *(Ch. 26)*
 - **trigram** — an n-gram model with two tokens of context (n = 3). *(Ch. 1)*
+- **turn** — one pass of the loop: a model call, the execution of every tool it requested, and the appending of the results. *(Ch. 24)*
 - **turn-level reward** — a reward returned by the environment for one turn (e.g. a well-formed tool call), summed with the others into the trajectory reward. *(Ch. 21)*
 - **two-stage (distillation recipe)** — off-policy SFT on teacher samples first, to bring the student into the teacher's style, then on-policy distillation. *(Ch. 20)*
 
 ## U
 
+- **underflow** — a product of many small probabilities becoming too small for floating-point numbers to represent; the reason log-probabilities are used. *(Ch. 1)*
 - **unit-test eval** — an exact-match eval for code: the generated program is graded by running hidden tests. *(Ch. 23)*
 - **up-sampling** — repeating a scarce high-value source (e.g. Wikipedia) several times in the mix. *(Ch. 8)*
+- **UTF-8** — the standard encoding of text as a sequence of bytes (0–255), one to four bytes per character; the base alphabet of a byte-level tokenizer. *(Ch. 2)*
 
 ## V
 

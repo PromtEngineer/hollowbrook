@@ -80,7 +80,7 @@ svg.plot{width:100%;height:auto;display:block}
 <div class="grid two">
   <div class="panel">
     <strong>Compaction: before → after</strong> <span class="note">(<code>compact()</code> in <code>llm/agent/context.py</code>)</span>
-    <div id="compView" class="note" style="margin-top:6px">No compaction yet. It keeps the first message (the task) and the last keep_last messages verbatim; older tool results become the stub <code>[tool result truncated: N chars]</code> (~12 tokens); with a summariser, all older turns collapse into one <code>[Summary of earlier work]</code> message (~250 tokens here).</div>
+    <div id="compView" class="note" style="margin-top:6px">No compaction yet. It keeps the first message (the task) and the last keep_last messages verbatim; older tool results become the stub <code>[tool result truncated: N chars]</code> (~8 tokens); with a summariser, all older turns collapse into one <code>[Summary of earlier work]</code> message (~250 tokens here).</div>
   </div>
   <div class="panel">
     <div class="row" style="justify-content:space-between"><strong>Prompt cache</strong>

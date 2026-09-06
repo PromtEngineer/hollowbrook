@@ -12,7 +12,7 @@
     <text x="70" y="195" text-anchor="middle" font-size="10" fill="#64748b">unit circle (inputs)</text>
     <ellipse cx="190" cy="130" rx="60" ry="10" fill="#2563eb" fill-opacity="0.25" stroke="#2563eb" transform="rotate(-30 190 130)"/>
     <path d="M118 130 L 135 130" stroke="#64748b" stroke-width="2" marker-end="url(#ar2)"/>
-    <text x="180" y="195" text-anchor="middle" font-size="10" fill="#64748b">M squashes: σ₁=60, σ₂=10</text>
+    <text x="190" y="208" text-anchor="middle" font-size="10" fill="#64748b">M squashes: σ₁=60, σ₂=10</text>
     <text x="130" y="222" text-anchor="middle" font-size="11" fill="#0f172a">a few directions dominate the update</text>
   </g>
 
@@ -30,14 +30,14 @@
     <line x1="30" y1="215" x2="240" y2="215" stroke="#0f172a"/>
     <line x1="30" y1="215" x2="30" y2="120" stroke="#0f172a"/>
     <text x="135" y="232" text-anchor="middle" font-size="10" fill="#64748b">singular value before  →</text>
-    <text x="22" y="118" text-anchor="end" font-size="10" fill="#64748b">after</text>
+    <text x="26" y="150" text-anchor="end" font-size="9" fill="#64748b">after</text>
     <!-- the quintic maps s in (0,1] toward 1 -->
     <path d="M30 215 C 45 130, 80 128, 120 132 C 160 136, 200 128, 240 130" fill="none" stroke="#7c3aed" stroke-width="2"/>
     <line x1="30" y1="130" x2="240" y2="130" stroke="#16a34a" stroke-dasharray="4 3"/>
     <text x="244" y="134" font-size="10" fill="#16a34a">1</text>
     <text x="70" y="200" font-size="10" fill="#64748b">σ = 0.1</text>
     <text x="200" y="200" font-size="10" fill="#64748b">σ = 1</text>
-    <text x="130" y="112" text-anchor="middle" font-size="10" fill="#0f172a">each pass pushes every σ toward 1 (only matmuls)</text>
+    <text x="135" y="112" text-anchor="middle" font-size="10" fill="#0f172a">every σ is pushed toward 1 (only matmuls)</text>
   </g>
 
   <!-- Panel 3: orthogonal update -->

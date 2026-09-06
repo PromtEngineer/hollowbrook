@@ -7,7 +7,7 @@
 
 ## Why this matters
 
-Open the model card of a 2026 open-weight model and you will read something like: "1.6T total parameters, ~40B active, fine-grained MoE with one shared expert, compressed sparse attention interleaved with heavily compressed attention, multi-token prediction, manifold-constrained hyper-connections, 1M-token context." Every one of those phrases is a fix for a specific cost that the plain 2017 Transformer pays: the MLP costs compute proportional to every parameter for every token, attention costs memory and time proportional to the context length, and next-token prediction gives one training signal per token. The TinyLM you built in Chapter 6 is the 2017 shape with 2023 polish (RMSNorm, RoPE, SwiGLU, GQA). This chapter adds the 2024–2026 pieces, three of which (`MoE`, `mtp_heads`, `sliding_window`) are switches in `llm/model.py` you will flip in the lab, and ends with the surprisingly short list of things that have not changed.
+Open the model card of a 2026 open-weight model and you will read something like: "1.6T total parameters, ~40B active, fine-grained MoE with one shared expert, compressed sparse attention interleaved with heavily compressed attention, multi-token prediction, manifold-constrained hyper-connections, 1M-token context." Every one of those phrases is a fix for a specific cost that the plain 2017 Transformer pays: the MLP costs compute proportional to every parameter for every token, attention costs memory and time proportional to the context length, and next-token prediction gives one training signal per token. The TinyLM you built in Chapter 6 is the 2017 shape with 2023 polish (RMSNorm, RoPE, SwiGLU, GQA). This chapter adds the 2024–2026 pieces, three of which are switches in `TinyLMConfig` (`use_moe`, `mtp_heads`, `sliding_window`; the code behind them is in `llm/model.py`) that you will flip in the lab, and ends with the surprisingly short list of things that have not changed.
 
 ## The idea in pictures 📐
 
@@ -21,7 +21,7 @@ In the figure, four tokens enter from the left. The orange **router** is one sma
 
 ![A hybrid stack of linear/SSM layers with full-attention layers every fourth block, and what each keeps in memory](../figures/12_hybrid.svg)
 
-The left column shows a twelve-layer hybrid block: nine green **linear/state-space layers** and three blue full-attention layers, a 3:1 ratio. The middle panel shows what each kind of layer must remember while decoding. A full-attention layer keeps a key and value for every past token (the row of blue cells that keeps growing), which is why it can look up any earlier token exactly and why its per-token cost grows with context. A linear layer keeps a single fixed-size matrix S (the green block) that is updated by one rank-one addition per token and read by one matrix-vector product; its size is the same at 10 tokens and at a million, but it is a running summary, so old details fade. The right column lists 2025–26 models built this way. The design rule that emerged: make most layers cheap, keep a few exact ones for recall.
+The left column shows a twelve-layer hybrid block: nine green **linear/state-space layers** and three blue full-attention layers, a 3:1 ratio. The middle panel shows what each kind of layer must remember while decoding. A full-attention layer keeps a key and value for every past token (the row of blue cells that keeps growing), which is why it can look up any earlier token exactly and why its per-token cost grows with context. A linear layer keeps a single fixed-size matrix S (the green block) that is updated by adding one **outer product** per token (the matrix k⊗v whose entry (i, j) is k<sub>i</sub>·v<sub>j</sub>; a "rank-one" update) and read by one matrix-vector product; its size is the same at 10 tokens and at a million, but it is a running summary, so old details fade. The right column lists 2025–26 models built this way. The design rule that emerged: make most layers cheap, keep a few exact ones for recall.
 
 ### One token through a 2026 block
 
@@ -86,7 +86,7 @@ The **load-balancing auxiliary loss** on the second-to-last line is the Switch T
 
 $$L_{\text{aux}} = \alpha \, E \sum_{e=1}^{E} f_e \, P_e$$
 
-Read this as: for each expert, multiply the fraction of tokens that were *actually sent* to it (f_e, not differentiable) by the router's *average probability* for it (P_e, differentiable), sum, and scale by the number of experts. If routing is perfectly even, every f_e and P_e is 1/E and the sum is 1, its minimum; if one expert hogs traffic, its large f_e multiplies its large P_e and the gradient through P_e pushes the router's probability for that expert down. The coefficient α (`moe_aux_loss_coef`, 0.01 in TinyLM) must be small: too large and the router balances at the expense of the language-modelling loss. DeepSeek-V3 replaced this with an **auxiliary-loss-free** scheme, a per-expert bias added to the routing scores and nudged up or down after each step depending on load, so nothing competes with the main loss; the lab shows what happens to TinyLM when α is set to zero.
+Read this as: for each expert, multiply the fraction of tokens that were *actually sent* to it (f_e, not differentiable) by the router's *average probability* for it (P_e, differentiable), sum, and scale by the number of experts. If routing is perfectly even, every f_e and P_e is 1/E and the sum is 1, the smallest value it can take as long as the routed fractions track the router's probabilities (which they do, since the top-k picks follow the probabilities); if one expert hogs traffic, its large f_e multiplies its large P_e and the gradient through P_e pushes the router's probability for that expert down. The coefficient α (`moe_aux_loss_coef`, 0.01 in TinyLM) must be small: too large and the router balances at the expense of the language-modelling loss. DeepSeek-V3 replaced this with an **auxiliary-loss-free** scheme, a per-expert bias added to the routing scores and nudged up or down after each step depending on load, so nothing competes with the main loss; the lab shows what happens to TinyLM when α is set to zero.
 
 ### Active versus total parameters
 
@@ -111,12 +111,12 @@ Full attention scores every query against every key, T² work and a KV cache of 
 
 ```python
 print(causal_mask(T=6, S=6, past=0, window=3, device="cpu").int())
-# [[1,0,0,0,0,0],
-#  [1,1,0,0,0,0],
-#  [1,1,1,0,0,0],
-#  [0,1,1,1,0,0],      <- query 3 sees keys 1..3 only
-#  [0,0,1,1,1,0],
-#  [0,0,0,1,1,1]]
+# tensor([[1, 0, 0, 0, 0, 0],
+#         [1, 1, 0, 0, 0, 0],
+#         [1, 1, 1, 0, 0, 0],
+#         [0, 1, 1, 1, 0, 0],      <- query 3 sees keys 1..3 only
+#         [0, 0, 1, 1, 1, 0],
+#         [0, 0, 0, 1, 1, 1]], dtype=torch.int32)
 ```
 
 A window bounds the KV cache but discards everything older, so windows are used in *some* layers (Gemma and gpt-oss alternate windowed and full layers) or as one branch of a richer scheme. The 2025–26 schemes select keys by *content*:
@@ -135,7 +135,7 @@ def mla_bytes_per_token(n_layers, d_latent, d_rope, dtype_bytes=2):
     return n_layers * (d_latent + d_rope) * dtype_bytes               # one latent (+ RoPE key) per layer
 
 print(kv_bytes_per_token(80, 64, 128) / 1e3, kv_bytes_per_token(80, 8, 128) / 1e3, mla_bytes_per_token(80, 512, 64) / 1e3)
-# 2621.4 KB (MHA)   327.7 KB (GQA, 8 kv-heads)   92.2 KB (MLA-style)   per token, Llama-3-70B-like shape
+# 2621.44 327.68 92.16    <- KB per token: MHA, GQA (8 kv-heads), MLA-style; a Llama-3-70B-like shape
 ```
 
 Read this as: at 128k tokens of context, the same 80-layer model needs 344 GB of cache with plain multi-head attention, 43 GB with GQA, and 12 GB with an MLA-style latent, which is the difference between "impossible" and "one GPU".
@@ -162,7 +162,7 @@ y_attention = (scores * w) @ v
 print(torch.allclose(y_recurrent, y_attention, atol=1e-5))   # True
 ```
 
-Read the loop as: the state S is a running sum of outer products key⊗value, decayed a little each step; to "attend", the query multiplies the state. That is **linear attention**, and it is the core of the family of layers that go by different names: **Mamba-2** (a state-space model whose selective scan is this recurrence with input-dependent decay), **gated DeltaNet** (replaces the plain addition with a "delta rule" update that overwrites the part of S that matches the current key, so the state can *forget* specific things, plus a gate), and **Kimi Delta Attention**. All of them cost O(T) time and O(1) memory per sequence during decoding, versus attention's O(T) per token and a cache of T entries.
+Read the loop as: the state S is a running sum of outer products key⊗value, decayed a little each step; to "attend", the query multiplies the state. That is **linear attention**, and it is the core of the family of layers that go by different names: **Mamba-2** (a state-space model whose selective scan is this recurrence with input-dependent decay), **gated DeltaNet** (replaces the plain addition with a "delta rule" update that overwrites the part of S that matches the current key, so the state can *forget* specific things, plus a gate), and **Kimi Delta Attention**. All of them cost a constant amount of work and memory per new token during decoding (O(1) per token, in the usual notation), versus attention's cost per new token that grows with the context (O(T)) and a cache of T entries.
 
 The limit is in the same loop: S has dk × dv numbers no matter how long the sequence, so it cannot store every past token exactly, and tasks that need verbatim recall (copy this 40-digit number, find the one line in a 100k-token log that mentions "timeout") degrade. The 2025–26 solution is the **hybrid**: Nemotron-H (Mamba-2 layers with roughly one attention layer in twelve), Qwen3-Next (3 gated-DeltaNet layers per gated-attention layer), Kimi Linear (3 KDA layers per MLA layer), and 🆕 Nemotron-Nano-V3 (a hybrid Mamba–attention MoE, 30B total / 3B active, used as the test bed in the 2026 optimizer study at https://arxiv.org/abs/2607.20548). The evidence so far is that a 3:1 or higher ratio keeps quality within noise of full attention on most benchmarks while cutting the KV cache several-fold at long context; whether the ratio can go to zero attention is open.
 
@@ -185,7 +185,7 @@ Every architecture here still has Chapter 6's residual stream: one vector per to
 
 ### Diffusion language models: a different generation loop entirely
 
-Everything above is **autoregressive**: one token at a time, left to right. **Diffusion language models** (LLaDA and LLaDA-MoE, 2025, among others) instead start from a fully masked sequence and un-mask tokens in parallel over a few dozen refinement steps, with a bidirectional Transformer underneath. The attractions are parallel decoding and editing the middle of a sequence; the open questions are whether they match autoregressive quality at frontier scale and whether their step count beats a KV-cached decode loop in wall-clock. As of 2026 they are a research direction, not the mainstream recipe.
+Everything above is **autoregressive**: one token at a time, left to right. **Diffusion language models** (LLaDA and LLaDA-MoE, 2025, among others) instead start from a fully masked sequence and un-mask tokens in parallel over a few dozen refinement steps, with a *bidirectional* Transformer underneath (every position attends to every other, with no causal mask). The attractions are parallel decoding and editing the middle of a sequence; the open questions are whether they match autoregressive quality at frontier scale and whether their step count beats a KV-cached decode loop in wall-clock. As of 2026 they are a research direction, not the mainstream recipe.
 
 ### Long context to 1M tokens
 
@@ -208,9 +208,9 @@ The training objective, the residual-stream-plus-sub-layer skeleton, the embeddi
 
 ## Worked example 🧪
 
-`python3 labs/lab12_moe.py` trains four nano models for the same number of steps (dense, MoE, MoE without the balancing loss, dense with an MTP head), reads `blocks[i].mlp.last_expert_counts` to plot expert utilisation, evaluates the pretrained base model with sliding windows of ∞/32/8, and prints the KV-cache table. Quick mode uses 120 steps at batch 16 × 64 tokens; `--full` uses 400 steps at 32 × 128.
+`python3 labs/lab12_moe.py` trains four nano models for the same number of steps (dense, MoE, MoE without the balancing loss, dense with an MTP head), reads `blocks[i].mlp.last_expert_counts` to plot expert utilisation, evaluates the pretrained base model with sliding windows of ∞/32/8, and prints the KV-cache table. Quick mode uses 120 steps at batch 16 × 64 tokens; `--full` uses 250 steps at 32 × 128.
 
-**Quick mode (120 steps at 16 × 64 tokens per variant; 1,596 s on a shared 4-core machine at load ≈ 15–20, `OMP_NUM_THREADS=2`; under a minute on a quiet laptop):**
+**Quick mode (120 steps at 16 × 64 tokens per variant; 989 s on a shared 4-core machine at load ≈ 15–20, `OMP_NUM_THREADS=2`; a couple of minutes on a quiet laptop; the losses are deterministic, the tok/s column is not):**
 
 ```text
 --- 1. dense vs MoE (nano, 120 steps, batch 16x64) ---
@@ -220,14 +220,14 @@ The training objective, the residual-stream-plus-sub-layer skeleton, the embeddi
    val loss 2.0972  (perplexity 8.1)
 
    variant       total     active  val loss  val ppl    tok/s
-   dense       379,200    379,200     2.444     11.5      166
-   moe       1,265,088    601,536     2.097      8.1      302
+   dense       379,200    379,200     2.444     11.5      262
+   moe       1,265,088    601,536     2.097      8.1      583
    MoE stores 2.10x more parameters than it uses per token
 ✅ MoE has >2x the TOTAL parameters of the dense model
 ✅ dense and MoE reach comparable val loss (2.444 vs 2.097)
 ```
 
-The MoE reaches a lower validation loss (2.10 versus 2.44) for the same steps, but read the parameter columns first: with one routed plus one shared expert it has 1.6× the dense model's *active* parameters and 3.3× its total, so this is "more capacity at the same step count", not "same compute"; exercise 2 equalises the active counts. The tokens-per-second column reflects a contended CPU and a Python `for` loop over experts; production kernels group tokens by expert and run one matrix multiply each.
+The MoE reaches a lower validation loss (2.10 versus 2.44) for the same steps, but read the parameter columns first: with one routed plus one shared expert it has 1.6× the dense model's *active* parameters and 3.3× its total, so this is "more capacity at the same step count", not "same compute"; exercise 2 equalises the active counts. The tokens-per-second column reflects a contended CPU (the dense run happened to overlap with another job) and a Python `for` loop over experts; production kernels group tokens by expert and run one matrix multiply each.
 
 ```text
 --- 2. expert utilisation per layer, with and without the load-balancing loss ---
@@ -299,7 +299,7 @@ With eight times the training tokens the quick-mode gaps mostly close: dense and
 3. **Collapse on purpose.** With `moe_aux_loss_coef=0.0`, also raise the learning rate to 3e-3 and train longer. Report the least-used expert's share per layer. Then implement the DeepSeek-V3 auxiliary-loss-free bias (a per-expert scalar added to router logits before top-k, decreased for over-used experts after each step) and see if it recovers balance without touching the loss.
 4. **A window that works.** Train a nano model *from scratch* with `sliding_window=16` and evaluate it with windows 16, 32 and None. Compare with the pretrained-with-full-attention degradation in part 4 and explain the difference.
 5. **MTP as a draft.** Use the trained MTP model's extra head as a draft for speculative decoding: propose token t+2, verify with the main head, and count acceptance rate on validation text.
-6. **Interactive.** Open `interactive/12_moe_router.html`. Set 8 experts, top-2, and watch tokens flow; then turn the load-balancing slider to zero and watch a few experts starve. Its Challenge asks you to find the smallest balancing coefficient that keeps every expert above 5% utilisation.
+6. **Interactive.** Open `interactive/12_moe_router.html` (8 experts, top-2 by default). Press **Train** with the aux loss *off* and watch routing collapse onto one or two experts; reset, switch the aux loss *on*, train again and watch the load bars level out; then drag one expert's affinity slider and watch a single bias term move traffic. Its Challenge asks you to make one expert receive zero tokens and then fix it without touching that expert's slider, explaining from the aux-loss gradient why the fix works.
 
 ## Check yourself ✅
 

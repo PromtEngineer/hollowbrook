@@ -43,10 +43,10 @@
   <rect x="470" y="232" width="410" height="120" rx="10" fill="#dc2626" fill-opacity="0.08" stroke="#dc2626"/>
   <text x="675" y="252" text-anchor="middle" font-size="13" font-weight="600" fill="#dc2626">④ ToolRegistry.call(name, arguments) — never raises</text>
   <text x="480" y="274" font-size="11" fill="#0f172a">unknown name      → "Error: unknown tool 'calc'. Available tools: […]"</text>
-  <text x="480" y="291" font-size="11" fill="#0f172a">validate(schema)  → "missing required argument 'expression'" / "unknown argument" / wrong type</text>
+  <text x="480" y="291" font-size="11" fill="#0f172a">validate(schema)  → "missing required argument 'expression'" / "unknown argument …"</text>
   <text x="480" y="308" font-size="11" fill="#0f172a">fn(**arguments)   → "42"           (or "Error calling calculator: ValueError: …")</text>
   <text x="480" y="325" font-size="11" fill="#0f172a">sandbox           → "path '../x' escapes the sandbox"</text>
-  <text x="480" y="342" font-size="11" fill="#64748b">every branch returns a string: the model reads it and adapts (errors are observations)</text>
+  <text x="480" y="342" font-size="11" fill="#64748b">every branch returns a string the model reads (errors are observations)</text>
 
   <!-- 5. tool_result message -->
   <path d="M470 292 L440 292" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>

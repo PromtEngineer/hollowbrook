@@ -22,8 +22,8 @@
     <text x="210" y="220">kite [.66 .04 .20 .10]</text>
     <text x="210" y="250">42   [.06 .85 .05 .04]</text>
   </g>
-  <text x="275" y="326" text-anchor="middle" font-size="11" fill="#b45309">top-k=1 → one expert per token</text>
-  <text x="275" y="341" text-anchor="middle" font-size="10" fill="#64748b">chosen weight renormalised to 1</text>
+  <text x="275" y="374" text-anchor="middle" font-size="11" fill="#b45309">top-k=1 → one expert per token</text>
+  <text x="275" y="389" text-anchor="middle" font-size="10" fill="#64748b">chosen weight renormalised to 1</text>
 
   <!-- arrows tokens -> router -->
   <g stroke="#64748b" stroke-width="1.5" fill="none" marker-end="url(#arrowG)">

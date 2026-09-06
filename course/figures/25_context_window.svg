@@ -57,16 +57,13 @@
     <rect x="683.6" y="70" width="54.6" height="44" fill="#16a34a" fill-opacity="0.85"/>
   </g>
   <line x1="708" y1="62" x2="708" y2="122" stroke="#dc2626" stroke-width="2" stroke-dasharray="5 3"/>
-  <text x="712" y="132" font-size="11" fill="#dc2626">80 % threshold → needs_compaction()</text>
+  <text x="704" y="132" text-anchor="end" font-size="11" fill="#dc2626">80 % threshold (6,400) → needs_compaction()</text>
   <text x="880" y="132" text-anchor="end" font-size="11" fill="#0f172a">8,000 = window</text>
   <!-- labels -->
-  <text x="22" y="150" font-size="11" fill="#0f172a">system</text>
-  <text x="22" y="164" font-size="11" fill="#0f172a">(41 tok)</text>
+  <text x="22" y="150" font-size="11" fill="#0f172a">system (41 tok) + 7 schemas (479 tok) = fixed cost</text>
   <line x1="22" y1="114" x2="24" y2="140" stroke="#94a3b8"/>
-  <text x="60" y="150" text-anchor="middle" font-size="11" fill="#0f172a">7 schemas</text>
-  <text x="60" y="164" text-anchor="middle" font-size="11" fill="#0f172a">(479 tok)</text>
-  <text x="110" y="150" font-size="11" fill="#0f172a">← task (9 tok): first message, never compacted</text>
-  <text x="400" y="150" font-size="11" fill="#0f172a">thin blue = assistant turn with a tool call (~20 tok)   green = tool result (9 to 508 tok after truncation)</text>
+    <text x="22" y="164" font-size="11" fill="#0f172a">then the task (9 tok): the first message, never compacted</text>
+  <text x="400" y="150" font-size="11" fill="#0f172a">blue = assistant turn with a tool call (~20 tok)   green = tool result (9–508 tok, truncated)</text>
   <text x="400" y="166" font-size="11" fill="#0f172a">the fact "db_port=4242" is the 1st green block (thin: 9 tok, right after the task)</text>
 
   <!-- window 2: after compaction -->
@@ -127,7 +124,7 @@
   <text x="170" y="292" font-size="11" fill="#16a34a">keep_last = 6 messages verbatim</text>
   <text x="560" y="276" font-size="11" fill="#0f172a">with a summariser: middle → one purple message</text>
   <rect x="560" y="284" width="60" height="12" fill="#7c3aed" fill-opacity="0.6"/>
-  <text x="628" y="294" font-size="11" fill="#0f172a">"[Summary of earlier work] … Facts: db_port=4242 …"</text>
+  <text x="628" y="294" font-size="11" fill="#0f172a">"[Summary of earlier work] … db_port=4242 …"</text>
 
   <!-- stable prefix / cache -->
   <rect x="20" y="318" width="860" height="70" rx="10" fill="#f59e0b" fill-opacity="0.12" stroke="#f59e0b"/>

@@ -282,19 +282,16 @@ elif args.full:
     from llm.sft import sft_train, SFTConfig             # noqa: E402
     import random
 
-    class Conv:                                          # duck-types TaskExample.messages() for sft_train
-        def __init__(self, m): self.m = m
-        def messages(self, with_answer=True, system=None): return self.m
-
     def tool_traces(n, seed):
+        """Raw conversations (lists of role dicts): sft_train accepts these directly."""
         rng, out = random.Random(seed), []
         for _ in range(n):
             a, b_ = rng.randint(0, 99), rng.randint(0, 99)
-            out.append(Conv([{"role": "system", "content": SYS},
-                             {"role": "user", "content": f"What is {a} + {b_}?"},
-                             {"role": "tool_call", "content": json.dumps({"name": "calculator", "arguments": {"expression": f"{a} + {b_}"}})},
-                             {"role": "tool_result", "content": str(a + b_)},
-                             {"role": "assistant", "content": f"{a} + {b_} = {a + b_}"}]))
+            out.append([{"role": "system", "content": SYS},
+                        {"role": "user", "content": f"What is {a} + {b_}?"},
+                        {"role": "tool_call", "content": json.dumps({"name": "calculator", "arguments": {"expression": f"{a} + {b_}"}})},
+                        {"role": "tool_result", "content": str(a + b_)},
+                        {"role": "assistant", "content": f"{a} + {b_} = {a + b_}"}])
         return out
 
     print("   --full: fine-tuning the nano base on 600 tool-call traces (150 steps)...")

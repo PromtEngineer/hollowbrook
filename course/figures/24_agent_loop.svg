@@ -35,9 +35,9 @@
   <!-- backends -->
   <rect x="640" y="52" width="240" height="100" rx="10" fill="#7c3aed" fill-opacity="0.10" stroke="#7c3aed"/>
   <text x="760" y="72" text-anchor="middle" font-size="12" font-weight="600" fill="#7c3aed">any object with .complete()</text>
-  <text x="652" y="92" font-size="11" fill="#0f172a">• ScriptedBackend — replays a list (tests, labs)</text>
+  <text x="652" y="92" font-size="11" fill="#0f172a">• ScriptedBackend — replays a list (tests)</text>
   <text x="652" y="110" font-size="11" fill="#0f172a">• TinyLMBackend — chat template, &lt;|tool_call|&gt;</text>
-  <text x="652" y="128" font-size="11" fill="#0f172a">• AnthropicBackend — tool_use content blocks</text>
+  <text x="652" y="128" font-size="11" fill="#0f172a">• AnthropicBackend — tool_use blocks</text>
   <text x="652" y="144" font-size="10" fill="#64748b">same loop, different wire format</text>
   <line x1="640" y1="102" x2="592" y2="102" stroke="#7c3aed" marker-end="url(#arr)"/>
 
@@ -78,13 +78,13 @@
   <text x="760" y="298" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">housekeeping (end of turn)</text>
   <text x="652" y="318" font-size="11" fill="#0f172a">if budget.needs_compaction(messages):</text>
   <text x="652" y="334" font-size="11" fill="#0f172a">    messages = compact(messages, keep_last)</text>
-  <text x="652" y="352" font-size="11" fill="#64748b">turn == max_turns → stop_reason "max_turns"</text>
+  <text x="652" y="352" font-size="11" fill="#64748b">turn == max_turns → "max_turns"</text>
   <rect x="640" y="390" width="240" height="98" rx="10" fill="#64748b" fill-opacity="0.12" stroke="#64748b"/>
   <text x="760" y="410" text-anchor="middle" font-size="12" font-weight="600" fill="#0f172a">Transcript.events (observability)</text>
   <text x="652" y="430" font-size="11" fill="#0f172a">assistant · tool_call · hook · permission_denied</text>
   <text x="652" y="446" font-size="11" fill="#0f172a">tool_result · compaction · done · max_turns · error</text>
   <text x="652" y="464" font-size="11" fill="#64748b">every _emit() also calls hooks.on_event</text>
-  <text x="652" y="480" font-size="11" fill="#64748b">(what interactive/24_agent_loop_tracer.html shows)</text>
+  <text x="652" y="480" font-size="11" fill="#64748b">(what the Ch. 24 interactive replays)</text>
   <line x1="590" y1="343" x2="640" y2="323" stroke="#94a3b8" stroke-dasharray="3 3"/>
   <line x1="590" y1="463" x2="640" y2="440" stroke="#94a3b8" stroke-dasharray="3 3"/>
 </svg>

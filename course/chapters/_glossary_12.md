@@ -24,3 +24,4 @@
 - **autoregressive** — generating one token at a time, left to right, each conditioned on the previous ones (Ch. 12)
 - **diffusion language model** — a model that generates by iteratively un-masking or denoising a whole sequence in parallel rather than left to right (Ch. 12)
 - **Kimi Delta Attention** — Kimi Linear's linear-attention layer with a delta-rule state update, used 3:1 with MLA layers (Ch. 12)
+- **outer product** — the matrix k⊗v with entry (i, j) = kᵢ·vⱼ; linear-attention layers add one per token to their fixed-size state (Ch. 12)

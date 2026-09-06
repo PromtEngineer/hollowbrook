@@ -20,3 +20,7 @@
 - **z-loss** — an auxiliary loss 1e-4 · (log Z)² on the softmax normaliser Z that keeps logits from drifting to huge values (Ch. 10)
 - **QK-norm** — normalising queries and keys before the attention dot product so attention logits stay bounded (Ch. 10)
 - **gradient norm** — the global L2 norm of all parameter gradients before clipping; a slow rise is the usual early warning of a loss spike (Ch. 10)
+- **L2 norm** — the square root of the sum of squares of a vector's entries; gradient clipping bounds the L2 norm of all gradients taken together (Ch. 10)
+- **SVD** — singular value decomposition, M = UΣVᵀ: two rotations and a diagonal of singular values; Muon needs only UVᵀ, which Newton–Schulz approximates without computing the SVD (Ch. 10)
+- **tensor cores** — GPU units specialised for low-precision (bf16/FP8/FP4) matrix multiplies, the reason mixed precision is faster (Ch. 10)
+- **MFU** — model FLOPs utilisation: tokens/s × FLOPs per token ÷ the hardware's peak FLOP/s (Ch. 10)

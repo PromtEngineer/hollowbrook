@@ -308,21 +308,25 @@ With the Storyland tokenizer, which compresses JSON poorly, one full schema is 3
    instruction-SFT model (Lab 15, no tool data): on 3 questions: 0/3 well-formed tool calls, 0/3 with the right expression
    instruction-SFT model (Lab 15, no tool data) in the loop: raw '55 + 63 = 118' -> stop_reason='done', tool calls 0
    -> a model with no tool training did NOT emit a valid <|tool_call|>: tool use is a trained behaviour (Chapters 15, 21)
-   Chapter 21 model (runs/lab21_tool_grpo.pt): on 3 questions: 3/3 well-formed tool calls, 3/3 with the right expression
+   served system prompt (90 tokens) == the prompt stored in the checkpoint: True
+   Chapter 21 model (runs/lab21_tool_grpo.pt), trained prefix: on 3 questions: 3/3 well-formed tool calls, 3/3 with the right expression
+      the same model with the tool listing stripped: on 3 questions: 0/3 well-formed tool calls, 0/3 with the right expression
 USER: What is 17 + 5?
 ASSISTANT:
   -> call calc({"expression": "17 + 5"})
   <- result: 22
 ASSISTANT: 17 + 5 = 22
 [done after 2 turns, 1 tool calls]
+✅ the harness serves the system prompt the checkpoint was trained with (Chapter 21's rule)
 ✅ Chapter 21's model called calc({'expression': '17 + 5'}) and the harness returned 22
 ✅ its final answer uses the result: '17 + 5 = 22'
+✅ with the listing stripped the SAME weights drop to 0/3 well-formed: a policy is conditioned on its trained prefix
 ```
 
-The instruction-tuned model of Lab 15 follows instructions but has never seen `<|tool_call|>`; asked "What is 17 + 25?" with a calculator on offer, it answers `55 + 63 = 118` directly, and the loop reads a reply with no tool calls as "done" and ends with a wrong answer rather than a crash. Chapter 21's model (the `small` TinyLM: 500 steps of SFT on tool traces, then 30 GRPO steps with a verifiable reward, on sums up to 20) is the successful case: it emits a well-formed call with the *right* expression, the harness runs `calc`, the result comes back as a `<|tool_result|>` turn, and the model answers from it. The line in between is Chapter 21's most practical lesson seen from the harness side: the *same weights* served without the tool listing they were trained under produce `<|tool_call|>{{nn{mm: "{aa"...`, JSON-shaped noise, 0/3. A fine-tuned policy is conditioned on its exact prefix, which is why the checkpoint carries the prompt and the lab checks that the harness serves it verbatim. (If `runs/lab21_tool_grpo.pt` is missing, run Lab 21 first.) `--full` adds a third model, a 150-step SFT on 600 traces trained inside this lab (106 s):
+The instruction-tuned model of Lab 15 follows instructions but has never seen `<|tool_call|>`; asked "What is 17 + 25?" with a calculator on offer, it answers `55 + 63 = 118` directly, and the loop reads a reply with no tool calls as "done" and ends with a wrong answer rather than a crash. Chapter 21's model (the `small` TinyLM: 500 steps of SFT on tool traces, then 30 GRPO steps with a verifiable reward, on sums up to 20) is the successful case: it emits a well-formed call with the *right* expression, the harness runs `calc`, the result comes back as a `<|tool_result|>` turn, and the model answers from it. The line in between is Chapter 21's most practical lesson seen from the harness side: the *same weights* served without the tool listing they were trained under produce `<|tool_call|>{{nn{mm: "{aa"...`, JSON-shaped noise, 0/3. A fine-tuned policy is conditioned on its exact prefix, which is why the checkpoint carries the prompt and the lab checks that the harness serves it verbatim. (If `runs/lab21_tool_grpo.pt` is missing, run Lab 21 first.) `--full` adds a third model, a 150-step SFT on 600 traces trained inside this lab (about 100 s on a CPU):
 
 ```
-   SFT done in 106s: loss 9.38 -> 0.56
+   SFT done in 103s: loss 9.38 -> 0.56
    150-step tool-SFT model: on 3 questions: 3/3 well-formed tool calls, 0/3 with the right expression
 USER: What is 17 + 25?
 ASSISTANT:

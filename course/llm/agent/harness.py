@@ -146,8 +146,10 @@ class Agent:
         return ev
 
     def _permitted(self, call: ToolCall, tool: Tool, permission_fn: Optional[PermissionFn]) -> bool:
-        """The permission gate. The policy answers first; "ask" defers to ``permission_fn``
-        (a real harness shows a prompt here); with no function to ask, deny."""
+        """The permission gate. ``allow_all`` approves everything; ``allow_read_only`` approves
+        read-only tools outright; every other call ("ask" policy, or a non-read-only tool under
+        ``allow_read_only``) is deferred to ``permission_fn`` — a real harness shows a prompt
+        here — and denied when no function is given."""
         policy = self.config.permission_policy
         if policy == "allow_all":
             return True

@@ -17,7 +17,7 @@ There is one model, one batch of data, and N devices. Every parallelism strategy
 
 Read the figure left to right. In the **data parallel** panel each of the four squares holds *all* the layers (the four blue bars), and the only thing that differs is the data shard each square trains on; the red dashed ring is the gradient traffic that keeps the four copies identical. In the **tensor parallel** panel the same weight matrix W is cut into four column slices, one per device, so no device has the whole matrix and partial results must be combined by communication twice per block. In the **pipeline parallel** panel each device owns eight consecutive layers, and activations flow downward; the small timeline underneath shows the price: while device 3 is working on micro-batch *a*, devices 0–2 have already finished it and sit idle in the red **bubble** unless more micro-batches are queued. In the **expert parallel** panel the eight experts of a mixture-of-experts layer are spread two per device, and every token must travel to the device holding its expert and back, the red all-to-all arrows.
 
-One data-parallel step, the one you will run in the lab, is a short loop:
+One data-parallel step, the one you will run in the lab, is a short loop. Each participating process is a **rank**, numbered 0 to N−1; the two ranks below never see each other's data, only each other's gradients:
 
 ```mermaid
 flowchart LR
@@ -60,7 +60,10 @@ def bytes_per_param(optimizer="adamw", mixed_precision=True):
 
 for N, name in [(2.5e6, "TinyLM small"), (7e9, "7B"), (70e9, "70B"), (1.6e12, "1.6T")]:
     print(f"{name:>13}: {N * bytes_per_param() / 1e9:10.2f} GB")
-# TinyLM small:       0.04 GB      7B:   112 GB      70B:  1120 GB      1.6T: 25600 GB
+#  TinyLM small:       0.04 GB
+#            7B:     112.00 GB
+#           70B:    1120.00 GB
+#          1.6T:   25600.00 GB
 ```
 
 Read this as: every parameter costs sixteen bytes while it is being trained, so a 7B model already needs more than one 80 GB GPU for its *state* alone, before a single activation is stored. Activations (the intermediate tensors kept for backpropagation) come on top and scale with batch size × sequence length × width × depth; **activation checkpointing** (recomputing them during the backward pass instead of storing them) trades about 30% extra compute for a large memory saving and is on by default in large runs.
@@ -99,7 +102,7 @@ $$\nabla L_{\text{full}} = \frac{1}{2}\left(\nabla L_{\text{rank 0}} + \nabla L_
 
 Read this as: the gradient of the loss on the whole batch is the plain average of the gradients each worker computed on its half. If shards had different sizes you would need a weighted average; frameworks avoid this by making shards equal.
 
-In a real process group the `allreduce_fn` is one line, `dist.all_reduce(t, op=dist.ReduceOp.SUM)`, after `dist.init_process_group("gloo", ...)` on CPU or `"nccl"` on GPUs. PyTorch's `DistributedDataParallel` wraps a model and does exactly this loop for you, with two refinements you should know by name: **gradient bucketing** (grads are grouped into ~25 MB buckets so each all-reduce is one large message rather than hundreds of tiny ones, as our `flat` tensor does) and **overlap** (the all-reduce of early buckets starts while the backward pass is still computing later layers, hiding communication behind compute).
+In a real **process group** (the set of processes that take part in a collective) the `allreduce_fn` is one line, `dist.all_reduce(t, op=dist.ReduceOp.SUM)`, after `dist.init_process_group("gloo", ...)` on CPU or `"nccl"` on GPUs — `gloo` and `nccl` are the communication *backends*, the libraries that move the bytes. PyTorch's `DistributedDataParallel` wraps a model and does exactly this loop for you, with two refinements you should know by name: **gradient bucketing** (grads are grouped into ~25 MB buckets so each all-reduce is one large message rather than hundreds of tiny ones, as our `flat` tensor does) and **overlap** (the all-reduce of early buckets starts while the backward pass is still computing later layers, hiding communication behind compute).
 
 ### How much traffic? The ring all-reduce
 
@@ -142,7 +145,7 @@ y_tp = partial0 + partial1                   # <- this add IS the all-reduce
 print(torch.allclose(y_ref, y_tp, atol=1e-5))   # True
 ```
 
-Read the last line as: a column-split matmul followed by a row-split matmul produces *partial sums* that are complete only after one all-reduce. Attention is split the same way, one group of heads per device, and the output projection is row-split, so a Transformer block needs two all-reduces in the forward pass and two in the backward pass. Each of those carries activations of size batch × sequence × `d_model`, and they cannot be overlapped with much, which is why TP is used only *within* a node over NVLink-class links, typically 2- to 8-way. Megatron-LM (Shoeybi et al. 2019) is the reference implementation. **Sequence parallelism** in the Megatron sense splits the norm and dropout, which TP leaves replicated, along the sequence axis to save activation memory.
+Read the last line as: a column-split matmul followed by a row-split matmul produces *partial sums* that are complete only after one all-reduce. Attention is split the same way, one group of heads per device, and the output projection is row-split, so a Transformer block needs two all-reduces in the forward pass and two in the backward pass. Each of those carries activations of size batch × sequence × `d_model`, and they cannot be overlapped with much, which is why TP is used only *within* a node over **NVLink**-class links (NVIDIA's direct GPU-to-GPU interconnect inside one server, hundreds of GB/s per GPU, versus tens of GB/s for the network between servers), typically 2- to 8-way. Megatron-LM (Shoeybi et al. 2019) is the reference implementation. **Sequence parallelism** in the Megatron sense splits the norm and dropout, which TP leaves replicated, along the sequence axis to save activation memory.
 
 ### Pipeline parallel: cut the layers, then fight the bubble
 
@@ -173,15 +176,15 @@ The scorecard for a configuration is **model FLOPs utilisation (MFU)**: the frac
 
 $$\text{MFU} = \frac{6\,N \cdot \text{tokens/s}}{\text{peak FLOP/s}}$$
 
-Read this as: multiply the tokens you process per second by the six-times-parameters cost of each token, and divide by what the chips could do if they never waited. Llama 3's authors reported 380–430 TFLOP/s per H100 for the 405B run, about 38–43% of the 989 TFLOP/s dense bf16 peak; 40–50% is a good number at scale, and everything lost is communication, pipeline bubbles, memory-bound operations, and stragglers. **Communication versus compute** is the ratio that decides MFU: per step, compute grows with batch × parameters, while all-reduce traffic grows only with parameters, so larger batches per device hide communication better, which is one reason large runs use batches of millions of tokens.
+Read this as: multiply the tokens you process per second by the six-times-parameters cost of each token, and divide by what the chips could do if they never waited. Llama 3's authors reported 380–430 TFLOP/s per H100 for the 405B run, about 38–43% of the 989 TFLOP/s dense bf16 peak; 40–50% is a good number at scale, and everything lost is communication, pipeline bubbles, memory-bound operations (norms, softmaxes and other steps that move more bytes than they multiply), and **stragglers** (devices that finish a step late, holding up every collective that waits for them). **Communication versus compute** is the ratio that decides MFU: per step, compute grows with batch × parameters, while all-reduce traffic grows only with parameters, so larger batches per device hide communication better, which is one reason large runs use batches of millions of tokens.
 
-Finally, **fault tolerance**. With 16,000 GPUs a hardware failure somewhere is a matter of hours; Llama 3's team reported 466 job interruptions over a 54-day run. The defences are routine: **checkpoints** written every few minutes to fast storage, written asynchronously so training does not pause; elastic launchers that restart on the surviving devices; and the WSD learning-rate schedule from Chapter 10, whose stable phase means a restart from a checkpoint loses nothing but the minutes since it was written.
+Finally, **fault tolerance**. With 16,000 GPUs a hardware failure somewhere is a matter of hours; Llama 3's team reported 466 job interruptions over a 54-day run. The defences are routine: **checkpoints** written every few minutes to fast storage, and written asynchronously so training does not pause; *elastic* launchers that detect the failure and restart the job on the surviving devices; and the fact that a checkpoint holds the optimizer state and the step counter (Chapter 10), so a restart loses nothing but the minutes since it was written.
 
 ## Worked example 🧪
 
-Run `python3 labs/lab11_data_parallel.py` (quick, two processes, 8 steps) and then `--full` (40 steps). The lab launches two Python processes with `torch.multiprocessing`, connects them with a `gloo` process group (the CPU backend) through a file-based rendezvous, and trains a nano TinyLM in each using the `train_shard` loop above. It then trains the same model in one process on the whole batch and compares.
+Run `python3 labs/lab11_data_parallel.py` (quick, two processes, 8 steps) and then `--full` (40 steps). The lab launches two Python processes with `torch.multiprocessing`, connects them with a `gloo` process group (the CPU backend) through a file-based *rendezvous* (a file both processes watch to find each other), and trains a nano TinyLM in each using the `train_shard` loop above. It then trains the same model in one process on the whole batch and compares.
 
-**Quick mode (measured on a shared 4-core machine at load ≈ 20 with `OMP_NUM_THREADS=2`; a quiet laptop is several times faster):**
+**Quick mode (measured on a shared 4-core machine at load ≈ 1–3 with `OMP_NUM_THREADS=2`; the losses are deterministic, the timings are not):**
 
 ```text
 model: nano TinyLM, 379,200 params -> 1.52 MB of float32 gradients
@@ -189,15 +192,15 @@ world=2 workers, 8 steps, global batch 16 x 64 tokens (8 rows per worker)
 
 --- 1. 2 processes, gradients averaged with all-reduce (gloo backend) ---
    platform Linux, torch 2.14.0+cu130, gloo available: True
-   rank 0: first loss 6.8016 -> last loss 5.8780 | train wall 25.7s | time inside all-reduce 3.09s
-   rank 1: first loss 6.8036 -> last loss 5.8996 | train wall 25.7s | time inside all-reduce 1.11s
-   whole launch incl. process start-up: 61.6s  (torch.distributed)
+   rank 0: first loss 6.8016 -> last loss 5.8780 | train wall 7.8s | time inside all-reduce 0.53s
+   rank 1: first loss 6.8036 -> last loss 5.8996 | train wall 7.8s | time inside all-reduce 0.21s
+   whole launch incl. process start-up: 19.2s  (torch.distributed)
    (time inside all-reduce includes WAITING for the other rank: the slower rank shows less,
     the faster rank shows more. That waiting is the straggler cost of synchronous training.)
 ✅ both workers hold identical weights after training (max |diff| = 0.00e+00)
 
 --- 2. reference: ONE process, the whole global batch every step ---
-   first loss 6.8026 -> last loss 5.8888 | wall 64.7s
+   first loss 6.8026 -> last loss 5.8888 | wall 11.4s
    step | rank0 loss | rank1 loss | mean(ranks) | single-process
       0 |     6.8016 |     6.8036 |      6.8026 |         6.8026
       2 |     6.4307 |     6.3708 |      6.4008 |         6.4008
@@ -212,7 +215,7 @@ world=2 workers, 8 steps, global batch 16 x 64 tokens (8 rows per worker)
 ✅ ...and are >100x closer than the no-all-reduce control (1.5e-02)
 ```
 
-Three numbers to look at. First, the two ranks end with **bit-identical** weights (`max |diff| = 0.00e+00`): they never exchanged weights, only gradients, and identical deterministic updates keep them in lock-step. Second, the mean of the two ranks' losses equals the single-process loss at every step to 7 × 10⁻⁷, the equal-shard argument from the code section made concrete. Third, the data-parallel weights are within 1.5 × 10⁻⁵ of the single-process weights, while the control run (rank 0 alone on half the data, no all-reduce) is 1.5 × 10⁻² away, a thousand times further. The residual 10⁻⁵ is floating-point reordering: summing two half-batch gradients and dividing is not bit-identical to averaging over sixteen rows at once, and AdamW's normalisation amplifies tiny differences slightly. Note also the asymmetric all-reduce times (3.09 s on rank 0, 1.11 s on rank 1): a collective cannot finish until the slowest participant arrives, so the faster rank spends its time waiting, the **straggler** cost of synchronous training.
+Three numbers to look at. First, the two ranks end with **bit-identical** weights (`max |diff| = 0.00e+00`): they never exchanged weights, only gradients, and identical deterministic updates keep them in lock-step. Second, the mean of the two ranks' losses equals the single-process loss at every step to 7 × 10⁻⁷, the equal-shard argument from the code section made concrete. Third, the data-parallel weights are within 1.5 × 10⁻⁵ of the single-process weights, while the control run (rank 0 alone on half the data, no all-reduce) is 1.5 × 10⁻² away, a thousand times further. The residual 10⁻⁵ is floating-point reordering: summing two half-batch gradients and dividing is not bit-identical to averaging over sixteen rows at once, and AdamW's normalisation amplifies tiny differences slightly. Note also the asymmetric all-reduce times (0.53 s on rank 0, 0.21 s on rank 1): a collective cannot finish until the slowest participant arrives, so the faster rank spends its time waiting, the straggler cost of synchronous training.
 
 ```text
 --- 4. what went over the wire ---
@@ -222,8 +225,8 @@ Three numbers to look at. First, the two ranks end with **bit-identical** weight
                            7B:       14 GB of bf16 gradients per step ->     24 GB per device on an 8-GPU ring
                           70B:      140 GB of bf16 gradients per step ->    245 GB per device on an 8-GPU ring
      1.6T (DeepSeek-V4-class):     3200 GB of bf16 gradients per step ->   5600 GB per device on an 8-GPU ring
-   this run: 12.0% of worker wall-clock was spent inside all-reduce
-   speed: single-process 64.7s (127 tok/s) vs data-parallel 25.7s (319 tok/s) -> 2.52x with 2 workers
+   this run: 6.8% of worker wall-clock was spent inside all-reduce
+   speed: single-process 11.4s (721 tok/s) vs data-parallel 7.8s (1,050 tok/s) -> 1.46x with 2 workers
    (on a quiet machine expect between 1x and 2x: the two workers share the same cores and memory bus;
     on a busy machine this number is noise)
 
@@ -237,7 +240,7 @@ Three numbers to look at. First, the two ranks end with **bit-identical** weight
 ✅ 16 bytes/param: 70B params need 1120 GB without sharding
 ```
 
-The gradient vector is 1.52 MB, and with N = 2 the ring formula gives exactly that per device per step. Scale the same arithmetic to a 70B model and each device moves 245 GB per step; at 1.6T parameters it is 5.6 TB, which is why ZeRO-3 sharding, overlapped communication and multi-hundred-GB/s links are not optional. The speed-up line is printed for honesty rather than as evidence: on a busy shared machine it is noise (2.5× from two workers is not possible in a clean measurement; the single-process reference happened to run during a busier moment).
+The gradient vector is 1.52 MB, and with N = 2 the ring formula gives exactly that per device per step. Scale the same arithmetic to a 70B model and each device moves 245 GB per step; at 1.6T parameters it is 5.6 TB, which is why ZeRO-3 sharding, overlapped communication and multi-hundred-GB/s links are not optional. The speed-up line is printed for honesty rather than as evidence: 1.46× from two workers on one 4-core CPU is plausible (they share the memory bus, and 6.8% of their time went into the all-reduce), but on a shared machine the number moves from run to run; an earlier measurement under load ≈ 20 printed 2.5×, which is impossible in a clean measurement and only meant the single-process reference had run during a busier moment.
 
 **Full mode (`--full`: 40 steps, global batch 32 × 128; 1,323 s on the same loaded machine):**
 
@@ -267,7 +270,7 @@ world=2 workers, 40 steps, global batch 32 x 128 tokens (16 rows per worker)
 ✅ ...and are >100x closer than the no-all-reduce control (7.4e-02)
 ```
 
-Five times as many steps and eight times as many tokens per step change nothing about the agreement: the ranks' loss means match the single process to 10⁻⁶ at every logged step, the weights agree to 9 × 10⁻⁶, and the control run has drifted to 7 × 10⁻² (further than in quick mode, because forty diverging steps compound). The loss itself falls from 6.81 to 3.47 in 40 steps at a global batch of 4,096 tokens. With 8.2% of worker wall-clock inside all-reduce for a 1.5 MB gradient over local sockets, this toy already shows the shape of the real problem: at 140 GB of gradients per step, that fraction would be catastrophic without overlap, which is why DDP starts reducing early buckets while the backward pass is still running.
+Five times as many steps and four times as many tokens per step change nothing about the agreement: the ranks' loss means match the single process to 10⁻⁶ at every logged step, the weights agree to 9 × 10⁻⁶, and the control run has drifted to 7 × 10⁻² (further than in quick mode, because forty diverging steps compound). The loss itself falls from 6.81 to 3.47 in 40 steps at a global batch of 4,096 tokens. With 8.2% of worker wall-clock inside all-reduce for a 1.5 MB gradient over local sockets, this toy already shows the shape of the real problem: at 140 GB of gradients per step, that fraction would be catastrophic without overlap, which is why DDP starts reducing early buckets while the backward pass is still running.
 
 ## Try it yourself ✍️
 
@@ -276,7 +279,7 @@ Five times as many steps and eight times as many tokens per step change nothing 
 3. **Per-tensor all-reduce.** Replace the single flat all-reduce with one `dist.all_reduce` per parameter tensor and time both. How many calls is that for the nano model? This is why DDP buckets.
 4. **Your own ZeRO row.** Extend the memory table to a 1.6T-parameter model on 2,048 GPUs. Which stage first fits in 80 GB with 30 GB left for activations?
 5. **Bubble budget.** Using `bubble_fraction`, find the smallest number of micro-batches that keeps a 16-stage pipeline above 90% busy. Then reason about why that many micro-batches makes 1F1B necessary.
-6. **Interactive.** Open `interactive/11_parallelism_visualizer.html`, set 8 devices, and slide the model across pure DP, TP = 2 × DP = 4, and PP = 4 × DP = 2. Watch the per-step traffic and idle-time readouts; try to find the layout that minimises traffic for a model that does not fit on one device, then do its Challenge.
+6. **Interactive.** Open `interactive/11_parallelism_visualizer.html`, set Devices N = 8 and the 7B model, and move between pure DP = 8, TP = 2 × DP = 4 and PP = 4 × DP = 2 (the product must equal N). Watch the memory bars, the per-step communication table and the pipeline-bubble readout; switch ZeRO from stage 0 to 3 and watch the bars shrink 8×; then do its Challenge, which asks whether a 70B model can be *trained* on 8 × 80 GB at all.
 
 ## Check yourself ✅
 

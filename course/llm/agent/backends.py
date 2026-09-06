@@ -199,7 +199,7 @@ class AnthropicBackend:
     where we keep them as separate roles.
     """
 
-    def __init__(self, model: str = "claude-sonnet-4-5", max_tokens: int = 1024) -> None:
+    def __init__(self, model: str = "claude-sonnet-5", max_tokens: int = 1024) -> None:
         try:
             import anthropic  # imported lazily: the course must run without it
         except ImportError as e:

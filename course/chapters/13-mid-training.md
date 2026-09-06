@@ -7,7 +7,7 @@
 
 ## Why this matters
 
-The base model you get at the end of Chapter 10 is not the base model a lab releases. Between the long, flat stretch of pretraining and the post-training pipeline of Part III sits a phase that 2025–26 model reports call **mid-training**: a few percent of the total tokens, spent on the best data you have while the learning rate decays to zero, then a short stretch at much longer sequence lengths, often with instruction-shaped and reasoning-shaped text mixed in before any supervised fine-tuning begins. It is cheap (a few percent of the compute) and it moves benchmarks by amounts that would otherwise cost a full re-run: the difference between a model that can do multi-digit arithmetic and one that cannot, or between a 4k-token context and a 128k one, is often made here. In the lab you take your own base TinyLM, anneal it on a mix that up-weights arithmetic, and watch its math loss fall while its story loss barely moves; then you extend its context from 128 to 512 tokens and watch the loss at positions it never saw come down.
+The base model you get at the end of Chapter 10 is not the base model a lab releases. Between the long, flat stretch of pretraining and the post-training pipeline of Part III sits a phase that 2025–26 model reports call **mid-training**: a few percent of the total tokens, spent on the best data you have while the learning rate decays to zero, then a short stretch at much longer sequence lengths, often with instruction-shaped and reasoning-shaped text mixed in before any supervised fine-tuning begins. It is cheap (roughly 5–10% of the tokens, per the reports that give a number) and it moves benchmarks by amounts that would otherwise cost a full re-run: the difference between a model that can do multi-digit arithmetic and one that cannot, or between a 4k-token context and a 128k one, is often made here. In the lab you take your own base TinyLM, anneal it on a mix that up-weights arithmetic, and watch its math loss fall while its story loss barely moves; then you extend its context from 128 to 512 tokens and watch the loss at positions it never saw come down.
 
 ## The idea in pictures 📐
 
@@ -32,9 +32,8 @@ Every arrow in the flow is one experiment the lab runs at toy scale, with the me
 ```python
 import math, torch
 from llm.data import make_corpus, mix_sources, tokenize_and_pack
-from llm.model import TinyLM, rope_tables
-from llm.optim import build_optimizer, lr_at, set_lr
-from llm.train import get_batch, estimate_loss
+from llm.optim import lr_at
+from llm.train import TrainConfig, train, estimate_loss
 from llm.pipeline import get_base_model, get_corpus, get_tokenizer
 ```
 
@@ -66,26 +65,17 @@ $$\eta_t = \eta_0 \left(1 - \frac{t}{T_{\text{anneal}}}\right)$$
 
 Read this as: the learning rate starts at the anneal's peak and falls in a straight line to zero at the last step. The peak is lower than pretraining's (the lab uses 3 × 10⁻⁴ against 10⁻³) because the model is already good and large steps would undo that. Why does decaying to zero help at all? During the stable phase the model bounces around a valley floor with step-size noise; shrinking the step lets it settle into the bottom, and doing that settling *on the best data* means the final position is chosen by that data. The current evidence (WSD analyses from 2024 onward, and the fact that most 2025–26 open reports describe such a phase) is that the decay phase contributes a large fraction of the final loss improvement and that the mix during it has an outsized effect on downstream skills.
 
-The loop itself is Chapter 10's with the schedule and mix swapped in; the lab's version is:
+The loop itself is Chapter 10's `train()` with three fields of `TrainConfig` changed: no warmup, `schedule="wsd"` with `decay_frac=1.0` so that the whole run is the decay, and a lower peak LR. The lab's call is:
 
 ```python
 model, _ = get_base_model(quick=True)                       # your pretrained base
-model.train()
-mix_tokens = tokenize_and_pack(mix, tok)
-opts = build_optimizer(model, "adamw", lr=3e-4, weight_decay=0.1)
-g = torch.Generator().manual_seed(0)
-STEPS = 60
-for step in range(STEPS):
-    set_lr(opts, lr_at(step, STEPS, 1.0, warmup_steps=0, kind="wsd", decay_frac=1.0))
-    x, y = get_batch(mix_tokens, 8, 128, g)                 # (8, 128) windows from the packed mix
-    _, loss = model(x, y)
-    for o in opts: o.zero_grad(set_to_none=True)
-    loss.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-    for o in opts: o.step()
+mix_tokens = tokenize_and_pack(mix, tok)                    # the packed anneal stream
+cfg = TrainConfig(steps=60, batch_size=8, seq_len=128, optimizer="adamw", lr=3e-4, weight_decay=0.1,
+                  warmup_steps=0, schedule="wsd", decay_frac=1.0, log_every=12)
+hist = train(model, mix_tokens, None, cfg)                  # no val stream: the lab measures per-domain losses instead
 ```
 
-(The library's `train()` cannot express this schedule because it does not pass `decay_frac` through to `lr_at`; the explicit loop is eight lines and shows the schedule, so the lab uses it.)
+Read the config as: sixty steps of (8, 128) windows from the packed mix, AdamW built fresh at 3 × 10⁻⁴, the multiplier from `lr_at` falling from 1.0 at step 0 to 1/60 at the last step. `train()` prints its usual log line; there is no `val_tokens` because a single validation loss is the wrong instrument here, as the next section explains.
 
 ### Measuring what changed: per-domain held-out streams
 
@@ -126,14 +116,14 @@ In TinyLM this is one call, which rebuilds the cos/sin tables at the new length 
 ```python
 model.extend_context(512, theta=50_000.0)     # cfg.max_seq_len = 512, cfg.rope_theta = 50000, new tables
 x = torch.randint(0, model.cfg.vocab_size, (1, 512))
-print(model(x)[0].shape)                      # torch.Size([1, 512, 1024]): forward now accepts 512 tokens
+print(model(x)[0].shape)                      # torch.Size([1, 512, 871]): forward now accepts 512 tokens
 ```
 
-The extension phase in a 2026 run is short (well under 1% of tokens), uses long documents (books, code repositories, concatenated conversations), a low learning rate, and context parallelism (Chapter 11) to fit sequences of 128k–1M tokens; DeepSeek-V4's million-token context is reached this way on top of the compressed-attention layers of Chapter 12 (🆕 arXiv 2606.19348). The lab's per-position loss curve is the standard diagnostic: flat means the model uses the whole window; rising means it does not.
+The extension phase in a 2026 run is short (a few percent of the tokens at most; Llama 3 reports about 800B of its ~15T tokens across six context-extension stages, roughly 5%), uses long documents (books, code repositories, concatenated conversations), a low learning rate, and context parallelism (Chapter 11) to fit sequences of 128k–1M tokens; DeepSeek-V4's million-token context is reached this way on top of the compressed-attention layers of Chapter 12 (🆕 arXiv 2606.19348). The lab's per-position loss curve is the standard diagnostic: flat means the model uses the whole window; rising means it does not.
 
 ### Injecting instruction and reasoning data before post-training
 
-A practice that became standard in 2025–26 is to put instruction-formatted and chain-of-thought-style text into the anneal mix, well before SFT (Chapter 15). The base model then already knows the *shape* of a question–answer exchange and of a worked solution, so post-training needs fewer examples and fewer steps, and RL (Chapter 19) has something to reinforce. 🆕 FineInstructions (2026, https://arxiv.org/abs/2601.22146) scales this to pretraining-sized synthetic instruction corpora; Nemotron-CC's synthetic rephrasing and the 2026 synthetic-pretraining study (https://arxiv.org/abs/2604.13977) are the same idea from the data side. What is settled is that it helps; what is open is how much is too much, since a base model that already behaves like a chatbot is harder to evaluate as a base model and can lose some of the diversity RL relies on.
+A practice that became standard in 2025–26 is to put instruction-formatted text and chain-of-thought-style text (a question followed by a step-by-step worked solution, the format Chapter 19 trains with reinforcement learning) into the anneal mix, well before SFT (Chapter 15). The base model then already knows the *shape* of a question–answer exchange and of a worked solution, so post-training needs fewer examples and fewer steps, and RL (Chapter 19) has something to reinforce. 🆕 FineInstructions (2026, https://arxiv.org/abs/2601.22146) scales this to pretraining-sized synthetic instruction corpora; Nemotron-CC's synthetic rephrasing and the 2026 synthetic-pretraining study (https://arxiv.org/abs/2604.13977) are the same idea from the data side. What is settled is that it helps; what is open is how much is too much, since a base model that already behaves like a chatbot is harder to evaluate as a base model and can lose some of the diversity RL relies on.
 
 ### The base checkpoint as a product
 
@@ -141,9 +131,9 @@ The checkpoint at the end of mid-training is what gets a name and a licence. It 
 
 ## Worked example 🧪
 
-`python3 labs/lab13_midtrain.py` loads your base model (nano in quick mode, small with `--full`), reports the held-out math and story losses, anneals for 60 (quick) or 250 (full) steps on the 4:1 mix with a linear decay, reports again, then extends the context to 512 with θ = 50,000, fine-tunes for 20 (quick) or 60 (full) steps at sequence length 512, and plots loss per position for three states: tables extended with the old θ, the new θ before fine-tuning, and after. The final model is saved as `runs/lab13_annealed.pt`, the course's mid-trained checkpoint.
+`python3 labs/lab13_midtrain.py` loads your base model (nano in quick mode, small with `--full`), reports the held-out math and story losses, anneals for 60 (quick) or 250 (full) steps on the 4:1 mix with `train()` and the linear decay above, reports again, then extends the context to 512 with θ = 50,000, fine-tunes for 20 (quick) or 60 (full) steps at sequence length 512, and plots loss per position for three states: tables extended with the old θ, the new θ before fine-tuning, and after. The final model is saved as `runs/lab13_annealed.pt`, the course's mid-trained checkpoint.
 
-**Quick mode (nano base; 402 s on a shared machine at load ≈ 20, well under a minute on a quiet laptop):**
+**Quick mode (nano base; 146 s on a shared 4-core machine at load ≈ 15, about a minute on a quiet laptop):**
 
 ```text
 base model: 295,584 params, max_seq_len 128, rope_theta 10000
@@ -155,32 +145,32 @@ base model: 295,584 params, max_seq_len 128, rope_theta 10000
 
 --- (a) anneal: 60 steps on the math-heavy mix, LR decaying linearly to 0 ---
    BEFORE: math loss 1.766 (ppl 5.8) | stories loss 1.045 (ppl 2.8)
-   step    0 | mix loss 1.3940 | lr x1.00
-   step   12 | mix loss 1.3289 | lr x0.80
-   step   24 | mix loss 1.2681 | lr x0.60
-   step   36 | mix loss 1.4194 | lr x0.40
-   step   48 | mix loss 1.3406 | lr x0.20
-   step   59 | mix loss 1.2656 | lr x0.02
-   AFTER:  math loss 1.639 (ppl 5.1) | stories loss 1.050 (ppl 2.9)   [155s]
+step     0 | loss 1.3940 | lr×1.000 | grad_norm 0.45 | 629 tok/s
+step    12 | loss 1.3289 | lr×0.800 | grad_norm 0.34 | 1,017 tok/s
+step    24 | loss 1.2681 | lr×0.600 | grad_norm 0.32 | 865 tok/s
+step    36 | loss 1.4194 | lr×0.400 | grad_norm 0.33 | 949 tok/s
+step    48 | loss 1.3406 | lr×0.200 | grad_norm 0.42 | 827 tok/s
+step    59 | loss 1.2656 | lr×0.017 | grad_norm 0.34 | 853 tok/s
+   AFTER:  math loss 1.639 (ppl 5.1) | stories loss 1.050 (ppl 2.9)   [75s]
    change: math -0.128 | stories +0.005
 ✅ annealing on a math-heavy mix lowers the held-out MATH loss
 ✅ ...without a large regression on stories (change +0.005; replay keeps it small)
 ```
 
-Two things to notice in part (a). The mix line is the token-versus-document point from the code section: 81% of documents but 40% of tokens are math. And the anneal does what mid-training is for: held-out math loss falls by 0.128 nats (perplexity 5.8 → 5.1) while held-out story loss moves by +0.005, within noise, because 60% of the tokens were story replay and the learning rate decayed to zero. This is the honest shape of the trade-off at this scale; with a narrower mix or a higher LR the story loss climbs (exercise 1).
+Two things to notice in part (a). The mix line is the token-versus-document point from the code section: 81% of documents but 40% of tokens are math. The `lr×` column is the schedule from the code section, 1.000 falling to 0.017 (= 1/60) at the last step, and the training loss on the mix wanders (1.39 → 1.27 → 1.42 → 1.27) because each line is one 8-window batch; the held-out numbers are the ones to read. And the anneal does what mid-training is for: held-out math loss falls by 0.128 nats (perplexity 5.8 → 5.1) while held-out story loss moves by +0.005, within noise, because 60% of the tokens were story replay and the learning rate decayed to zero. This is the honest shape of the trade-off at this scale; with a narrower mix or a higher LR the story loss climbs (exercise 1).
 
 ```text
 --- (b) long context: 128 -> 512 positions with RoPE theta 50000 ---
    tables extended, theta=10000       pos 0-128: 1.074 | pos 128-512: 1.202 | per-64 bins ['1.06', '1.09', '1.04', '1.08', '1.21', '1.28', '1.30', '1.30']
    theta=50000, before fine-tune      pos 0-128: 1.088 | pos 128-512: 1.161 | per-64 bins ['1.07', '1.11', '1.03', '1.05', '1.11', '1.24', '1.29', '1.24']
 ✅ before extension training, positions the model never saw are worse (RoPE is relative and Storyland docs are short, so expect a small gap)
-   step    0 | loss at seq_len 512: 1.4755
-   step    5 | loss at seq_len 512: 1.3520
-   step   10 | loss at seq_len 512: 1.2181
-   step   15 | loss at seq_len 512: 1.2778
-   step   19 | loss at seq_len 512: 1.3591
+step     0 | loss 1.4755 | lr×1.000 | grad_norm 2.76 | 197 tok/s
+step     5 | loss 1.3520 | lr×0.750 | grad_norm 1.06 | 445 tok/s
+step    10 | loss 1.2181 | lr×0.500 | grad_norm 0.86 | 654 tok/s
+step    15 | loss 1.2778 | lr×0.250 | grad_norm 0.70 | 735 tok/s
+step    19 | loss 1.3591 | lr×0.050 | grad_norm 0.90 | 756 tok/s
    theta=50000, after 20 steps        pos 0-128: 1.083 | pos 128-512: 1.095 | per-64 bins ['1.07', '1.10', '1.02', '1.03', '1.10', '1.15', '1.17', '1.11']
-   long-position loss: 1.202 (naive) -> 1.161 (ABF) -> 1.095 (ABF + fine-tune)   [116s]
+   long-position loss: 1.202 (naive) -> 1.161 (ABF) -> 1.095 (ABF + fine-tune)   [27s]
 ✅ fine-tuning at 512 improves the loss on positions 128-512
 ✅ the gap between short and long positions shrinks
 ```
@@ -223,7 +213,7 @@ The larger model makes both effects sharper. The anneal takes held-out math from
 
 <details><summary>1. What are the two or three phases that "mid-training" refers to in 2025–26 reports, and roughly what fraction of the total tokens do they use?</summary>
 
-The anneal (learning-rate decay on a high-quality, re-weighted mix, typically the last ~5–10% of tokens), the long-context extension (well under 1%, at a low LR on long documents), and, increasingly, the injection of instruction- and reasoning-formatted data during those phases. Together they are a few percent of the compute.
+The anneal (learning-rate decay on a high-quality, re-weighted mix, typically the last ~5–10% of tokens), the long-context extension (a few percent at most, at a low LR on long documents), and, increasingly, the injection of instruction- and reasoning-formatted data during those phases. Together they are a few percent of the compute.
 </details>
 
 <details><summary>2. The lab's mix "up-weights math 4:1" but only 40% of the tokens are math. Why, and which number matters?</summary>
