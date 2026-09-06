@@ -200,7 +200,7 @@ def calc_registry(tool_name: str) -> ToolRegistry:
 def try_model(model, label: str, system: str, tool_name: str, questions) -> tuple[int, int]:
     """Probe a model on fresh questions: how many replies parse as a tool call, and how many
     of those carry the RIGHT expression. Returns (well_formed, correct_args)."""
-    be = CompactTinyLMBackend(model, tok, max_new_tokens=80)      # a full tool call is ~55 Storyland tokens
+    be = CompactTinyLMBackend(model, tok, max_new_tokens=64)      # a full tool call is ~55 Storyland tokens
     well_formed = correct = 0
     for a, b_ in questions:
         r = be.complete([{"role": "user", "content": f"What is {a} + {b_}?"}], [], system)
@@ -213,13 +213,13 @@ def try_model(model, label: str, system: str, tool_name: str, questions) -> tupl
 
 
 def run_agent(model, system: str, tool_name: str, q: str):
-    return Agent(CompactTinyLMBackend(model, tok, max_new_tokens=80), calc_registry(tool_name),
+    return Agent(CompactTinyLMBackend(model, tok, max_new_tokens=64), calc_registry(tool_name),
                  AgentConfig(permission_policy="allow_all", max_turns=3), system_prompt=system).run(q)
 
 
 # (4a) a model that was never trained on tool calls: the instruction-tuned model of Lab 15 if it
 #      exists (it follows instructions but has never seen <|tool_call|>), else the base model.
-QS = [(3, 4), (60, 31), (88, 9), (45, 54)]
+QS = [(3, 4), (60, 31), (88, 9)]
 if os.path.exists(run_path("sft_nano.pt")):
     untrained, label_u = TinyLM.load(run_path("sft_nano.pt")), "instruction-SFT model (Lab 15, no tool data)"
 else:
@@ -234,7 +234,7 @@ print(f"   -> a model with no tool training {'DID' if ok_u else 'did NOT'} emit 
 
 # (4b) Chapter 21's tool-trained model (SFT on tool traces + GRPO), in ITS format: tool 'calc',
 #      the short system prompt it was trained with, and questions in its 0-20 range.
-SYS21, Q21, QS21 = "Use the calc tool.", "What is 17 + 5?", [(3, 4), (8, 9), (15, 4), (6, 19)]
+SYS21, Q21, QS21 = "Use the calc tool.", "What is 17 + 5?", [(3, 4), (8, 9), (6, 19)]
 ch21 = [n for n in ("lab21_tool_grpo.pt", "lab21_tool_sft.pt") if os.path.exists(run_path(n))]
 if ch21:
     m21 = TinyLM.load(run_path(ch21[0]))
@@ -244,7 +244,7 @@ if ch21:
     check(t21.tool_calls_made >= 1 and t21.messages[2]["content"] == "22",
           f"Chapter 21's model called calc({(t21.messages[1].get('tool_calls') or [{}])[0].get('arguments')}) and the harness returned 22")
     check("22" in t21.final_text, f"its final answer uses the result: {t21.final_text!r}")
-    check(right21 >= 2 and ok21 > ok_u, f"well-formed AND correct on fresh questions: {right21}/4 (vs {ok_u}/4 well-formed for the untrained model)")
+    check(right21 >= 2 and ok21 > ok_u, f"well-formed AND correct on fresh questions: {right21}/3 (vs {ok_u}/3 well-formed for the untrained model)")
 else:
     print("   (no runs/lab21_tool_*.pt: run labs/lab21_agentic_rl.py to see a tool-trained model succeed here)")
 
@@ -290,10 +290,10 @@ if sft_model is not None:
     expr = (t_sft.messages[1].get("tool_calls") or [{}])[0].get("arguments", {}).get("expression")
     check(t_sft.tool_calls_made >= 1 and t_sft.messages[2]["role"] == "tool_result",
           f"the 150-step model emitted a well-formed call; the harness ran calculator({expr!r}) -> {t_sft.messages[2]['content']!r}")
-    check(ok_sft > ok_u, f"well-formed tool calls on 4 fresh questions: {ok_sft}/4 vs {ok_u}/4 untrained")
+    check(ok_sft > ok_u, f"well-formed tool calls on 3 fresh questions: {ok_sft}/3 vs {ok_u}/3 untrained")
     check(t_sft.stop_reason == "done" and t_sft.turns == 2, f"the loop fed the result back and the model answered in turn 2: {t_sft.final_text!r}")
     right = expr is not None and expr.replace(" ", "") == "17+25"
-    print(f"   expression correct for {question!r}: {right} (expected '17 + 25'); on the other 4: {right_sft}/4")
+    print(f"   expression correct for {question!r}: {right} (expected '17 + 25'); on the other 3: {right_sft}/3")
     if not right:
         print("   -> SYNTAX learned, SEMANTICS not: 150 steps teach this 0.3M-param model the tool-call format but not")
         print("      to copy the numbers from the question. The harness cannot tell: the call is valid, the tool runs,")

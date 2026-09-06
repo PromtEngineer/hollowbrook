@@ -187,7 +187,7 @@ print(len(curated), tokens.shape)                          # 1511 torch.Size([92
 
 ## Worked example 🧪
 
-Run `python3 labs/lab08_curate.py` (quick: 1,500 clean documents, TIMING_Q8) and then `--full` (6,000 documents, TIMING_F8; both measured with two CPU threads on a shared 4-core VM). The report table from the full run:
+Run `python3 labs/lab08_curate.py` (quick: 1,500 clean documents, 16 s) and then `--full` (6,000 documents, 33 s; both measured with two CPU threads on a shared 4-core VM). The report table from the full run:
 
 ```
 stage                           kept  dropped  planted problems caught
@@ -199,13 +199,13 @@ minhash_dedup                   6080      359  exact_dup:8, near_dup:110, pii:74
 quality_classifier              6048       32  near_dup:7, pii:25
 decontaminate                   6045        3  contaminated:3
 
-7,743 raw -> 6,045 curated documents in 9.0s
+7,743 raw -> 6,045 curated documents in 12.2s
 ```
 
 What to look at:
 
 1. **The cheap filters do the language work** — the language filter catches all 180 foreign documents and 268 of 300 spam documents (spam has few English stopwords); the Gopher rules catch the other 32 spam documents (`symbol_heavy`, `boilerplate`) and all 180 fragments (`too_short`). Run on the *clean* corpus alone, the two stages drop nothing, because bare equations bypass the language test and `source="math"` bypasses the prose rules. Section 2 of the lab shows what happens without the routing: `gopher_reason('75 + 80 = 155') = 'odd_word_length'`.
-2. **Dedup counts are not what they look like.** 600 exact duplicates were planted, but `exact_dedup` reports catching 327 tagged copies and dropping 644 documents. The corpus is shuffled, so for about half the pairs the *copy* came first and was kept, and the original was dropped — the lab reports that of the 480 clean documents that "disappear", TWIN_N live on as their planted twin. (The other 40 are genuine duplicates: the generator drew the same equation twice.) The right check is the one the lab makes: every curated text is unique, and no surviving pair has Jaccard ≥ 0.8.
+2. **Dedup counts are not what they look like.** 600 exact duplicates were planted, but `exact_dedup` reports catching 327 tagged copies and dropping 644 documents. The corpus is shuffled, so for about half the pairs the *copy* came first and was kept, and the original was dropped — the lab reports that of the 480 clean documents that "disappear", 388 live on as their planted twin. (The other 40 are genuine duplicates: the generator drew the same equation twice.) The right check is the one the lab makes: every curated text is unique, and no surviving pair has Jaccard ≥ 0.8.
 3. **PII is caught 282 times for 180 planted documents.** 180 rewrites, then 3 + 74 + 25 of the scrubbed copies dropped by later stages as near-duplicates of their originals. A document can be touched by several stages; a "caught" count is per stage, not per document.
 4. **The MinHash scatter** (`figures/generated/lab08_minhash.png`) shows the 64-hash estimate against the true Jaccard on 200 pairs: mean error 0.031, maximum 0.134, matching the √(J(1−J)/64) theory. The red line at 0.8 is the drop threshold.
 5. **The classifier thresholds:** `0.3 keeps 100% of clean, rejects 61% of junk · 0.5: 100% / 92% · 0.7: 76% / 100%`. Pick 0.5 here; a real pipeline would pick by the downstream loss of a proxy model.

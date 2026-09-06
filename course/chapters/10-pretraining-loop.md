@@ -187,19 +187,32 @@ step   149 | loss 1.4116 | lr×0.100 | grad_norm 0.46      val loss 1.4305  (per
 AdamW 1.9266  vs  Muon 1.4404   (difference +0.4862 nats, Muon lower)
 ```
 
-**Full run** — the small model. The full run could not be completed on the shared VM used to write this chapter (at ~185 tokens/s under load it needed hours); the lines below are the *partial* AdamW logs from two attempts, pasted as measured so you can compare against your own run:
+**Full run** — the small model, 400 steps × 32 × 128 = 1,638,400 tokens per optimizer (21 min 38 s in total on the shared VM; the AdamW half ran under load ~14 and the Muon half on an idle machine, which is why their tokens/s differ so much — see point 3):
 
 ```
-[adamw] 2,361,792 non-embedding params, 1.69e+07 FLOPs/token          (--steps 700 attempt)
+[adamw] 2,361,792 non-embedding params, 1.69e+07 FLOPs/token
 step     0 | loss 6.7998 | lr×0.020 | grad_norm 4.50
-   val loss 1.0771  (perplexity 2.9)                                  <- at step 100
+step    66 | loss 1.4123 | lr×0.995 | grad_norm 0.66      val loss 1.0794  (perplexity 2.9)  <- at step 100
+step   198 | loss 1.0427 | lr×0.658 | grad_norm 0.28      val loss 1.0277  (perplexity 2.8)  <- at step 200
+step   264 | loss 1.0043 | lr×0.396 | grad_norm 0.25      val loss 1.0030  (perplexity 2.7)  <- at step 300
+step   399 | loss 0.8562 | lr×0.100 | grad_norm 0.32      val loss 0.8623  (perplexity 2.4)
+[adamw] final val loss 0.8591 (ppl 2.4) in 943.5s, 1,745 tok/s -> saved runs/lab10_adamw.pt
 
-[adamw] 2,361,792 non-embedding params, 1.69e+07 FLOPs/token          (default 400-step attempt)
+[muon]  2,361,792 non-embedding params, 1.69e+07 FLOPs/token
 step     0 | loss 6.7998 | lr×0.020 | grad_norm 4.50
-step    66 | loss 1.4123 | lr×0.995 | grad_norm 0.66
+step    66 | loss 1.1601 | lr×0.995 | grad_norm 0.38      val loss 1.0573  (perplexity 2.9)  <- at step 100
+step   198 | loss 1.0354 | lr×0.658 | grad_norm 0.37      val loss 1.0218  (perplexity 2.8)  <- at step 200
+step   264 | loss 0.9848 | lr×0.396 | grad_norm 0.25      val loss 0.9731  (perplexity 2.6)  <- at step 300
+step   399 | loss 0.8947 | lr×0.100 | grad_norm 0.30      val loss 0.8986  (perplexity 2.5)
+[muon] final val loss 0.8956 (ppl 2.4) in 330.5s, 4,990 tok/s -> saved runs/lab10_muon.pt
+
+AdamW 0.8591  vs  Muon 0.8956   (difference -0.0365 nats, AdamW lower)
+  adamw     1,745 tok/s × 1.69e+07 FLOP/token =   29.6 GFLOP/s -> MFU ≈ 30% of an assumed 100 GFLOP/s peak
+  muon      4,990 tok/s × 1.69e+07 FLOP/token =   84.6 GFLOP/s -> MFU ≈ 85% of an assumed 100 GFLOP/s peak
+
+  [adamw] 'Mia had a' -> ' red cake. One windy day Mia took the cup to the hill. Mia went home and put the shell in a orange box. The end. ...'
+  [adamw] 'What is 12 + 7?' -> '?\nAnswer: 64 + 87 = 160.'
 ```
-
-Two things are already visible: the small model reaches a validation loss of 1.08 by step 100 (409,600 tokens) — better than the nano model's 1.44 after all 150 quick steps — and the gradient norm at step 0 is 4.5 (clipped to 1.0), five times the nano model's, which is the initial-scale problem that warmup exists for. When you run `--full` yourself, expect both optimizers to end within a few hundredths of Storyland's floor of ~1.0 nats (Chapter 9), so the AdamW–Muon gap will be far smaller than in the quick run: with enough tokens the data, not the optimizer, sets the loss.
 
 **Checkpoint and resume** (both modes use the nano model for this part):
 
@@ -216,11 +229,11 @@ run 2: resumed at step 100; first logged loss after resume 1.834 (before the che
 What to look at:
 
 1. **Both runs start at 6.80 = ln 871**, uniform guessing over the vocabulary, and the first 50 steps are the steep part of the hockey stick. The `lr×` column is the schedule: 0.067 at step 0 (warmup), 1.0 at step 15, cosine down to 0.1.
-2. **Muon is ahead at every checkpoint** in the quick run — 3.09 vs 3.64 at step 50, 1.44 vs 1.93 at the end — and its gradient norm settles lower (0.46 vs 0.78), a sign the optimisation is calmer. This is one seed of a tiny model, so treat the 0.49-nat gap as "consistent with the reported 2× compute efficiency", not a measurement of it: AdamW reaches Muon's step-100 loss (1.64) never in these 150 steps, and Muon reaches AdamW's final loss (1.93) at about step 90.
-3. **Muon costs more per step on a CPU**: 632 tokens/s for AdamW against 359 for Muon in the quick run (both measured under heavy contention, so read the ratio, not the numbers). Five Newton–Schulz iterations per matrix per step are five extra matmuls on 96 × 96 matrices, which is a large fraction of the tiny model's compute; at 1B+ parameters the overhead is reported at ~1% of step time, and Moonshot distributes it across devices.
-4. **MFU on a CPU is a few percent.** The quick run reports `adamw 632 tok/s × 2.72e+06 FLOP/token = 1.7 GFLOP/s` and `muon ... 1.0 GFLOP/s`. Against the 100 GFLOP/s placeholder that is ~2%; the same loop on an H100 with a model large enough to fill it reports 40–50%. Small matmuls, Python overhead and no tensor cores are the gap; this is why "tokens per second" is the number to watch on a laptop and MFU the number to watch on a cluster.
+2. **Muon is ahead early, and the two runs disagree about the end.** In the quick run Muon leads at every checkpoint — 3.09 vs 3.64 at step 50, 1.44 vs 1.93 at the end — and its gradient norm settles lower (0.46 vs 0.78). In the full run Muon also leads at steps 100, 200 and 300 (1.057 vs 1.079, 1.022 vs 1.028, 0.973 vs 1.003) but AdamW finishes 0.037 nats *lower* (0.859 vs 0.896) after the final cosine decay. Both models are then within a few tenths of Storyland's floor (Chapter 9), where the data, not the optimizer, sets the loss, and neither learning rate was tuned. Read the pair of runs as "Muon learns faster per token early; the endgame on a saturated toy corpus is a coin flip" — consistent with the reported ~2× compute efficiency at scale, but no measurement of it. Exercise 3 (sweep `muon_lr`) is where you find out whether 0.02 with a decay to 0.002 is the right endgame for this model.
+3. **The tokens/s columns are not an optimizer comparison.** The quick run shows AdamW at 632 tok/s and Muon at 359; the full run shows the reverse, 1,745 vs 4,990. Both are artefacts of a shared machine: the quick run and the AdamW half of the full run were measured with 10 other jobs competing (the AdamW log's throughput climbs from 524 to 1,745 tok/s as those jobs finished), and the Muon half ran on an idle box. On a quiet laptop expect Muon to be modestly *slower* per step for this model: five Newton–Schulz iterations per matrix per step are five extra matmuls on 192 × 192 and 192 × 512 matrices, a noticeable fraction of a 2.4M-parameter model's compute. At 1B+ parameters the overhead is reported at ~1% of step time, and Moonshot distributes it across devices.
+4. **MFU is only as good as the peak you divide by.** The idle-machine Muon run reaches 4,990 tok/s × 1.69 × 10<sup>7</sup> FLOP/token = 85 GFLOP/s, which against the lab's placeholder "100 GFLOP/s peak" prints as 85% MFU — a number no real training run achieves, which tells you the placeholder is too low for this CPU (two threads of AVX-512 fp32 can exceed 100 GFLOP/s). Replace `CPU_PEAK` with your own measured matmul peak (exercise 6 of Chapter 9) before believing the percentage. On an H100 the peak is known (990 TFLOP/s bf16) and 40–50% is a good large run; small matmuls, Python overhead and no tensor cores are why a laptop sits far lower on any honest denominator. "Tokens per second" is the number to watch on a laptop; MFU is the number to watch on a cluster.
 5. **The resume is seamless because the optimizer state was saved.** The first loss after resuming (1.834) is within noise of the last loss before the checkpoint (1.800), the resumed history begins with the 11 log points loaded from the checkpoint, and the run finishes at 1.41 — the same place a 150-step run lands. Note the `lr×0.355` at step 100: run 1 was planned for 100 steps so its cosine had already decayed to 0.1, while run 2 is planned for 150 and *raises* the LR on resume. A schedule tied to the planned length is exactly what WSD avoids.
-6. **The generated text** at the end (`'Mia had a' -> ' red hat. One windy day ... Zoe went home and put the box in a kite.'`) has Storyland's grammar and vocabulary and none of its logic; `'What is 12 + 7?'` gets `'Answer: 40 = 87.'`. Perplexity 4 on this corpus means "fluent", not "correct" — Chapters 15–19 are about the difference.
+6. **The generated text** has Storyland's grammar and vocabulary and none of its logic. The quick model (perplexity 4) writes `' red hat. One windy day One windy day Ava took the until the orange drum to the village.'`; the full model (perplexity 2.4) writes `' red cake. One windy day Mia took the cup to the hill. Mia went home and put the shell in a orange box. The end.'` — every sentence is a valid template, the objects are wrong, and `'What is 12 + 7?'` still gets `'Answer: 64 + 87 = 160.'` (an equation that is at least internally consistent, unlike the quick model's `'40 = 87.'`). Low perplexity on this corpus means "fluent", not "correct" — Chapters 15–19 are about the difference.
 
 The three figures the lab saves — `lab10_lr_schedules.png` (cosine, WSD and constant from `lr_at`), `lab10_adamw_vs_muon.png` (train and val curves for both) — are worth opening side by side with the log.
 

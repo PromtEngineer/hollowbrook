@@ -1,12 +1,12 @@
 """Lab 15: supervised fine-tuning — turn the base model into an instruction follower.
 
-    python3 labs/lab15_sft.py            # --quick: TinyLM-nano, 300 steps, saves runs/sft_nano.pt
-    python3 labs/lab15_sft.py --full     # TinyLM-small, 400 steps, saves runs/sft_small.pt (later labs load it)
+    python3 labs/lab15_sft.py            # --quick: TinyLM-nano, 750 steps, saves runs/sft_nano.pt (~3 min)
+    python3 labs/lab15_sft.py --full     # TinyLM-small, 800 steps, saves runs/sft_small.pt (later labs load it)
 
 What you will see:
   1. the instruction set (tasks.make_examples) rendered through the chat template, with the loss mask;
   2. task accuracy of the BASE model (evals.eval_tasks, with a bootstrap CI): zero;
-  3. full fine-tuning with sft.sft_train: the masked loss falling, accuracy measured every 100 steps;
+  3. full fine-tuning with sft.sft_train: the masked loss falling, accuracy measured every 150 steps;
   4. the same questions answered after SFT, and a per-task accuracy table;
   5. what SFT cost: Storyland perplexity before and after (catastrophic forgetting, measured);
   6. LoRA vs full fine-tuning: trainable parameters, wall-clock, accuracy; the adapter is a no-op at
@@ -31,12 +31,12 @@ args = setup("Lab 15: supervised fine-tuning (full FT vs LoRA)")
 TASKS = ["upper", "reverse", "add", "count"]
 N_TRAIN = 2000
 N_VAL = 32 if args.quick else 48
-STEPS = 300 if args.quick else 400
+STEPS = 750 if args.quick else 800
 LR = 1e-3                      # sft.SFTConfig's default is 3e-4; TinyLM is tiny, and 1e-3 converges 3x faster here
-LORA_STEPS = 150 if args.quick else 200
+LORA_STEPS = 300
 LORA_RANK = 8
 LORA_LR = 2e-3                 # adapters tolerate (and need) a higher LR than the full weights
-EVAL_EVERY = 100
+EVAL_EVERY = 150
 MAX_NEW = 16                   # every answer in these tasks fits in 12 tokens + <|end|>
 
 tok = get_tokenizer()
