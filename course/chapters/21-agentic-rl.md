@@ -219,7 +219,7 @@ Ninety seconds and 240 trajectories. On 40 fixed tasks the greedy tool-use rate 
 ✅ no environment or prompt token is in the loss
 ```
 
-The trained string is exactly the two assistant turns concatenated; the given string is the system prompt with its tool listing, the user turn, both `<|assistant|>` tags and the tool result. In the quick run the same printout shows a trajectory whose final answer reads `1515 + 0 = 15`: the model stuttered on the copied number, the grader (`tasks.extract_answer` takes the last number after `=`) accepted it, and the trajectory earned the full 1.2. Lenient graders are how small hacks get reinforced; `tasks.strict_verify`, which also requires the restated operands to match the question, closes this particular hole, and Chapter 23 returns to the general problem.
+The trained string is exactly the two assistant turns concatenated; the given string is the system prompt with its tool listing, the user turn, both `<|assistant|>` tags and the tool result. In one quick run during drafting the same printout showed a trajectory whose final answer read `1515 + 0 = 15`: the model stuttered on the copied number, the grader (`tasks.extract_answer` takes the last number after `=`) accepted it, and the trajectory earned the full 1.2. Lenient graders are how small hacks get reinforced; `tasks.strict_verify`, which also requires the restated operands to match the question, closes this particular hole, and Chapter 23 returns to the general problem.
 
 **(d) Train with the prompt you serve with.** The final section evaluates the *same* trained policy on the same 40 tasks under a different system prompt, the four-word `Use the calc tool.` without the tool listing:
 

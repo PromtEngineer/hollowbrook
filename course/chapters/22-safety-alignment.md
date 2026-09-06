@@ -73,10 +73,10 @@ def principle_checks(prompt: str):
                        any(w in c.lower() for w in ("cannot", "can't", "won't", "not able"))))
     return checks
 
-score, per = rubric_reward("Well, I think the answer is 12.", principle_checks("What is 7 + 5?"))
-# score 0.0, per {'brief': 0.0, 'equation': 0.0}
-score, per = rubric_reward("7 + 5 = 12", principle_checks("What is 7 + 5?"))
-# score 1.0
+print(rubric_reward("Well, I think the answer is 12.", principle_checks("What is 7 + 5?")))
+# (0.0, {'brief': 0.0, 'equation': 0.0})
+print(rubric_reward("7 + 5 = 12", principle_checks("What is 7 + 5?")))
+# (1.0, {'brief': 1.0, 'equation': 1.0})
 ```
 
 Read this as: the "AI feedback" in the lab is a program, not a model. That is a deliberate simplification. In real CAI the judge is the model itself (or a larger one) reading the principle in natural language; the scaffolding around the judge (sample, score, pair, train) is identical, and using a rule makes every verdict auditable. Chapter 23 shows what an LLM judge adds and what biases it brings.
@@ -88,8 +88,9 @@ Stage 1 of CAI needs a reviser. The lab's is three lines per principle: strip th
 ```python
 draft = "Well, I think the answer is 12."          # violates brief + equation
 critique = [name for name, check in principle_checks("What is 7 + 5?") if not check(draft)]
-# ['brief', 'equation']
-revision = "7 + 5 = 12"
+print(critique)                                    # ['brief', 'equation']
+revision = "7 + 5 = 12"                            # the lab's `revise` derives this from the draft's last number
+print(rubric_reward(revision, principle_checks("What is 7 + 5?"))[0])   # 1.0
 ```
 
 ### From verdicts to preference pairs
@@ -109,7 +110,7 @@ scores = [rubric_reward(c, principle_checks(ex.prompt))[0] for c in completions]
 if max(scores) > min(scores):                                            # otherwise: nothing to rank, skip
     best, worst = scores.index(max(scores)), scores.index(min(scores))
     pair = PreferencePair(prompt_msgs, chosen=completions[best], rejected=completions[worst])
-    print(pair.chosen, "|", pair.rejected)      # e.g. '5 + 6 = 11' | 'Well, I think the answer is 11.'  (sampled: varies)
+    print(pair.chosen, "|", pair.rejected)      # e.g. 4 + 12 = 16 | 25   (sampled at temperature 1: varies)
 ```
 
 Then `dpo_train(policy, None, tok, pairs, DPOConfig(...))` from Chapter 17 does the optimisation against a frozen copy of the pre-alignment policy. Nothing new is needed: the constitution changed the *labels*, not the algorithm.
