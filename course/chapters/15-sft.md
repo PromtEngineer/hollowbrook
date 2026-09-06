@@ -96,10 +96,10 @@ Read this as: average the surprise at the correct next token over the assistant 
 `sft_train` is the training loop of Chapter 10 with three edits: batches are shuffled *conversations* rather than random windows of a token stream; the loss is `sft_loss`; and every `eval_every` steps it also runs `eval_tasks` on the validation examples, so the history carries an accuracy curve next to the loss curve. Everything else, AdamW, warmup, cosine decay, gradient clipping, is shared through `llm/optim.py`.
 
 ```python
-cfg = SFTConfig(steps=300, batch_size=16, lr=1e-3, warmup_steps=20, schedule="cosine", eval_every=100)
+cfg = SFTConfig(steps=750, batch_size=16, lr=1e-3, warmup_steps=20, schedule="cosine", eval_every=150)
 model = copy.deepcopy(base)
 hist = sft_train(model, tok, train, cfg, val_examples=make_examples(32, seed=2, tasks=["upper", "reverse", "add", "count"]))
-hist.train_loss[0], hist.train_loss[-1], hist.val_acc    # loss ~9 -> ~1, accuracy per eval point
+hist.train_loss[0], hist.train_loss[-1], hist.val_acc    # 9.07, 1.19, [0.19, 0.25, 0.44, 0.50, 0.56]  (nano, ~3 min idle)
 ```
 
 The defaults in `SFTConfig` encode the folklore of the stage. `lr = 3e-4` is a third of pretraining's `1e-3`; production SFT of a 7B-to-70B model uses `1e-5` to `2e-5`, roughly ten times below its pretraining rate, because the model is already in a good basin and a large step leaves it. The lab uses `1e-3` because TinyLM is 300 to 2,500 times smaller than those models and the default converges about three times slower at this scale; the rule "SFT LR ≈ pretraining LR / 10" is a rule for models that were pretrained near their optimal LR, which nano and small were not. `weight_decay = 0` because decay pulls weights toward zero, away from the pretrained solution. `epochs` is optional and usually 1 to 3: the third epoch on a small set overfits, which shows up as validation loss rising while accuracy plateaus. `max_len = 192` truncates; `grad_clip = 1.0` as always.
@@ -132,11 +132,120 @@ eval_tasks(model, tok, val, max_new_tokens=16).table()   # a markdown table with
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab15_sft.py            # quick: TinyLM-nano, 300 steps + 150 LoRA steps, saves runs/sft_nano.pt
-python3 labs/lab15_sft.py --full     # TinyLM-small, 400 steps + 200 LoRA steps, saves runs/sft_small.pt
+python3 labs/lab15_sft.py            # quick: TinyLM-nano, 750 steps full FT + 750 LoRA, saves runs/sft_nano.pt (~7 min idle CPU)
+python3 labs/lab15_sft.py --full     # TinyLM-small, 800 + 800 steps, saves runs/sft_small.pt (later chapters load it)
 ```
 
-LAB15_WORKED_EXAMPLE
+The lab has seven sections; the quick run trains TinyLM-nano (295,584 non-embedding parameters) and the full run TinyLM-small (2,361,792). Section 1 prints the data and the first example through the template, then the fact that sets the budget: the first 200 examples are 12,627 tokens of which 1,002 (8%) are trainable, and 750 steps of 16 examples is 12,000 conversations, 6.0 epochs over the 2,000-example set. Sixteen of 48 (quick: 11 of 32) validation prompts also occur in the training set, because the 55-word pool repeats; `add` prompts are fresh.
+
+Section 2 is the baseline. The base model scores 0.00 on every task, and the table's confidence intervals are `[0.00, 0.00]` because there is nothing to resample:
+
+```
+| task | n | accuracy | 95% CI |
+|---|---:|---:|---|
+| add | 10 | 0.00 | [0.00, 0.00] |
+| count | 10 | 0.00 | [0.00, 0.00] |
+| reverse | 6 | 0.00 | [0.00, 0.00] |
+| upper | 6 | 0.00 | [0.00, 0.00] |
+| **all** | 32 | 0.00 | [0.00, 0.00] |
+  'How many words: purple shell'           -> '=  +  =  = 78.'
+  'What is 20 + 55?'                       -> '+   78.'
+Storyland val perplexity before SFT: 2.90
+```
+
+Every base answer runs to the 16-token limit, because the base model has never produced `<|end|>`. Storyland perplexity of 2.90 (2.06 for small) is the number to remember: it is what SFT will damage.
+
+Section 3 is the fine-tune. The log prints the masked loss every 50 steps and, every 150, the validation loss and per-task accuracy:
+
+```
+[sft] 2000 examples | 750 steps | batch 16 | 379,200 trainable params
+step     0 | loss 9.0731 | lr 5.00e-05 | grad_norm 11.90
+   val loss 2.0840 | accuracy 0.19 (add=0.00 count=0.60 reverse=0.00 upper=0.00)     <- step 150
+   val loss 1.6243 | accuracy 0.25 (add=0.00 count=0.80 reverse=0.00 upper=0.00)     <- step 300
+   val loss 1.3134 | accuracy 0.44 (add=0.00 count=1.00 reverse=0.33 upper=0.33)     <- step 450
+   val loss 1.1553 | accuracy 0.50 (add=0.00 count=0.80 reverse=0.50 upper=0.83)     <- step 600
+   val loss 1.0471 | accuracy 0.56 (add=0.00 count=0.80 reverse=0.67 upper=1.00)     <- step 749
+full FT: 398s for 750 steps (0.53s/step) | loss 9.07 -> 1.19
+```
+
+Read the accuracy column as a story in three acts. By step 150 the model answers in the format (every answer is short and ends with `<|end|>`) and has learned `count`, the task whose answer is one digit determined by a length. Between 300 and 450, `upper` and `reverse` switch on: until then the model was producing plausible uppercase strings that ignored the prompt word (`Write in capitals: map` → `BARE` in an earlier 300-step run), and the jump is the moment attention from the answer position to the prompt's word token forms, the same copy circuit that Chapter 5 drew. `add` never moves: two-digit addition with carries is not a shallow transformation of the prompt, and 750 steps of imitation do not install it, which is Chapter 19's job. The loss falls from 9.07 to 1.19, but the number that matters is the accuracy table after training:
+
+```
+| task | n | accuracy | 95% CI |
+|---|---:|---:|---|
+| add | 10 | 0.00 | [0.00, 0.00] |
+| count | 10 | 0.80 | [0.50, 1.00] |
+| reverse | 6 | 0.67 | [0.33, 1.00] |
+| upper | 6 | 1.00 | [1.00, 1.00] |
+| **all** | 32 | 0.56 | [0.38, 0.72] |
+  [count  ] 'How many words: purple shell'           -> '2'                    ✓ (want '2')
+  [add    ] 'What is 20 + 55?'                       -> '75 + 63 = 118'        ✗ (want '20 + 55 = 75')
+  [reverse] 'Reverse the word: red'                  -> 'raer'                 ✗ (want 'der')
+  [upper  ] 'Write in capitals: map'                 -> 'MAP'                  ✓ (want 'MAP')
+  [reverse] 'Reverse the word: garden'               -> 'nedrag'               ✓ (want 'nedrag')
+```
+
+The `add` answer is the most instructive line: `75 + 63 = 118` has the *shape* of a correct answer (two numbers, a plus, an equals sign, a sum that is actually right for the numbers it wrote) and nothing to do with the question. That is format without capability, learned in one afternoon. The confidence intervals are wide because the quick validation set has six `upper` items; `[0.33, 1.00]` for `reverse` means the 0.67 could be anywhere in that range, and the full run's 48 items narrow them.
+
+The forgetting measurement follows:
+
+```
+Storyland val perplexity: 2.90 before -> 821.65 after SFT (+28249%): this is catastrophic forgetting, measured
+saved runs/sft_nano.pt (accuracy 0.56)
+```
+
+A perplexity of 822 on the text the model was pretrained on means it has, for practical purposes, forgotten how to write Storyland prose: every weight moved toward four narrow tasks, with no replay data to hold it in place. The checkpoint is saved regardless, because the later chapters need an instruction follower, not a storyteller; Exercise 4 adds replay and shows how cheap the fix is.
+
+Section 5 is LoRA. A throwaway copy of the base is wrapped so you can look at the adapters:
+
+```
+wrapped 18 linear layers; block 0 q_proj: W (96, 96) frozen, A (8, 96) + B (96, 8) trainable, scale alpha/r = 2.0
+trainable params: 37,632 (LoRA) vs 379,200 (full) = 9.9%
+✅ at initialisation B = 0, so the LoRA model computes exactly what the base did
+```
+
+Then a fresh copy is trained through `sft_train(..., lora_rank=8)` for the same 750 steps at a higher learning rate, and the comparison table is printed:
+
+```
+method         trainable  steps    time  s/step  accuracy  upper  reverse   add  count    ppl
+full FT          379,200    750    398s    0.53      0.56   1.00     0.67  0.00   0.80 821.65
+LoRA r=8          37,632    750    238s    0.32      0.25   0.00     0.00  0.00   0.80  22.21
+one training step, evals excluded: full FT 1461 ms | LoRA 521 ms
+```
+
+Two things to read off. First, "LoRA learns less and forgets less" in one row: with a tenth of the parameters and the same steps, rank-8 LoRA on nano learns the format and `count` and never gets the copy tasks (its validation loss flattens at 3.8 against 1.05 for full fine-tuning), while its Storyland perplexity is 22 instead of 822. The rank bounds how far each weight matrix can move, in both directions. Second, the cost: the wall-clock column includes the periodic evaluations, which are slow for a model that has not learned to stop, so the honest comparison is the micro-benchmark on the last line. Frozen weights need no weight-gradient matmuls and the optimizer touches 37k numbers instead of 379k, so a LoRA step can only be cheaper; how much cheaper depends on what dominates. Here the quick run measured 521 ms against 1,461 ms on a CPU that other jobs were loading (a load average above 10, so treat the ratio as noisy), while the idle-machine full run below measured 187 ms against 201 ms: at TinyLM's size the activation-gradient work, which LoRA does not skip, is most of the step. LoRA's memory saving, the Adam moments for 2.5M or 70B parameters that never get allocated, is the reliable win; the speed-up is a bonus that grows with model size. The lab's checks confirm `sft_train` merged the adapters back and that the result has the same parameter names as the base. The quick run takes about 12 minutes on a loaded 4-core machine, most of it the two 750-step trainings.
+
+The `--full` run does the same with TinyLM-small on 48 validation items and 800 steps, and gets the copy tasks completely:
+
+```
+[sft] 2000 examples | 800 steps | batch 16 | 2,529,024 trainable params
+   val loss 1.6001 | accuracy 0.25 (add=0.00 count=0.67 reverse=0.00 upper=0.00)     <- step 150
+   val loss 0.7381 | accuracy 0.52 (add=0.00 count=0.94 reverse=0.44 upper=0.50)     <- step 300
+   val loss 0.4013 | accuracy 0.67 (add=0.00 count=0.94 reverse=0.89 upper=0.88)     <- step 450
+   val loss 0.3276 | accuracy 0.73 (add=0.00 count=1.00 reverse=1.00 upper=1.00)     <- step 600
+   val loss 0.2997 | accuracy 0.73 (add=0.08 count=0.94 reverse=1.00 upper=1.00)     <- step 799
+full FT: 674s for 800 steps (0.84s/step) | loss 13.12 -> 0.11
+| task | n | accuracy | 95% CI |
+|---|---:|---:|---|
+| add | 13 | 0.08 | [0.00, 0.23] |
+| count | 18 | 0.94 | [0.83, 1.00] |
+| reverse | 9 | 1.00 | [1.00, 1.00] |
+| upper | 8 | 1.00 | [1.00, 1.00] |
+| **all** | 48 | 0.73 | [0.60, 0.85] |
+  [add    ] 'What is 20 + 55?'                       -> '20 + 55 = 77'         ✗ (want '20 + 55 = 75')
+  [add    ] 'What is 23 + 57?'                       -> '23 + 57 = 80'         ✓ (want '23 + 57 = 80')
+Storyland val perplexity: 2.06 before -> 181.69 after SFT (+8728%): this is catastrophic forgetting, measured
+saved runs/sft_small.pt (accuracy 0.73)
+
+method         trainable  steps    time  s/step  accuracy  upper  reverse   add  count    ppl
+full FT        2,529,024    800    674s    0.84      0.73   1.00     1.00  0.08   0.94 181.69
+LoRA r=8         150,528    800    435s    0.54      0.38   0.00     0.00  0.00   1.00   5.96
+one training step, evals excluded: full FT 201 ms | LoRA 187 ms
+```
+
+The larger model learns the copy tasks earlier (0.88 on `upper` by step 450 against 0.33 for nano) and gets them all by step 600, with the training loss at 0.11 by the end. `add` creeps to 0.08: the model now copies the two operands correctly (`20 + 55 = 77`) and gets the sum wrong, which is the honest state of a model that has learned the procedure's *shape*, and an intermediate step that Chapter 19's verifiable reward will push the rest of the way. The confidence interval on `all`, `[0.60, 0.85]` with 48 items, is the reminder that 0.73 is not a precise number. Forgetting is milder in absolute terms than for nano (perplexity 182 instead of 822) and still catastrophic; the checkpoint `runs/sft_small.pt` is what Chapters 16 to 20 load. The LoRA row repeats the quick story at 6.0% of the parameters: `count` at 1.00, copy tasks at 0.00 after 800 steps, perplexity 5.96. The full run took 19.5 minutes on a 4-core CPU that other jobs were sharing; about 11 of those minutes are the two 800-step trainings and the rest is evaluation.
+
+The lab saves `figures/generated/lab15_sft.png`: the masked training loss for both methods, the validation accuracy curve, and the per-task bars for base, full fine-tuning and LoRA.
 
 ## What SFT teaches, and what it does not
 
@@ -144,7 +253,7 @@ Three things are settled. SFT teaches the **format**: after a few hundred steps 
 
 Two things it does not teach well. It does not add **knowledge**. The Storyland facts the model knows come from pretraining; SFT on a question whose answer the base model cannot already produce does not install the answer, it installs the *habit of answering confidently*, and Gekhman et al. (2024) showed that fine-tuning on unknown facts measurably increases hallucination on known ones. The `add` task is the lab's version: the base model saw two-digit sums in pretraining, so SFT can surface the skill; a task the base never saw would not be learned by SFT at this data size. And SFT does not produce **robust reasoning**. A model fine-tuned on correct chains of thought imitates the surface of the chain; "The False Promise of Imitating Proprietary LLMs" (2023) found that imitation-tuned models matched the teacher's style while their factual accuracy did not improve, and the 2025 shift to RLVR (Chapter 19) is the response: reward the *outcome* and let the model find chains that actually reach it.
 
-**Catastrophic forgetting** is the cost side. Training on four narrow tasks moves every weight toward those tasks, and the lab measures the damage as Storyland perplexity before and after: LAB15_FORGETTING_SENTENCE The standard fix is **replay**, mixing a slice of the pretraining (or previous-stage) data into the SFT set, typically 5 to 20 percent, as Chapter 13 did for mid-training; a second is LoRA, which cannot move the weights far, and which the lab's table shows forgetting less. Exercise 4 adds replay and re-measures.
+**Catastrophic forgetting** is the cost side. Training on four narrow tasks moves every weight toward those tasks, and the lab measures the damage as Storyland perplexity before and after: 2.90 → 821.65 for nano after 750 steps of full fine-tuning, against 22.2 for LoRA at the same steps. The standard fix is **replay**, mixing a slice of the pretraining (or previous-stage) data into the SFT set, typically 5 to 20 percent, as Chapter 13 did for mid-training; a second is LoRA, which cannot move the weights far, and which the lab's table shows forgetting less. Exercise 4 adds replay and re-measures.
 
 ## 🆕 SFT in 2026
 

@@ -51,7 +51,7 @@ pad_id, end_id = tok.special_tokens["<|pad|>"], tok.special_tokens[chat.END]
 # The task world is small: only 441 sums exist with a, b <= 20. SFT trains on 400 random draws
 # (seed 1) and every evaluation uses 100 fresh draws (seed 999). Most evaluation prompts therefore
 # also occur in the SFT set: these numbers measure accuracy on the task distribution, not
-# generalisation to unseen sums (a strict 341/100 split is exercise 8 of Chapter 19: the small
+# generalisation to unseen sums (a strict 341/100 split is exercise 7 of Chapter 19: the small
 # model memorises rather than generalises there).
 TRAIN_SET = tasks.make_examples(400, seed=1, tasks=["add"], max_value=20)
 EVAL_SET = tasks.make_examples(100, seed=999, tasks=["add"], max_value=20)

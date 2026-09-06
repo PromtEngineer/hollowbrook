@@ -7,7 +7,7 @@
 
 ## Why this matters
 
-In January 2025 DeepSeek published R1, a model whose long, self-correcting "thinking" before an answer had not been written by anyone: it appeared during reinforcement learning against a reward that only checked whether the final answer was right. The recipe, **reinforcement learning with verifiable rewards (RLVR)**, is now the main way frontier labs turn an instruct model into a reasoning model, and the algorithm underneath it, **Group Relative Policy Optimization (GRPO)**, is Chapter 18's policy gradient with one change: the baseline is the mean reward of a *group* of answers to the same prompt, so no critic network is needed. The 2025–2026 literature is a list of small corrections to that recipe (clip-higher, dynamic sampling, token-level losses, sequence-level ratios), each fixing a failure people hit in practice, and each a one-line switch in `llm/rl.py`. This chapter runs the whole thing on TinyLM: an SFT model that adds two numbers about half the time becomes one that does so more often, with every training signal logged, and then asks the uncomfortable question the field is still arguing about: did the model learn to add, or did it learn to pick the right answer from the ones it could already produce?
+In January 2025 DeepSeek published R1, a model whose long, self-correcting "thinking" before an answer had not been written by anyone: it appeared during reinforcement learning against a reward that only checked whether the final answer was right. The recipe, **reinforcement learning with verifiable rewards (RLVR)**, is now the main way frontier labs turn an instruct model into a reasoning model, and the algorithm underneath it, **Group Relative Policy Optimization (GRPO)**, is Chapter 18's policy gradient with one change: the baseline is the mean reward of a *group* of answers to the same prompt, so no critic network is needed. The 2025–2026 literature is a list of small corrections to that recipe (clip-higher, dynamic sampling, token-level losses, sequence-level ratios), each fixing a failure people hit in practice, and each a one-line switch in `llm/rl.py`. This chapter runs the whole thing on TinyLM with every training signal logged, and reports what a 2.4M-parameter model actually does under GRPO (spoiler: less than the papers, for a reason the logs make visible), then asks the question the field is still arguing about: does RLVR teach a model to add, or teach it to pick the right answer from the ones it could already produce?
 
 ## The idea in pictures 📐
 
@@ -145,7 +145,7 @@ Here is the argument, as of September 2026. One camp, starting from Yue et al. (
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab19_grpo.py            # quick: nano model, 20 GRPO steps, about 1.5 min
+python3 labs/lab19_grpo.py            # quick: nano model, 20 GRPO steps, 96 s
 python3 labs/lab19_grpo.py --full     # small model, 40 steps + six 10-step ablations, see timing below
 ```
 
@@ -187,7 +187,46 @@ Twenty steps on a 295k-parameter model do not teach it to add: the training rewa
 
 The test-time-compute table separates two ideas. pass@N, the oracle, climbs to 0.78–0.80 at N = 16: the model *can* produce the right sum for four prompts in five if something else picks it out. Majority voting cannot, and even falls with N, because the per-sample accuracy (≈ 0.1) is below the frequency of the model's favourite wrong answer; voting needs the right answer to be the mode. Self-consistency is a technique for models that are usually right and sometimes slip, not for models that are usually wrong.
 
-<!-- FULL_MODE_19 -->
+### Full mode (small, 2.4M parameters)
+
+The full run starts from a much stronger warm start (700 SFT steps; 0.65 greedy on fresh sums, 0.60 on the 20-sum probe), uses two PPO epochs so the clip is real, lr 5e-5 (1e-4 spiked the KL to 7 in a probe), and 40 steps:
+
+```
+   greedy accuracy [SFT, before RL]: 0.65  95% CI [0.56, 0.74]  (n=100)
+   at T=1 on 50 held-out prompts: sample accuracy 0.45, pass@8 0.66   [41s]
+   prompt 'What is 2 + 8?': G=8 rollouts ... '2 + 8 = 10' x 8, reward 1.1, advantage +0.00 each
+   mean 1.100, std 0.000; advantages sum to +0.0e+00
+step    0 | reward 0.975 | acc 0.88 | len   8.0 | clip 0.02 | kl 0.0076 | H 0.13 | skipped 0.25 | 11.2s
+step   12 | reward 0.753 | acc 0.66 | len   8.0 | clip 0.02 | kl 0.0106 | H 0.23 | skipped 0.50 | 7.4s
+step   28 | reward 1.069 | acc 0.97 | len   8.0 | clip 0.02 | kl 0.0004 | H 0.08 | skipped 0.75 | 2.6s
+step   39 | reward 0.750 | acc 0.66 | len   8.2 | clip 0.01 | kl 0.0071 | H 0.23 | skipped 0.00 | 13.3s
+   40 steps in 278s (7.0s/step, of which rollouts 3.1s)
+   training reward, first 6 steps 0.943 -> last 6 0.826 | entropy 0.13 -> 0.23 | mean clip frac 0.017 | mean skipped 0.30 | resp len 8.0 -> 8.2
+               greedy         95% CI  sample acc  pass@8
+   before        0.65 [0.56, 0.74]        0.45    0.66
+   after         0.61 [0.51, 0.70]        0.40    0.64
+     N | majority (before) majority (after) | pass@N (before) pass@N (after)
+     1 |              0.42             0.38 |            0.42           0.38
+    16 |              0.56             0.50 |            0.74           0.70
+   majority vote at N=16 vs N=1: 0.50 vs 0.38 -> voting helps
+```
+
+This is the result to think about, not the one to hope for. The example rollout group is eight identical correct answers: advantage 0 for all, and the step would skip it. That is the run in miniature. The SFT model has *memorised* its 400 training sums (training-prompt reward 0.94, sample accuracy 0.88 at step 0), so 30 % of groups are all-correct and skipped, the informative groups are the model's few remaining training mistakes, and 40 steps of pushing on those move the fresh-sum accuracy from 0.65 to 0.61 with overlapping intervals; pass@8 is unchanged (0.66 → 0.64). Entropy *rises* (0.13 → 0.23) rather than collapsing, the clip zeroes about 2 % of tokens, and the two-epoch KL stays below 0.01 per token. GRPO needs prompts at the frontier of what the model can do, where groups are mixed; a model that has memorised its prompts has no frontier in its training set, and a model that cannot add (the nano quick run) has no correct samples to push toward. Between those the recipe works; here neither side of the recipe is available, which is itself the lesson RLVR papers state as "data at the right difficulty". Test-time compute is the positive result: majority voting over 16 samples lifts a 0.38 per-sample accuracy to 0.50, and an oracle would reach 0.70.
+
+The ablations are six 10-step runs from the same start, evaluated on 50 sums (CI about ±0.14):
+
+```
+   DAPO defaults (as above)   reward 0.96 -> 0.82 | greedy acc (n=50) 0.54 | clip 0.023 | H 0.18 | skipped 0.28 | 140s
+   sequence-level loss        reward 0.96 -> 0.83 | greedy acc (n=50) 0.54 | clip 0.024 | H 0.17 | skipped 0.25 | 70s
+   symmetric clip 0.2/0.2     reward 0.96 -> 0.82 | greedy acc (n=50) 0.54 | clip 0.026 | H 0.17 | skipped 0.28 | 124s
+   no dynamic sampling        reward 0.95 -> 0.84 | greedy acc (n=50) 0.54 | clip 0.017 | H 0.16 | skipped 0.00 | 56s
+   Dr. GRPO (no std norm)     reward 0.96 -> 0.86 | greedy acc (n=50) 0.54 | clip 0.021 | H 0.19 | skipped 0.30 | 79s
+   GSPO (sequence ratio)      reward 0.95 -> 0.87 | greedy acc (n=50) 0.52 | clip 0.764 | H 0.17 | skipped 0.33 | 137s
+   SFT start on the same 50: 0.54; a 50-prompt CI is about +-0.14, so only large gaps mean anything
+```
+
+Every variant lands on the same accuracy (0.52–0.54, the SFT start's 0.54), which is what ten steps with 8-token answers and no length or entropy pathology should give: the fixes address failures (entropy collapse, long-answer bias, MoE ratio noise) that do not occur at this scale, and the lab reports that rather than manufacturing a difference. Two columns do show mechanism. Without dynamic sampling nothing is skipped and the clip fraction drops (a third of the tokens now have zero advantage), and GSPO's tiny ε (3e-4) clips 76 % of *sequences*, the intended behaviour of a sequence ratio that barely moves, against 2 % of tokens for the per-token clips. Timings are inflated: the three full labs ran concurrently on a shared 4-core machine at 2 threads each (this run 1,179 s in total, of which the 40-step GRPO was 278 s).
+
 
 ## Try it yourself ✍️
 
@@ -197,7 +236,8 @@ The test-time-compute table separates two ideas. pass@N, the oracle, climbs to 0
 4. **Entropy collapse on purpose.** Sample rollouts at `temperature=0.6` while training (the loss still assumes T = 1, a deliberate mismatch) with a symmetric clip. Plot entropy per step against the default run. At what step does the skipped fraction go to 1?
 5. **CISPO.** Implement `cispo_loss(logp, old_logp, adv, mask, eps_high)` that computes `w = clip(ratio, max=1+eps_high).detach()` and returns `-masked_mean(w * adv * logp, mask)`. Verify that no token ever has an exactly-zero gradient and compare its training curve with `ppo_clip_loss` for `ppo_epochs=4`.
 6. **Sharpening test, larger.** Run pass@N for N up to 64 on 50 held-out prompts for the SFT model, the GRPO'd model and the DPO'd model from Lab 17. Plot the three curves. Which model has the highest ceiling, and at what N do the curves cross, if they do?
-7. **Interactive** 🎛️: open `interactive/19_grpo_simulator.html`. Slide P(correct) to 0.9 and resample until the group is all-correct: every advantage becomes 0 and the dynamic-sampling light turns on. Press "Perturb ratios" and widen ε_high above ε_low to see which tokens stop contributing gradient. Then run 30 training steps and watch the entropy fall as P(correct) climbs. Do the Challenge: produce a group that gives zero learning signal and explain why.
+7. **Strict split.** Replace `TRAIN_SET`/`EVAL_SET` with a disjoint split of the 441 sums (shuffle all (a, b) pairs with a fixed seed, hold out 100). Re-run SFT (700 steps, lr 3e-4) and report greedy accuracy on the held-out 100. In our probes the small model reached 0.05–0.09 (it memorises the training sums: train loss 0.06, val loss rising) while the nano model reached 0.22. Then run GRPO from each. What does "RL needs prompts at the frontier" mean when there is no frontier?
+8. **Interactive** 🎛️: open `interactive/19_grpo_simulator.html`. Slide P(correct) to 0.9 and resample until the group is all-correct: every advantage becomes 0 and the dynamic-sampling light turns on. Press "Perturb ratios" and widen ε_high above ε_low to see which tokens stop contributing gradient. Then run 30 training steps and watch the entropy fall as P(correct) climbs. Do the Challenge: produce a group that gives zero learning signal and explain why.
 
 ## Check yourself ✅
 

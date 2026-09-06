@@ -107,6 +107,31 @@ def verify(example: TaskExample, completion: str) -> float:
     return float(got.strip().lower() == want.lower())
 
 
+EQUATION_RE = re.compile(r"(-?\d+)\s*([+-])\s*(-?\d+)\s*=\s*(-?\d+)")
+
+
+def strict_verify(example: TaskExample, completion: str) -> float:
+    """Like ``verify`` but, for arithmetic, also requires the restated operands to match.
+
+    ``verify`` only grades the number after the last "=", so a policy under RL can learn
+    to write ``8 + 8 = 10`` for "What is 2 + 8?" and still be rewarded (Labs 18–19 show
+    this happening). A stricter grader closes that hole — the general lesson is that
+    every reward has an exploit until you look for it (Chapter 17).
+    """
+    if example.task not in ("add", "sub"):
+        return verify(example, completion)
+    m = EQUATION_RE.search(completion)
+    if m is None:
+        return 0.0
+    a, op, b, ans = int(m.group(1)), m.group(2), int(m.group(3)), int(m.group(4))
+    ea, eb = example.meta.get("a"), example.meta.get("b")
+    if ea is None:                                   # recover operands from the prompt text
+        nums = NUM_RE.findall(example.prompt)
+        ea, eb = int(nums[0]), int(nums[1])
+    want_op = "+" if example.task == "add" else "-"
+    return float(a == ea and b == eb and op == want_op and ans == example.meta["answer"])
+
+
 def format_reward(example: TaskExample, completion: str) -> float:
     """A small shaping reward for answering in the expected format (Chapter 19)."""
     if example.task in ("add", "sub"):

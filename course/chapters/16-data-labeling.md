@@ -205,14 +205,23 @@ read back 60 pairs from the perfect annotator (60 identical to the originals); 5
 ✅ kappa recomputed from the two files = 0.718 (paste them into the interactive to confirm)
 ```
 
-`runs/preferences.jsonl` and `runs/preferences_annotator2.jsonl` can be pasted into the interactive's two kappa boxes, which will print the same 0.718. Section 7 tries rejection sampling. Before Lab 15 has run, it uses the base model:
+`runs/preferences.jsonl` and `runs/preferences_annotator2.jsonl` can be pasted into the interactive's two kappa boxes, which will print the same 0.718. Section 7 tries rejection sampling. Before Lab 15 has run, it falls back to the base model, and the result is the on-policy lesson of Chapter 14 in one line:
 
 ```
 stats: {'n_prompts': 8, 'n_pairs': 0, 'n_all_correct': 0, 'n_all_wrong': 8, 'sample_accuracy': 0.0}
 ✅ a base model is almost never right, so rejection sampling yields (almost) no pairs: on-policy data needs a policy that sometimes succeeds
 ```
 
-After Lab 15 has saved `runs/sft_small.pt`, the `--full` run samples from it instead:
+Once `runs/sft_nano.pt` exists, the quick run samples four answers per prompt from it at temperature 1:
+
+```
+sampling 4 answers x 8 prompts from runs/sft_nano.pt: 0.3s
+stats: {'n_prompts': 8, 'n_pairs': 2, 'n_all_correct': 0, 'n_all_wrong': 6, 'sample_accuracy': 0.1875}
+  'Write in capitals: boat': chosen 'BOAT' | rejected 'WOAT'
+  'Write in capitals: lake': chosen 'LAKE' | rejected 'OXar'
+```
+
+Six of eight prompts had four wrong samples and produced nothing; two had at least one right and one wrong, and those give pairs whose rejected answer (`WOAT`) is a mistake this model actually makes, not one we invented. That is the difference between on-policy and synthetic preference data, and why the rejected side of a good preference set looks like the model's own near-misses. With `runs/sft_small.pt` from the `--full` run of Lab 15, the `--full` run samples 40 prompts:
 
 ```
 sampling 4 answers x 40 prompts from runs/sft_small.pt: FULL_RS_TIME

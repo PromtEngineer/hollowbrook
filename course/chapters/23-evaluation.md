@@ -106,15 +106,97 @@ A **judge** is any function `(prompt, answer_a, answer_b) → "A" | "B" | "tie"`
 print(compare_checkpoints([run_path("base_nano.pt"), run_path("lab20_student_opd.pt")], tok, eval_set[:8]))
 # | checkpoint | accuracy | perplexity |
 # |---|---:|---:|
-# | base_nano.pt | 0.00 | 26.1 |
-# | lab20_student_opd.pt | 0.25 | 4.8 |
+# | base_nano.pt | 0.00 | 26799.0 |
+# | lab20_student_opd.pt | 0.12 | 46963.0 |
 ```
 
-`compare_checkpoints` loads each path, runs `eval_tasks`, and measures perplexity on the chat-formatted eval items themselves (so it tracks how well each checkpoint models the conversation format). The lab builds a richer table on top of it: per-task accuracy, bootstrap CIs, and Storyland perplexity, saved as markdown.
+`compare_checkpoints` loads each path, runs `eval_tasks`, and measures perplexity on the chat-formatted eval items themselves (so it tracks how well each checkpoint models the conversation format; a base model that has never seen a chat token scores in the tens of thousands here, and even fine-tuned models score in the thousands because the eight items are short and the window is 128 tokens of mostly special-token structure). The lab builds a richer table on top of it: per-task accuracy, bootstrap CIs, and Storyland perplexity, saved as markdown.
 
 ## Worked example 🧪
 
-LAB_OUTPUT_PLACEHOLDER
+```bash
+python3 labs/lab23_evals.py            # quick: 28 eval items per checkpoint, about 3.5 min with 35 checkpoints
+python3 labs/lab23_evals.py --full     # 84 items, about 5.5 min
+```
+
+The lab evaluates *every* loadable checkpoint in `runs/` (Lab 10's optimizer checkpoints are skipped), so its table depends on which labs you have run. All numbers below are from one CPU thread on a shared machine.
+
+**(a) Every checkpoint, with error bars.** Task accuracy on 84 items spread over the seven task types (greedy, 24 new tokens), a 95% bootstrap CI, and Storyland perplexity on the held-out stream:
+
+```
+   35 checkpoints: ['base_nano.pt', 'base_small.pt', ..., 'sft_nano.pt', 'sft_small.pt']
+   base_nano.pt                 base           acc 0.00 [0.00, 0.00]  ppl(story)    2.9      4s
+   base_small.pt                base           acc 0.00 [0.00, 0.00]  ppl(story)    2.1     11s
+   lab13_annealed.pt            mid-training   acc 0.00 [0.00, 0.00]  ppl(story)    2.1    141s
+   lab17_sft_small.pt           sft            acc 0.13 [0.06, 0.20]  ppl(story)    8.1    176s
+   lab17_dpo_small.pt           dpo            acc 0.12 [0.05, 0.19]  ppl(story)    8.7    159s
+   grpo_small.pt                grpo           acc 0.12 [0.06, 0.19]  ppl(story)    8.8    116s
+   lab20_student_sft_nano.pt    sft            acc 0.12 [0.06, 0.19]  ppl(story) 2930.5    193s
+   lab20_student_opd.pt         distilled      acc 0.11 [0.05, 0.18]  ppl(story) 1299.1    183s
+   lab20_teacher_strong.pt      sft            acc 0.20 [0.12, 0.29]  ppl(story) 19753.6    213s
+   lab21_tool_sft.pt            sft-tool-use   acc 0.02 [0.00, 0.06]  ppl(story) 12394.3    239s
+   lab21_tool_grpo.pt           agentic-grpo   acc 0.01 [0.00, 0.04]  ppl(story) 21439.6    226s
+   lab22_aligned.pt             cai-stage1     acc 0.08 [0.04, 0.14]  ppl(story) 16633.1    244s
+   sft_nano.pt                  sft            acc 0.32 [0.23, 0.42]  ppl(story)  840.3    263s
+   sft_small.pt                 sft            acc 0.43 [0.32, 0.54]  ppl(story)  183.4    267s
+   ...
+   lowest Storyland perplexity: base_small.pt (2.1); highest accuracy: sft_small.pt (0.43)
+✅ perplexity and task accuracy rank checkpoints differently
+```
+
+(The full table, one row per checkpoint with per-task columns, is in `runs/eval_report.md`; the excerpt keeps the rows the chapters discuss. On this machine other labs had left 35 checkpoints in `runs/`, and the whole pass took 4.5 minutes.) Four things to read off it.
+
+*Perplexity and accuracy disagree completely.* The best Storyland perplexity belongs to the base and mid-trained models (2.1), which score exactly 0.00 on every task because they have never seen a chat token; the best accuracy belongs to `sft_small.pt` (0.43), whose Storyland perplexity is 183, nearly a hundred times worse. Every post-training stage trades prose likelihood for behaviour, and perplexity on the pretraining distribution never sees the trade.
+
+*The error bars are the story.* `lab17_sft_small`, `lab17_dpo_small` and `grpo_small` sit at 0.13, 0.12 and 0.12 with intervals of about ±0.07: this eval cannot rank them, and any chapter that claimed one beat another on 84 items would be over-reading. `sft_small` at 0.43 [0.32, 0.54] against `sft_nano` at 0.32 [0.23, 0.42] is a real gap only barely (the intervals overlap by 0.1).
+
+*A checkpoint that is good at one thing scores low on a broad eval.* `lab20_teacher_strong.pt` is 98% accurate on addition (Chapter 20) and scores 0.20 here, because six of the seven task types are not addition; its per-task row in the report shows `add 0.94`. Read a benchmark's task mix before reading its number.
+
+*Prompt mismatch shows up as a near-zero.* `lab21_tool_sft.pt` and `lab21_tool_grpo.pt` score 0.02 and 0.01. In Chapter 21 the GRPO checkpoint scored 0.97 on addition, but under the system prompt it was trained with; `eval_tasks` uses the course's default system prompt, and the policy does not recognise the task without its tool listing. The eval is not wrong, it is answering a different question ("how good is this model under *this* prompt"), which is why an eval must fix its prompt and say so.
+
+The second table the report contains, from `compare_checkpoints`, measures perplexity on the *chat-formatted* eval items instead of Storyland prose, and there the base models are the outliers (5.4 million for `base_small.pt`): a distribution with special tokens the model never saw is, to it, nearly impossible text.
+
+**(b) How wide is the error bar?** The lab resamples the best checkpoint's per-item scores at several sizes:
+
+```
+       n    acc         95% CI  half-width
+      10   0.40 [0.10, 0.70]         0.30
+      25   0.48 [0.28, 0.68]         0.20
+      50   0.38 [0.24, 0.52]         0.14
+     100   0.36 [0.27, 0.45]         0.09
+     400   0.42 [0.37, 0.46]         0.05
+```
+
+Read the last column against the rule of thumb: at n = 100 the half-width is 0.09, so any two checkpoints in the table whose accuracies differ by less than about 0.1 are not distinguishable by this eval, whatever the second decimal says. To resolve a 0.05 gap you need 400 items, and the labs in this course use 30–100 because each item costs a generation.
+
+**(c) Contamination, planted and caught.** Twenty story-QA items are copied into a training set of 100 clean story-QA items, five times each (a popular benchmark appears on many web pages), and `contamination_check` is run with the production value n = 13:
+
+```
+   contamination_check (n=13): clean train set vs leaked eval  0.00 | contaminated train set vs leaked eval  1.00 | contaminated vs the clean eval  0.10
+   decontaminate() drops 100 of 200 documents
+✅ contamination_check flags the planted items
+   fine-tuned lab20_student_sft_nano.pt for 200 steps on 100 clean + 20 leaked items x5 (28s)
+                            before    after
+   leaked eval items          0.00     1.00   <- inflated: the model saw these exact prompts
+   clean eval items           0.00     0.05   <- the honest number
+✅ the leaked items improve more than the clean ones: the score is contaminated
+```
+
+`contamination_check` flags all 20 planted items against the contaminated set and none against the clean one; the 0.10 against the clean eval is a true positive of a different kind (two Storyland stories happen to share a 13-word run, because the corpus is built from templates). `decontaminate` then drops exactly the 100 leaked copies. The fine-tune is the part that matters: 200 steps on the contaminated set take the model from 0.00 to **1.00** on the leaked items and from 0.00 to 0.05 on the clean ones. A model that memorised twenty questions did not learn story comprehension, and if the leaked items had been the benchmark, its reported score would have been 1.00. Note also the recipe: the leak is planted five times, because that is how benchmark items appear on the web (a popular question is quoted, mirrored and scraped many times), and a single copy in 100 clean examples was *not* enough to move the score in the lab's earlier trials. Contamination is not a matter of one document.
+
+**(d) A judge and its position bias.** The rule-based judge and two deliberately broken ones on the same pair:
+
+```
+   prompt 'What is 11 + 20?': A = '11 + 20 = 31' (correct), B = '11 + 20 = 32' (off by one)
+   rule-based judge : forward A, swapped A  -> consistent=True
+   'first wins'     : forward A, swapped B  -> position_bias=True
+   'longer wins'    : B picks the verbose wrong answer over '11 + 20 = 31'
+   over 20 prompts the 'first wins' judge shows position bias on 20/20; the rule-based judge on 0/20
+```
+
+The swap test is two calls and a dictionary lookup, and it separates the fair judge from the position-biased one on every prompt. It does not catch the length-biased judge, whose verdict is stable under swapping and simply wrong; that one needs a controlled pair (same content, different length), which is what the third line is.
+
+The lab saves `runs/eval_report.md` (the full table, plus `compare_checkpoints`' own two-column version) and `figures/generated/lab23_evals.png`.
 
 ## 🆕 The 2026 benchmark landscape
 

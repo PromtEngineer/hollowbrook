@@ -7,7 +7,7 @@
 
 ## Why this matters
 
-Every frontier lab in 2026 trains one very large model and then ships a family of smaller ones, and the small ones are not trained from scratch on the same recipe: they are **distilled**, meaning trained to imitate the big one. **Distillation** is any procedure in which a **student** model learns from the outputs of a **teacher** model rather than (or in addition to) from a dataset. The reason is cost. Reinforcement learning with verifiable rewards (Chapter 19) is expensive because the only signal is one number per sampled answer; a teacher that already knows the answer can say, for every token the student writes, "that token was fine" or "that token was the mistake", and a dense signal teaches faster than a sparse one. The Thinking Machines write-up of October 2025 reported that this **on-policy distillation** reached the same reasoning-benchmark score as RL for a small fraction of the compute (they report figures in the range of 10–30× cheaper) and it has since become the cheapest stage of the post-training pipeline. In this chapter you build the three classic recipes, in order of age, watch the two older ones fail in the way that motivated the newest one, and distil your own `small` TinyLM into a `nano` one on the addition task.
+Every frontier lab in 2026 trains one very large model and then ships a family of smaller ones, and the small ones are not trained from scratch on the same recipe: they are **distilled**, meaning trained to imitate the big one. **Distillation** is any procedure in which a **student** model learns from the outputs of a **teacher** model rather than (or in addition to) from a dataset. The reason is cost. Reinforcement learning with verifiable rewards (Chapter 19) is expensive because the only signal is one number per sampled answer; a teacher that already knows the answer can say, for every token the student writes, "that token was fine" or "that token was the mistake", and a dense signal teaches faster than a sparse one. The Thinking Machines write-up of October 2025 reported that this **on-policy distillation** reached the same reasoning-benchmark score as RL for a small fraction of the compute (they report figures in the range of 10–30× cheaper) and it has since become the cheapest stage of the post-training pipeline. In this chapter you build the three classic recipes, in order of age, run each one from a `small` TinyLM teacher into a `nano` student on the addition task, and read the result with error bars: at this toy scale the mechanism is visible token by token, and the improvement is not, for a reason that is itself the chapter's most useful lesson.
 
 ## The idea in pictures 📐
 
@@ -134,40 +134,40 @@ Each step samples `group_size × prompts_per_step` answers from the student, gra
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab20_opd.py            # quick: 8 OPD steps, about 40 s once the warm-starts are cached
-python3 labs/lab20_opd.py --full     # 60 OPD steps + the offline and two-stage recipes, about 8 min
+python3 labs/lab20_opd.py            # quick: 8 OPD steps, about 3 min once the warm-starts are cached (most of it evaluation)
+python3 labs/lab20_opd.py --full     # 60 OPD steps + the offline and two-stage recipes, about 3.5 min
 ```
 
-The first run trains the two warm-starts and caches them (teacher: `base_small.pt` fine-tuned on 400 addition prompts for 800 steps, about 15 minutes; student: `base_nano.pt` for 600 steps, about 2.5 minutes). If another lab has left `runs/grpo_small.pt`, `runs/sft_small.pt` or `runs/sft_nano.pt` behind, the lab evaluates them on the task and uses them instead when they are good enough. All numbers below are from one CPU thread on a busy machine.
+The first run trains the two warm-starts and caches them (teacher: `base_small.pt` fine-tuned on 1,200 addition prompts for 1,500 steps, about 23 minutes, reaching 98%; student: `base_nano.pt` on 400 prompts for 600 steps, about 2.5 minutes, reaching 33%). If another lab has left `runs/grpo_small.pt`, `runs/sft_small.pt` or `runs/sft_nano.pt` behind, the lab evaluates them on the task and uses them instead when they are good enough. All numbers below are from one CPU thread on a busy machine.
 
 **The two models.** With `max_value=20` there are only 441 distinct addition problems, so this is a small memorise-and-generalise task, and it is deliberately one the nano model half-knows:
 
 ```
-   teacher lab20_teacher_sft_small.pt: 2,361,792 params, accuracy 0.77
+   teacher lab20_teacher_strong.pt: 2,361,792 params, accuracy 1.00
    student lab20_student_sft_nano.pt: 295,584 params, accuracy 0.33   [30 held-out prompts, greedy]
 ✅ the teacher is clearly better than the student on the task
 ```
 
-The teacher is right three times in four and the student one time in three; the student already writes the `a + b = c` format perfectly and gets the operands right, and what it gets wrong is the sum. That is the "shared thinking patterns" precondition of the 2026 paper: the two models agree on *how* to answer and differ on *what*.
+The teacher is right on every one of the 30 quick-mode prompts (98 of 100 in full mode) and the student one time in three; the student already writes the `a + b = c` format perfectly and gets the operands right, and what it gets wrong is the sum. That is the "shared thinking patterns" precondition of the 2026 paper: the two models agree on *how* to answer and differ on *what*.
 
 **(a) Logit distillation on one batch.** Eight held-out conversations are rendered through the chat template and both models score every position; `kd_logit_loss` averages the forward KL over the assistant tokens:
 
 ```
-   tau = 1: KL(teacher || student) on assistant tokens = 0.222 nats/token
-   tau = 2: KL(teacher || student) on assistant tokens = 1.936 nats/token
-   tau = 4: KL(teacher || student) on assistant tokens = 2.858 nats/token
-   teacher vs itself: 0.000000   |   over ALL positions (prompt included): 9.172
+   tau = 1: KL(teacher || student) on assistant tokens = 0.314 nats/token
+   tau = 2: KL(teacher || student) on assistant tokens = 2.093 nats/token
+   tau = 4: KL(teacher || student) on assistant tokens = 4.490 nats/token
+   teacher vs itself: 0.000000   |   over ALL positions (prompt included): 8.420
 ```
 
-Read the first line as: on the answer tokens, the student's distribution is on average 0.22 nats away from the teacher's, a small number because both are near-certain about `13`, ` +`, `20`, ` =` and disagree only on the sum. Raising τ flattens both distributions and exposes the disagreement in the *tails* (which wrong sums each model considers plausible), and the τ² factor scales it back up, so the reported loss grows; that tail information is the "dark knowledge" logit distillation is designed to transfer. The last line is a warning about masks: over all positions, including the user's question, the KL is 9.2 nats, because neither model was ever trained to predict the prompt and their guesses about it are unrelated. Distil on the tokens you want to transfer, not on everything.
+Read the first line as: on the answer tokens, the student's distribution is on average 0.31 nats away from the teacher's, a small number because both are near-certain about `13`, ` +`, `20`, ` =` and disagree only on the sum. Raising τ flattens both distributions and exposes the disagreement in the *tails* (which wrong sums each model considers plausible), and the τ² factor scales it back up, so the reported loss grows; that tail information is the "dark knowledge" logit distillation is designed to transfer. The last line is a warning about masks: over all positions, including the user's question, the KL is 8.4 nats, because neither model was ever trained to predict the prompt and their guesses about it are unrelated. Distil on the tokens you want to transfer, not on everything.
 
 **(b) One on-policy step by hand.** The student samples four answers to `What is 13 + 20?` at temperature 1, and both models score them:
 
 ```
-   sample 0: '13 + 20 =  is3'         wrong   | reverse KL  0.605
-   sample 1: '13 + 20 = 34'           wrong   | reverse KL  0.207
-   sample 2: '13 + 20 = 32'           wrong   | reverse KL -0.324
-   sample 3: '13 + 20 = 26'           wrong   | reverse KL  0.480
+   sample 0: '13 + 20 =  is3'         wrong   | reverse KL  0.933
+   sample 1: '13 + 20 = 34'           wrong   | reverse KL  0.305
+   sample 2: '13 + 20 = 32'           wrong   | reverse KL  0.024
+   sample 3: '13 + 20 = 26'           wrong   | reverse KL  0.474
    per-token table for sample 0:
           token  log pi_s  log pi_t      A_t
            '13'    -0.062    -0.000    0.062
@@ -176,17 +176,47 @@ Read the first line as: on the answer tokens, the student's distribution is on a
            '20'    -0.071    -0.000    0.071
            ' ='    -0.000    -0.000    0.000
             ' '    -0.000    -0.000    0.000
-          ' is'    -6.245   -10.758   -4.513
-            '3'    -5.133    -6.198   -1.065
+          ' is'    -6.245    -6.762   -0.517
+            '3'    -5.133   -13.150   -8.017
       '<|end|>'    -0.001    -0.000    0.001
-   most negative advantage in this sample: -4.51  (the token the teacher would not have written)
+   most negative advantage in this sample: -8.02  (the token the teacher would not have written)
 ```
 
-This is the figure with real numbers. Six of the nine generated tokens have advantages within ±0.07: both models are certain about them and the update leaves them alone. The token ` is` (the student wandered off-format) has `log π_s = −6.2` and `log π_t = −10.8`, an advantage of −4.5, and it will be pushed down hard; the `3` that followed gets −1.1. Every gradient this step produces is concentrated on the two tokens where the student went wrong, and nothing is spent on the seven it got right. Compare GRPO on the same sample: the verifier says 0, and every one of the nine tokens, including `13`, ` +`, `20`, is pushed down by the same amount.
+This is the figure with real numbers. Six of the nine generated tokens have advantages within ±0.07: both models are certain about them and the update leaves them alone. The token ` is` (the student wandered off-format) has `log π_s = −6.2` and `log π_t = −6.8`, an advantage of −0.5 (both models find it unlikely, so there is little to correct); the `3` that followed is where the teacher disagrees: `log π_t = −13.2` against the student's `−5.1`, an advantage of −8.0, and it will be pushed down hard. Almost all of the gradient this step produces lands on the one token where the teacher disagrees, and nothing is spent on the seven the student got right. Compare GRPO on the same sample: the verifier says 0, and every one of the nine tokens, including `13`, ` +`, `20`, is pushed down by the same amount.
 
-Sample 2 is the other half of the lesson. Its reverse KL is *negative*: the teacher finds `32` more likely than the student does, because the teacher itself gets `13 + 20` wrong (it answered `32` during its own SFT evaluation). OPD will push the student toward `32` on this prompt. A student cannot learn from a teacher what the teacher does not know, and the teacher's errors arrive with the same per-token confidence as its correct answers.
+Sample 2 is the other half of the lesson. Its reverse KL is almost zero (0.024): the teacher finds `32` about as likely as the student does, because on this one prompt the 98%-accurate teacher is itself unsure between `32` and `33`. OPD has nothing to teach the student here. A student cannot learn from a teacher what the teacher does not know, and when the teacher is wrong its errors arrive with the same per-token confidence as its correct answers (an earlier, 77%-accurate teacher gave this sample a *negative* reverse KL: it preferred the wrong sum).
 
-PART_C_PLACEHOLDER
+**(c) Two recipes at a matched budget, and a negative result.** The full run gives each recipe about 60 optimizer steps and roughly 240 teacher or student samples per stage, then measures greedy accuracy on 100 held-out prompts (95% CI about ±0.09):
+
+```
+   offline: teacher keep rate 0.85 (204/240 samples), 60 SFT steps, 16s -> accuracy 0.32 -> 0.21
+opd step    0 | reverse KL 1.0718 | acc 0.34 | len   8.2 | 4.5s
+opd step   10 | reverse KL 0.7628 | acc 0.28 | len   8.0 | 21.3s
+opd step   20 | reverse KL 0.9428 | acc 0.19 | len   8.0 | 37.4s
+opd step   30 | reverse KL 1.4288 | acc 0.12 | len   8.2 | 53.1s
+opd step   40 | reverse KL 1.6721 | acc 0.28 | len   8.5 | 66.1s
+opd step   50 | reverse KL 1.1468 | acc 0.38 | len   8.3 | 79.9s
+opd step   59 | reverse KL 0.9148 | acc 0.20 | len   8.0 | 92.9s
+   OPD: 60 steps x 64 student samples, 93s -> accuracy 0.32 -> 0.32
+   reverse KL: 1.072 (step 0) -> 0.682 (min) -> 0.915 (last)
+   accuracy of the student's own samples (T=1): first 15 steps 0.21 -> last 15 steps 0.21 (960 samples each)
+   two-stage: 30 SFT steps then 30 OPD steps, 56s -> accuracy 0.18 | reverse KL at OPD start 0.871
+
+   summary (held-out accuracy, greedy):
+   student (before)                 0.32
+   teacher                          0.98
+   offline (RS-SFT)                 0.21
+   on-policy (OPD)                  0.32
+   two-stage (offline then OPD)     0.18
+```
+
+Read the table honestly: with a 98%-accurate teacher and a 32%-accurate student, sixty steps of rejection-sampling SFT made the student *worse* (0.32 → 0.21, outside the CI), sixty steps of OPD left it where it was (0.32 → 0.32 greedy; 0.21 → 0.21 on its own samples, where the CI is ±0.03), and the two-stage recipe inherited the first stage's damage. The reverse KL fell from 1.07 to 0.68 in the first ten steps, then wandered between 0.9 and 1.7, which is the signature of a learning rate that is too high for the size of the per-token advantages (a wrong sum scores −8 to −13 nats under this teacher, and a handful of such tokens dominate every batch). The lab's sweeps over learning rate (3e-5 to 2e-4), group size (4 to 8), sampling temperature (0.7 and 1.0) and length (up to 200 steps) did not change the picture.
+
+Why does distillation not work here, when the teacher is this good? Because the thing to be transferred is a table of 441 facts, and this student learns facts slowly. Its own SFT warm-start needed 600 steps × 16 examples, about 20 views of each sum, to reach 0.33; sixty steps of OPD show it each problem about twice, and the only *positive* signal on a sum arrives when the student happens to sample the right one (20% of the time). The teacher's per-token verdicts are correct and dense, and they are being spent on a student that cannot absorb them at this rate. This is the 2026 finding of "Rethinking On-Policy Distillation" from the other side: student and teacher share the output format perfectly, the teacher offers new capability, and OPD still needs enough steps for the student's capacity to be the binding constraint rather than the budget. At frontier scale the student is a multi-billion-parameter model that absorbs a correction in a handful of views, and the same recipe that stalls here reaches RL-level scores at a fraction of RL's cost.
+
+What the run does demonstrate is the *mechanism*, which is the point of the chapter: the per-token table in (b) is real, the reverse KL responds within ten steps, and nothing in the loop needed a verifier. The quick run (8 steps, 16 samples per step, 30 eval items) is pure noise on every accuracy number and should be read only for the tables in (a) and (b). Exercise 5 asks you to make the distillation work by giving it what it lacks (more steps, or a smaller task), and Chapter 23 explains why the 100-item accuracies above needed their error bars.
+
+The lab saves `figures/generated/lab20_opd.png` (the reverse-KL curve, sample accuracy per step, and the before/after bars) and `runs/lab20_student_opd.pt`, the better of the two distilled students, which Chapter 23's lab evaluates with everything else.
 
 ## 🆕 What the 2026 papers add, and when OPD fails
 

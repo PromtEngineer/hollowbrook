@@ -10,3 +10,5 @@
 - **off-policy lag** — in asynchronous training, the gap between the policy that produced a trajectory and the one being updated; makes PPO's importance ratio differ from 1 (Ch. 21)
 - **asynchronous rollouts** — generating trajectories, running environments and training in overlapping pipelines rather than in lock-step, so the trainer never waits for the slowest environment (Ch. 21)
 - **rollout-as-a-service** — an infrastructure pattern in which a separate service provisions, resets and tears down environments for the trainer over the network (Ch. 21)
+- **train with the prompt you serve with** — the rule that an agent policy must be fine-tuned under the exact system prompt (instruction plus tool listing) the harness sends at serving time; a mismatch between the two silently degrades tool use (Ch. 21)
+- **training–serving skew** — any difference between the inputs a model was trained on and the inputs it receives in deployment, of which the system-prompt mismatch is the agent-specific case (Ch. 21)

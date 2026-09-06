@@ -91,11 +91,11 @@ python3 labs/lab29_capstone.py --full     # the small model; about 25 minutes th
 python3 labs/lab29_capstone.py --fresh    # retrain every capstone_* checkpoint
 ```
 
-The timings below come from a 4-core machine that was also running other labs (load average above 14), so the script fell back to one PyTorch thread; an idle laptop is two to five times faster.
+The timings below come from a 4-core machine with two PyTorch threads (`OMP_NUM_THREADS=2`) while other labs were running (load average 4–8); the script drops to one thread only when the load exceeds three times the core count. Because the earlier labs' checkpoints in `runs/` are what the capstone reuses, your table will differ from this one whenever those labs have been re-run.
 
 ### Quick mode (nano model)
 
-Quick mode is what you get after working through the course in order, because `runs/` then already holds Lab 13's annealed model, Lab 15's `sft_nano.pt`, Lab 17's `lab17_dpo_nano.pt` and Lab 19's `grpo_nano.pt`. The curation report is Chapter 8's table on 1,500 clean documents plus planted noise:
+Quick mode is what you get after working through the course in order, because `runs/` then already holds Lab 15's `sft_nano.pt`, Lab 17's `lab17_dpo_nano.pt` and Lab 19's `grpo_nano.pt`. The curation report is Chapter 8's table on 1,500 clean documents plus planted noise:
 
 ```
 stage                           kept  dropped  planted problems caught
@@ -109,102 +109,100 @@ decontaminate                   1511        3  contaminated:3
    1,938 raw docs -> 1,511 curated
 ```
 
-Then four stages report `reusing ...` in under a second each, and the two stages no earlier lab produced in this form run for real:
+Then the base model is loaded, mid-training runs for 40 steps (`held-out MATH loss 1.770 -> 1.666`), three stages report `reusing ...`, and the two stages no earlier lab produced in this form run for real:
 
 ```
 --- 7. on-policy distillation into a student (Chapter 20) ---
-opd step    0 | reverse KL 6.1889 | acc 0.00 | len   8.1 | 0.6s
-opd step    5 | reverse KL 4.3418 | acc 0.06 | len   8.6 | 3.4s
-   student = the SFT checkpoint (same size), teacher = grpo_nano.pt: reverse KL 6.189 -> 4.342
+opd step    0 | reverse KL 5.2856 | acc 0.00 | len   7.8 | 0.2s
+opd step    5 | reverse KL 5.5846 | acc 0.00 | len   8.4 | 1.2s
+   student = the SFT checkpoint (same size), teacher = grpo_nano.pt: reverse KL 5.286 -> 5.585
 ```
 
-A reverse KL of 6.2 nats per token says the SFT and GRPO models disagree violently about what to say next; six OPD steps close a third of the gap. On an empty `runs/` the script trains every stage itself (309 s on this machine): SFT's masked loss fell from 9.61 to 3.38 in 120 steps at a validation accuracy of 0.04; DPO's held-out margin rose from 0.00 to +1.86 on synthetic pairs alone (the SFT model was wrong on all 24 sampled prompts, so no on-policy pairs); GRPO's reward stayed at 0.06–0.07 for 12 steps with `acc 0.00` throughout, because a group with no correct answer has nothing to learn from. A 300k-parameter model learns the *format* of an answer long before the answers.
+A reverse KL of 5 nats per token says the SFT and GRPO models disagree violently about what to say next, and six OPD steps are too few to move it; the stage exists here to show the mechanics. On an empty `runs/` the script trains every stage itself (309 s the first time on a busy machine): SFT's masked loss fell from 9.61 to 3.38 in 120 steps at a validation accuracy of 0.04; DPO's held-out margin rose from 0.00 to +1.86 on synthetic pairs alone (the SFT model was wrong on all 24 sampled prompts, so no on-policy pairs); GRPO's reward stayed at 0.06–0.07 for 12 steps with `acc 0.00` throughout, because a group with no correct answer has nothing to learn from. A 300k-parameter model learns the *format* of an answer long before the answers.
 
-The table that the whole course was building towards:
+The table that the whole course was building towards, with each checkpoint's answer to `'What is 7 + 2?'`:
 
 ```
-| stage | checkpoint            | acc (all) | acc (add) | perplexity | eval s |
+| stage | checkpoint            | acc (all) | acc (add) | perplexity | eval s |   'What is 7 + 2?' ->
 |---|---|---:|---:|---:|---:|
-| base  | base_nano.pt          | 0.00 | 0.00 |    2.90 | 5 |
-| mid   | lab13_annealed.pt     | 0.00 | 0.00 |    2.90 | 3 |
-| sft   | sft_nano.pt           | 0.12 | 0.00 |   39.24 | 3 |
-| dpo   | lab17_dpo_nano.pt     | 0.03 | 0.12 | 3568.72 | 6 |
-| grpo  | grpo_nano.pt          | 0.00 | 0.33 | 3573.12 | 6 |
-| opd   | capstone_opd_nano.pt  | 0.12 | 0.00 |   36.55 | 4 |
+| base  | base_nano.pt          | 0.00 | 0.00 |    2.90 | 2 |   '+   78.'
+| mid   | capstone_mid_nano.pt  | 0.00 | 0.00 |    2.89 | 2 |   '+    + 18.'
+| sft   | sft_nano.pt           | 0.40 | 0.00 |  840.26 | 1 |   '3 + 63 = 87'
+| dpo   | lab17_dpo_nano.pt     | 0.00 | 0.21 | 2526.88 | 2 |   '7 + 2 = 8'
+| grpo  | grpo_nano.pt          | 0.00 | 0.17 |  982.33 | 2 |   '7 + 2 = 8'
+| opd   | capstone_opd_nano.pt  | 0.35 | 0.00 | 1705.34 | 1 |   '3 + 63 = 97'
 ```
 
-Read it with the sample answers to `'What is 7 + 2?'` beside it: base `'+   78.'`, mid `'?\nAnswer:   63 + 63?'`, sft `'75 + 75 = 105'`, dpo `'7 + 2 = 11'`, grpo `'7 + 2 = 9'`, opd `'75 + 75 = 97'`. Base and mid continue the prompt as a Storyland document and answer nothing. SFT produces the shape of an answer and scores 0.12 on the mixed tasks (`count` is the one it gets) at a Storyland perplexity of 39 instead of 2.9. DPO and GRPO are where the operands start to be copied, and Lab 19's GRPO checkpoint gets a third of the single-digit additions right at a perplexity of 3,573 on the text it was pretrained on: Chapter 14's alignment tax, taken to its limit by a 300k-parameter model pushed hard on one task. OPD moved the SFT model a third of the way toward the teacher in KL and not at all in addition accuracy. With 40 and 24 questions the 95 % intervals are about ±0.1 and ±0.2, so only `grpo`'s 0.33 and the base-versus-rest gap are real differences (Chapter 23).
+Read it column by column. Base and mid continue the prompt as a Storyland document and answer nothing, at a perplexity of 2.9. SFT (Lab 15 trained it on `upper`, `reverse`, `add` and `count`) produces the shape of an answer and scores 0.40 on the mixed tasks, at a Storyland perplexity of 840 instead of 2.9. Lab 17's DPO and Lab 19's GRPO checkpoints were trained on addition alone: they copy the operands (`7 + 2 = ...`), get a fifth of the single-digit sums right, and score zero on everything else, at perplexities in the thousands on the text they were pretrained on. That is Chapter 14's alignment tax taken to its limit by a 300k-parameter model pushed hard on one task; a bigger model pays it in a much smaller coin. OPD moved the SFT model toward the GRPO teacher without changing either score. With 40 and 24 questions the 95 % intervals are about ±0.15 and ±0.2, so `sft` versus `opd` is a tie; the base-versus-rest gap and the addition scores of `dpo` and `grpo` are the real differences (Chapter 23).
 
 The last stage is the agent:
 
 ```
-   tool-SFT: 300 traces of 320 tokens, 60 steps, loss 10.653 -> 0.774
-   raw generation for 'What is 17 + 25?': '<|tool_call|>{"name": "calc", "arguments": {"expression": "24 + 30"}}<|end|>: 30 = 30 = 30 = 30<|end'
+   tool-SFT: 300 traces of 197 tokens, 60 steps, loss 9.996 -> 0.745
+   raw generation for 'What is 17 + 25?': '<|tool_call|>{"name": "calc", "arguments": {"expression": "24 + 21"}}<|end|><|tool_call|><|end|><|to'
    TinyLM transcript:
       USER: What is 17 + 25?
       ASSISTANT:
-        -> call calc({"expression": "24 + 30"})
-        <- result: 54
-      ASSISTANT: 6 + 30 = 22
+        -> call calc({"expression": "24 + 21"})
+        <- result: 45
+      ASSISTANT: 24 + 21 = {
       [done after 2 turns, 1 tool calls]
-   TinyLM called the tool and its final answer was wrong ('6 + 30 = 22')
+   TinyLM called the tool and its final answer was wrong ('24 + 21 = {')
 ✅ the agent loop terminates with a real model behind it
 ✅ the scripted reference agent uses the tool and answers
+8/8 checks passed in 23.4s
 ```
 
-Sixty steps of tool-SFT are enough for the nano model to emit a well-formed tool call that the harness parses and executes. The operands are invented (`24 + 30` for `17 + 25`), the final answer ignores the `54` it was given, and the raw generation runs on past its turn (`30 = 30 = 30`), which `TinyLMBackend` cuts at the first foreign role tag. The full-mode transcript is the same story with a bigger model.
+Sixty steps of tool-SFT (three seconds on an idle CPU) are enough for the nano model to emit a well-formed tool call that the harness parses and executes. The operands are invented (`24 + 21` for `17 + 25`), the final answer ignores the `45` it was given and trails off into a brace, and the raw generation runs on past its turn into a second, empty tool call, which `parse_tool_call` ignores. The whole quick run took 25 s on the idle machine.
 
 ### Full mode (small model)
 
 ```
 | stage | what happened | seconds |
 |---|---|---:|
-| 0. corpus and curation report (Chapter 8) | 7,743 raw -> 5,301 docs | 10.5 |
-| 1. tokenizer (Chapter 2) | vocab 871, 4.08 bytes/token | 0.1 |
-| 2. base model: pretrain or load (Chapter 10) | reused base_small.pt, ppl 2.07 | 3.1 |
-| 3. mid-training anneal on a math-heavy mix (Chapter 13) | 120 steps, math loss 1.509 -> 1.384 | 138.0 |
-| 4. supervised fine-tuning (Chapter 15) | 200 steps, loss 12.66 -> 2.16 | 275.4 |
-| 5. preference pairs and DPO (Chapter 17) | 323 pairs, 60 steps, margin +0.00 -> +2.74 | 102.7 |
-| 6. GRPO with a verifiable reward on addition (Chapter 19) | 20 steps × 4×G8, reward 0.10 -> 0.10 | 24.0 |
-| 7. on-policy distillation into a student (Chapter 20) | sft_nano.pt <- teacher, 16 steps, rKL 0.92 -> 0.33 | 8.7 |
-| 8. evaluate every checkpoint (Chapter 23) | 6 checkpoints × 90 questions | 50.7 |
-| 9. a TinyLM agent answers with a calculator tool (Chapters 21, 24) | tool-SFT 200 steps, loss 9.55 -> 0.09; TinyLM called the tool and its final answer was wrong ('6 + 13 = 21') | 223.6 |
+| 0. corpus and curation report (Chapter 8) | 7,743 raw -> 6,045 docs | 6.0 |
+| 1. tokenizer (Chapter 2) | vocab 871, 4.04 bytes/token | 0.0 |
+| 2. base model: pretrain or load (Chapter 10) | reused base_small.pt, ppl 2.07 | 11.3 |
+| 3. mid-training anneal on a math-heavy mix (Chapter 13) | reused lab13_annealed.pt | 3.2 |
+| 4. supervised fine-tuning (Chapter 15) | reused lab20_teacher_sft_small.pt | 0.1 |
+| 5. preference pairs and DPO (Chapter 17) | reused lab17_dpo_small.pt | 0.1 |
+| 6. GRPO with a verifiable reward on addition (Chapter 19) | reused grpo_small.pt | 0.1 |
+| 7. on-policy distillation into a student (Chapter 20) | sft_nano.pt <- teacher, 16 steps, rKL 5.56 -> 4.32 | 25.7 |
+| 8. evaluate every checkpoint (Chapter 23) | 6 checkpoints × 90 questions | 107.6 |
+| 9. a TinyLM agent answers with a calculator tool (Chapters 21, 24) | tool-SFT 200 steps, loss 10.41 -> 0.06; TinyLM called the tool and its final answer was correct ('17 + 25 = 42') | 167.9 |
 
-| stage | checkpoint | acc (all) | acc (add) | perplexity | eval s |
+| stage | checkpoint | acc (all) | acc (add) | perplexity | eval s |   'What is 20 + 15?' ->
 |---|---|---:|---:|---:|---:|
-| base | base_small.pt | 0.00 | 0.00 | 2.07 | 8 |
-| mid | capstone_mid_small.pt | 0.00 | 0.00 | 2.08 | 13 |
-| sft | capstone_sft_small.pt | 0.10 | 0.00 | 2.35 | 8 |
-| dpo | capstone_dpo_small.pt | 0.07 | 0.03 | 2.47 | 8 |
-| grpo | capstone_grpo_small.pt | 0.07 | 0.07 | 2.44 | 9 |
-| opd | capstone_opd_small.pt | 0.17 | 0.00 | 34.03 | 3 |
+| base | base_small.pt              | 0.00 | 0.00 |    2.07 | 24 |   '.'
+| mid  | lab13_annealed.pt          | 0.00 | 0.00 |    2.10 | 18 |   '.'
+| sft  | lab20_teacher_sft_small.pt | 0.00 | 0.50 | 8902.14 | 24 |   '20 + 15 = 32'
+| dpo  | lab17_dpo_small.pt         | 0.00 | 0.67 |    8.74 | 27 |   '20 + 15 = 37'
+| grpo | grpo_small.pt              | 0.00 | 0.67 |    8.82 | 11 |   '20 + 15 = 37'
+| opd  | capstone_opd_small.pt      | 0.35 | 0.00 | 1377.19 |  4 |   '3 + 3 = 97'
 
-report written to runs/capstone_report.md; total 837s
-11/11 checks passed in 842.7s
+7/7 checks passed in 325.1s
 ```
 
-Fourteen minutes on the loaded machine (837 s, 275 of them SFT and 224 tool-SFT). Mid-training lowers the held-out math loss from 1.509 to 1.384 in 120 steps, SFT takes the masked loss from 12.66 to 2.16, and DPO reaches a held-out margin of +2.74 with pair accuracy 0.85. Then GRPO shows something the quick run could not: `skipped 0.75` to `skipped 1.00` on every step, and `H nan` where every group was skipped. DPO had sharpened the policy so much that eight samples of one prompt were usually eight copies of the same wrong answer; a zero-variance group has zero advantages, DAPO's dynamic sampling drops it, and in 20 steps the optimizer saw perhaps five groups. That is Chapter 19's entropy collapse arriving from the stage *before* RL, and it is the most useful number in the run: a preference stage that "worked" by its own metric left too little diversity for the next stage to learn from. Clip-higher and the other 2026 fixes cannot help when there is nothing to clip; the fix is upstream, in DPO's `beta` or step count, or in sampling GRPO at a higher temperature.
+Five and a half minutes, because every stage the earlier labs had already produced in `--full` mode was reused; when the capstone trained SFT, DPO and GRPO itself (an earlier run on the same machine while it was busy) it took 837 s. The reused checkpoints tell a cleaner story than the ones this script trains in a few minutes. Lab 20's SFT teacher was trained on addition alone for 800 steps: 0.50 on the addition questions, nothing on the other tasks, and a Storyland perplexity of 8,902, the alignment tax at its most extreme. Lab 17's DPO checkpoint reaches 0.67 on addition at a perplexity of 8.7, and Lab 19's GRPO checkpoint keeps both numbers; on 30 questions the 0.50 and 0.67 are within one interval of each other. The OPD student is the nano SFT model of Lab 15 distilled from the small GRPO teacher; 16 steps lower the reverse KL from 5.56 to 4.32 without changing its scores, and its 0.35 on the mixed tasks comes from Lab 15, not from distillation.
 
-In the table, perplexity rises gently through SFT, DPO and GRPO (2.07 → 2.44) and jumps to 34 for the OPD row, which is a different, smaller model: Lab 15's nano student distilled from the small GRPO teacher. Its 0.17 on the mixed tasks, the highest in the table, comes from Lab 15's 300-step SFT, not from the 16 OPD steps, which lowered the reverse KL from 0.92 to 0.33 without changing its addition score. With 60 and 30 questions the intervals are about ±0.09 and ±0.12, so only base/mid versus the rest survives Chapter 23's scrutiny.
+Two experiments behind this stage table are worth knowing about, because you will meet both when you run the script on your own checkpoints. When the capstone trains GRPO itself from a *weak* policy, most groups are all-wrong, `skipped` is 0.75–1.00, and nothing is learned. When it trains GRPO from a *good* policy (Lab 17's DPO model, 0.67 on addition) with the plain configuration of `lr = 2e-4` and no reference model, the reward falls from 0.61 to 0.31 over 20 steps and the held-out accuracy from 0.67 to 0.07: with `ppo_epochs = 1` nothing is clipped, and Adam turns a few hundred noisy answer tokens per step into full-size updates. Adding a KL anchor to a frozen copy (`kl_coef = 0.05`) at `lr = 2e-5` keeps the greedy accuracy (0.67 → 0.70), which is why the script now uses that configuration for the small model; Chapter 19's KL term is the difference between improving a policy and destroying one.
 
 The agent is the finale, and it deserves to be read line by line:
 
 ```
-   tool-SFT: 300 traces of 320 tokens, 200 steps, loss 9.553 -> 0.093
-   raw generation for 'What is 17 + 25?': '<|tool_call|>{"name": "calc", "arguments": {"expression": "6 + 13"}}<|end|>: 6 + 7 =  Max likedm<|en'
+   tool-SFT: 300 traces of 197 tokens, 200 steps, loss 10.414 -> 0.065
+   raw generation for 'What is 17 + 25?': '<|tool_call|>{"name": "calc", "arguments": {"expression": "17 + 25"}}<|end|>xx25 + 17 = 25<|end|>a<|'
    TinyLM transcript:
       USER: What is 17 + 25?
       ASSISTANT:
-        -> call calc({"expression": "6 + 13"})
-        <- result: 19
-      ASSISTANT: 6 + 13 = 21
+        -> call calc({"expression": "17 + 25"})
+        <- result: 42
+      ASSISTANT: 17 + 25 = 42
       [done after 2 turns, 1 tool calls]
-   TinyLM called the tool and its final answer was wrong ('6 + 13 = 21')
+   TinyLM called the tool and its final answer was correct ('17 + 25 = 42')
 ```
 
-After 200 steps of tool-SFT the 2.4M-parameter model emits a syntactically perfect tool call: marker, valid JSON, the right tool name and argument key, a closing `<|end|>`. `parse_tool_call` accepts it, the harness runs `safe_eval("6 + 13")`, and `19` comes back as a `tool_result` turn. Then two failures worth more than a success: the operands are `6 + 13`, not `17 + 25` (the model learned the template, not the copying of two numbers from the prompt, an induction pattern it has not formed), and the final answer `6 + 13 = 21` ignores the `19` it was handed. The model learned the *protocol* of tool use, which is what tool-SFT teaches, not the *purpose*, which is what Chapter 21's agentic RL rewards. The harness did exactly its Chapter 27 job: a bounded loop, a validated call, a sandboxed execution, and a transcript that records the call and the wrong answer, so that a verifier, not the model, has the last word.
-
-Format learning is the first thing SFT teaches: in the experiments behind this lab, the nano model produced `<|tool_call|>` after 40 steps, near-JSON with misspelled keys (`"namm"`, `"arargments"`) after 160 steps at a lower learning rate, and a parseable call after 60 steps at `lr = 1e-3`; the small model produced valid JSON after 80 steps and never, in 240 steps, copied both operands correctly. Copying two numbers out of a 250-token prompt into a template is a harder skill than the template, and it is the skill Chapter 21's reward pays for.
+After 200 steps of tool-SFT, starting from Lab 19's GRPO model, the 2.4M-parameter model emits a syntactically perfect tool call with the right operands, the harness runs `safe_eval("17 + 25")`, `42` comes back as a `tool_result` turn, and the model's second turn reads the result and answers `17 + 25 = 42`. That is the whole course in four lines: a pretrained model (Chapter 10), taught a chat format (15), sharpened on a task (17, 19), taught a tool protocol (this stage), driven by the loop of Chapter 24 with the tool registry of Chapter 26, and graded by a verifier rather than by itself (27). The raw generation shows what the harness hides: after `<|end|>` the model keeps producing tokens (`xx25 + 17 = 25`), and `TinyLMBackend` keeps only the part before the first foreign role tag. Nor is the success robust: in the earlier run on the busy machine the same recipe produced `calc("6 + 13")` and the answer `6 + 13 = 21`, ignoring the tool's `19`, and the nano model above never copies the operands at all. Copying two numbers out of a 200-token prompt into a template is a harder skill than the template, and it is the skill Chapter 21's reward pays for; tool-SFT teaches the *protocol* of tool use, agentic RL its *purpose*. The harness did its Chapter 27 job in every case: a bounded loop, a validated call, a sandboxed execution, and a transcript that records the call and the answer, so that a verifier, not the model, has the last word.
 
 The report is saved to `runs/capstone_report.md` and the figure to `figures/generated/lab29_capstone.png` (accuracy per stage on the left, seconds per stage on the right).
 

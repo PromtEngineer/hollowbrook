@@ -194,8 +194,8 @@ Putting the pieces in order: (1) SFT on demonstrations; (2) collect comparisons 
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab18_reinforce.py            # quick: nano model, about 35 s once the warm start exists
-python3 labs/lab18_reinforce.py --full     # small model, 30 REINFORCE steps, about 2 min
+python3 labs/lab18_reinforce.py            # quick: nano model, 98 s (the warm start comes from Lab 17)
+python3 labs/lab18_reinforce.py --full     # small model, 30 REINFORCE steps; see the timing note below
 ```
 
 ### Quick mode (nano)
@@ -255,7 +255,24 @@ For nearby distributions every claim of Step 6 holds: k₁ is unbiased but a thi
 
 With synthetic per-token log-ratios drawn from N(0, σ²), the clip fraction is the fraction of tokens outside the window: negligible at σ = 0.05, 14 % at σ = 0.2, 31 % at σ = 0.4, and always lower with clip-higher because the upper window is wider. The last line is the figure's claim made literal: the row whose ratio is 1.65 with a positive advantage receives a gradient of exactly zero on every token.
 
-<!-- FULL_MODE_18 -->
+### Full mode (small)
+
+```
+   no baseline : final P(best arm) 0.90 | median steps to P(best)>=0.9:  209 | runs stuck on a wrong arm at step 600: 3/40
+   baseline    : final P(best arm) 0.97 | median steps to P(best)>=0.9:  219 | runs stuck on a wrong arm at step 600: 0/40
+   6 prompts x 8 samples per step, 30 steps, lr 0.0001; log pi(correct) before: -0.13
+   step   0 | mean reward 0.812 | log pi(reference answer)  -0.20 | grad norm 6.65 | 48s
+   step  15 | mean reward 0.958 | log pi(reference answer)  -0.07 | grad norm 1.02 | 686s
+   step  29 | mean reward 0.917 | log pi(reference answer)  -0.06 | grad norm 3.60 | 1180s
+   mean reward, first 3 steps 0.826 -> last 3 steps 0.958; log pi(reference answer) -0.13 -> -0.06
+   rewarded samples in the last batch (what REINFORCE actually pushed up): ['2 + 8 = 10', '2 + 8 = 10', '2 + 8 = 10', '2 + 8 = 10', '2 + 8 = 10']
+   no baseline : ||mean grad|| 0.944 | mean ||g_i - mean||^2 (variance) 0.109
+   baseline    : ||mean grad|| 0.477 | mean ||g_i - mean||^2 (variance) 0.773
+   TinyLM, REINFORCE'd policy vs SFT reference, per answer token: k1=-0.0008, k2=0.0118, k3=0.0302
+```
+
+With 40 bandit trials the tail story holds (3 of 40 no-baseline runs stuck, none with the baseline). On the small model the warm start already answers its six training prompts with reward 0.83 and log π(reference) = −0.13, so REINFORCE has little to do and does it: reward 0.83 → 0.96, the reference answers now at −0.06 nats, and the rewarded samples are the reference strings themselves, not the misquoted operands of the quick run. The gradient-variance rows are the surprise, and worth understanding: with rewards almost all equal to 1, the *no-baseline* gradient is nearly the same in every batch ("push everything up") and so has low variance across batches, 0.109, while the baseline of ≈ 0.96 leaves only the rare wrong answer with a large weight (−0.96), so the with-baseline gradient depends on which batch happened to contain a mistake, variance 0.773. A baseline reduces variance *of the estimate of the true gradient*; when the reward is nearly constant, the true gradient is nearly zero, the no-baseline estimator is confidently pointing in a direction that mostly does not matter, and the batch-mean baseline correctly makes the update small and noisy. The bandit's exact numbers, computed at a policy with reward variance, are the general case. After 30 steps the policy is 0.03 nats per token from the SFT model by k₃ and k₁ reads slightly negative, the kind of sample noise Step 6 warned about. Wall-clock: 1,524 s, of which the 30 REINFORCE steps were 1,180 s, because the three full labs ran concurrently at two threads each on a four-core machine; on its own this lab is a few minutes.
+
 
 ## Try it yourself ✍️
 

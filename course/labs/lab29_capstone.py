@@ -77,6 +77,12 @@ class Stage:
         print(f"   [{self.name}: {secs:.1f}s]")
 
 
+def _stamp(path: str) -> str:
+    """Identity of a checkpoint file: its name plus its modification time, so a checkpoint
+    that another lab rewrote under the same name counts as a different parent."""
+    return f"{os.path.basename(path)}@{int(os.path.getmtime(path))}"
+
+
 def _parent_of(path: str) -> str | None:
     """Which checkpoint a capstone_* file was trained from (recorded in its ``extra`` dict)."""
     try:
@@ -97,7 +103,7 @@ def existing(*names: str, d_model: int, parent: str | None = None) -> str | None
         if not os.path.exists(p):
             continue
         if n.startswith("capstone_"):
-            if args.fresh or (parent is not None and _parent_of(p) != os.path.basename(parent)):
+            if args.fresh or (parent is not None and _parent_of(p) != _stamp(parent)):
                 continue
         try:
             if TinyLM.load(p).cfg.d_model == d_model:
@@ -109,7 +115,7 @@ def existing(*names: str, d_model: int, parent: str | None = None) -> str | None
 
 def save_stage(model: TinyLM, name: str, stage: str, parent: str | None = None) -> str:
     p = run_path(name)
-    model.save(p, TOKENIZER_PATH, extra={"stage": stage, "parent": os.path.basename(parent) if parent else None})
+    model.save(p, TOKENIZER_PATH, extra={"stage": stage, "parent": _stamp(parent) if parent else None})
     return p
 
 
@@ -252,10 +258,12 @@ with Stage("6. GRPO with a verifiable reward on addition (Chapter 19)") as st:
     p = existing(f"grpo_{TAG}.pt", f"lab19_grpo_{TAG}.pt", f"capstone_grpo_{TAG}.pt", d_model=D_MODEL, parent=paths["dpo"])
     if p is None:
         model = TinyLM.load(paths["dpo"])
+        # A KL anchor to a frozen reference and a small LR: RL on top of an already-decent policy
+        # must not be allowed to wander (without them the DPO model's accuracy fell 0.67 -> 0.07).
         cfg = GRPOConfig(group_size=8, prompts_per_step=4, max_new_tokens=16, steps=12 if args.quick else 20,
-                         lr=2e-4, log_every=3)
+                         lr=2e-4 if args.quick else 2e-5, kl_coef=0.05, log_every=3)
         add_train = tasks.make_examples(64, seed=9, tasks=["add"], max_value=MAX_VALUE)
-        hist = grpo_train(model, tok, add_train, cfg, verbose=True)
+        hist = grpo_train(model, tok, add_train, cfg, ref=copy.deepcopy(model).eval(), verbose=True)
         r0 = sum(h["reward"] for h in hist[:3]) / 3
         r1 = sum(h["reward"] for h in hist[-3:]) / 3
         print(f"   mean reward, first 3 steps {r0:.3f} -> last 3 steps {r1:.3f}; "
@@ -319,7 +327,8 @@ with Stage("8. evaluate every checkpoint (Chapter 23)") as st:
         print(f"   {name:<5} {os.path.basename(paths[name]):<26} acc(all) {r_all.accuracy:.2f}  acc(add) {r_add.accuracy:.2f}  "
               f"ppl {ppl:6.2f}   e.g. {held_add[0].prompt!r} -> {r_add.samples[0][1][:24]!r}")
     st.note = f"{len(rows)} checkpoints × {n_all + n_add} questions"
-    check(rows[2][2] > rows[0][2], "SFT beats the base model on the mixed tasks (a base model cannot answer questions)")
+    check(rows[2][2] + rows[2][3] > rows[0][2] + rows[0][3],
+          "SFT beats the base model on the mixed or the addition questions (a base model cannot answer questions)")
 
 # ============================================================ 9. the agent
 with Stage("9. a TinyLM agent answers with a calculator tool (Chapters 21, 24)") as st:

@@ -7,7 +7,7 @@
 
 ## Why this matters
 
-Everything in Chapters 18–20 trained a model to write one answer to one prompt. An **agent** does something different: it writes a message, the world replies (a tool result, a test failure, a file listing), it writes again, and the thing being judged is the whole back-and-forth. Coding assistants, computer-use agents and research agents in 2026 are trained with reinforcement learning on exactly these back-and-forths, and the recipe is GRPO from Chapter 19 with three changes that sound small and are not: the episode is a **trajectory** of several model turns rather than a single response; some of the tokens in that trajectory were *written by the environment*, not by the model, and must be kept out of the loss; and the environment is a real program (a shell, a browser, a Python sandbox) that has to be started, reset and isolated for every one of the thousands of rollouts a step needs. In this chapter you take TinyLM, which cannot add two numbers reliably, give it a calculator tool, and use multi-turn GRPO to teach it to call the tool and copy the result into its answer. Along the way you see the loss mask that keeps tool output out of the gradient, the crudest possible credit assignment, and a small example of an agent learning to game its reward.
+Everything in Chapters 18–20 trained a model to write one answer to one prompt. An **agent** does something different: it writes a message, the world replies (a tool result, a test failure, a file listing), it writes again, and the thing being judged is the whole back-and-forth. Coding assistants, computer-use agents and research agents in 2026 are trained with reinforcement learning on exactly these back-and-forths, and the recipe is GRPO from Chapter 19 with three changes that sound small and are not: the episode is a **trajectory** of several model turns rather than a single response; some of the tokens in that trajectory were *written by the environment*, not by the model, and must be kept out of the loss; and the environment is a real program (a shell, a browser, a Python sandbox) that has to be started, reset and isolated for every one of the thousands of rollouts a step needs. In this chapter you take TinyLM, which cannot add two numbers reliably, give it a calculator tool, and use multi-turn GRPO to teach it to call the tool and copy the result into its answer. Along the way you see the loss mask that keeps tool output out of the gradient, the crudest possible credit assignment, a small example of an agent learning to game its reward, and the rule that every agent-training team learns the hard way: **train with the prompt you serve with**, because a policy fine-tuned under one system prompt can fall apart under another.
 
 ## The idea in pictures 📐
 
@@ -49,7 +49,7 @@ A **tool call** in TinyLM's chat format is an assistant turn whose content begin
 
 ```python
 call = {"name": "calc", "arguments": {"expression": "17 + 19"}}
-msgs = [{"role": "system", "content": "Use the calc tool."},
+msgs = [{"role": "system", "content": "Use the calc tool."},          # the lab uses the harness's longer prompt, see below
         {"role": "user", "content": "What is 17 + 19?"},
         {"role": "tool_call", "content": json.dumps(call)},
         {"role": "tool_result", "content": "36"},
@@ -79,6 +79,25 @@ print(env.step('17 + 19 = 36<|end|>'))
 
 A real environment is a **sandbox**: an isolated process or container in which the agent's actions (shell commands, file edits) cannot reach anything outside, that can be reset to a known state for every rollout, and that returns observations as text. Chapter 26 builds the sandboxing; here the only sandboxing is the calculator's whitelist of characters.
 
+### The system prompt is part of the environment
+
+The harness of Chapter 24 does not send the model a bare instruction: `llm.agent.backends.TinyLMBackend.to_chat_messages` prepends a compact listing of the available tools, so the model at serving time sees
+
+```python
+from llm.agent.backends import TinyLMBackend
+from llm.agent.tools import Tool, ToolRegistry, safe_eval
+calc = Tool("calc", "Evaluate an arithmetic expression.",
+            {"type": "object", "properties": {"expression": {"type": "string", "description": "e.g. '2 + 3'"}},
+             "required": ["expression"]}, lambda expression: str(safe_eval(expression)))
+system = TinyLMBackend.to_chat_messages([], ToolRegistry([calc]).schemas(), "Use the calc tool.")[0]["content"]
+print(system)
+# Use the calc tool.
+# Tools (call with <|tool_call|>{"name":..,"arguments":{..}}<|end|>):
+# - calc(expression): Evaluate an arithmetic expression.
+```
+
+The lab builds its training conversations with *this* string, produced by *that* function, rather than retyping it, and its environment subclass sets `system_prompt` to the same string. Two consequences. The prompt is 107 Storyland tokens on its own (the JSON-like marker line is spelled out character by character), so a two-turn trajectory is about 190 tokens and no longer fits the nano model's 128-position window; the lab's policy is therefore the `small` TinyLM (256 positions). And the lab's last section measures what happens when the same policy is served with a *different* system prompt, which is the failure Chapter 24's author hit first: tool-trained checkpoints that had been fine-tuned without the tool listing scored 0/4 once the harness added it.
+
 ### Rollouts and the mask
 
 `multi_turn_rollout` plays one episode and builds the figure's `ids` and `mask`:
@@ -86,13 +105,18 @@ A real environment is a **sandbox**: an isolated process or container in which t
 ```python
 tok = get_tokenizer()
 model = TinyLM.load(run_path("lab21_tool_sft.pt"))            # the SFT'd policy from the lab
+served = torch.load(run_path("lab21_tool_sft.pt"))["extra"].get("system_prompt", "Use the calc tool.")
+
+class CalcEnv(CalculatorEnv):                                 # the environment under the served prompt
+    system_prompt = served
+
 cfg = GRPOConfig(group_size=4, max_new_tokens=70, temperature=1.0)
-traj = multi_turn_rollout(model, tok, CalculatorEnv.from_seed(3), cfg, max_turns=3)
+traj = multi_turn_rollout(model, tok, CalcEnv.from_seed(3), cfg, max_turns=3)
 for t in traj.turns:
     print(f"{t.role:12s} {t.text!r}")
-print(traj.reward, traj.n_tool_calls, traj.ids.shape, traj.mask.shape)   # e.g. 1.2 1 torch.Size([84]) torch.Size([83])
+print(traj.reward, traj.n_tool_calls, traj.ids.shape, traj.mask.shape)   # 0.0 0 torch.Size([127]) torch.Size([126]) for a direct (wrong) answer; a tool episode is ~189 tokens
 trained = tok.decode([i for i, m in zip(traj.ids[1:].tolist(), traj.mask.tolist()) if m])
-print(trained)   # exactly the two assistant turns, nothing else
+print(trained)   # exactly the assistant turn(s), nothing else: '7 + 18 = 30<|end|>'
 ```
 
 The last two lines are the check that matters: decoding the tokens where `mask == 1` gives back exactly the assistant's text, with its `<|end|>` tokens, and nothing the environment wrote. Inside the function, every generated token appends a 1 to `gen_mask` and every token of an observation appends a 0; the mask is then shifted by one to align with `token_logprobs` (Chapter 18). One more detail: generation is budgeted so that a model turn always fits in the context, and if a *tool result* would overflow, it is the tool result that gets truncated, never a generated token, so the mask stays valid.
@@ -121,99 +145,92 @@ Read this as: every token the policy generated anywhere in an above-average traj
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab21_agentic_rl.py            # quick: 4 GRPO steps, about 90 s once the warm-start is cached
-python3 labs/lab21_agentic_rl.py --full     # 30 GRPO steps, about 3 min
+python3 labs/lab21_agentic_rl.py            # quick: 4 GRPO steps, about 1 min once the warm-start is cached
+python3 labs/lab21_agentic_rl.py --full     # 30 GRPO steps, about 2.5 min
 ```
 
-The first run trains the SFT warm-start (700 steps, about 5 minutes) and caches it as `runs/lab21_tool_sft.pt`; every later run loads it. All numbers below are from a CPU with one thread, on a busy machine.
+The first run trains the SFT warm-start (500 steps on the `small` model, about 10 minutes) and caches it as `runs/lab21_tool_sft.pt`; every later run loads it. All numbers below are from one CPU thread on a shared machine.
 
-**(a) The base model.** `multi_turn_rollout` on `base_nano.pt` produces Storyland, not a tool call:
+**(a) The base model.** The lab first prints the system prompt exactly as the Chapter 24 backend renders it (107 tokens), then runs `multi_turn_rollout` on `base_small.pt`:
 
 ```
       user         'What is 4 + 18?'
-      assistant    ': 86 133 + 135?\nAnswer: � + 33 = 67.<|eos|>At the bridge, Ruby met Ivy. Finn was sad ...'
-      reward 0.0 | tool calls 0 | 93 tokens | done=True
+      assistant    ': one, two, three. There were three cakes. It was windy at the forest. Owen wore a blue hat ...'
+      reward 0.0 | tool calls 0 | 189 tokens | done=True
 ✅ the base model never produces a parseable tool call
 ```
 
 The base model has seen `<|eos|>` but none of the chat tokens, so it continues the prompt as if it were a document. `parse_tool_call` returns `None`, the environment grades the text as a final answer, the episode ends with reward 0.
 
-**(b) The data and the mask.** The lab builds 500 conversations (300 with a tool call, 200 direct answers) and prints the first one with trained tokens in brackets:
+**(b) The data and the mask.** The lab builds 500 conversations (300 with a tool call, 200 direct answers) under the served system prompt and prints the first one from the user turn on, trained tokens in brackets:
 
 ```
-   example 0: 86 tokens, 59 trainable
-   <|bos|><|system|>Use the calc tool.<|end|><|user|>What is 12 + 13?<|end|><|assistant|>[<|tool_call|>][{]["][n][a][m][e]["][:][ ]["][c][a][l][c]["][,] ... ["][12][ +][ ][13]["][}][}][<|end|>]<|tool_result|>25<|end|><|assistant|>[12][ +][ ][13][ =][ ][25][<|end|>]
+   example 0: 182 tokens, 59 trainable
+   ...<|user|>What is 12 + 13?<|end|><|assistant|>[<|tool_call|>][{]["][n][a][m][e]["][:][ ]["][c][a][l][c]["][,] ... ["][12][ +][ ][13]["][}][}][<|end|>]<|tool_result|>25<|end|><|assistant|>[12][ +][ ][13][ =][ ][25][<|end|>]
 ✅ the tool_call marker is trained, the tool_result turn is not
 ```
 
-Read the brackets against the figure: the `<|tool_call|>` marker and every character of the JSON are trained (the model must learn to *produce* them), `<|tool_result|>25<|end|>` is not, the second `<|assistant|>` tag is not, and the final answer is. Two costs are visible. The Storyland tokenizer has never seen JSON, so `{"name": "calc", ...}` is spelled out one character at a time: 46 of the 59 trainable tokens are the tool-call syntax. And the whole conversation is 86 tokens against the nano model's 128-position context, which is why the system prompt is the four-word `Use the calc tool.` rather than the library's default (the default pushes a two-turn trajectory to 148 tokens, and it no longer fits).
+Read the brackets against the figure: the `<|tool_call|>` marker and every character of the JSON are trained (the model must learn to *produce* them), `<|tool_result|>25<|end|>` is not, the second `<|assistant|>` tag is not, and the final answer is. Two costs are visible. The Storyland tokenizer has never seen JSON, so `{"name": "calc", ...}` is spelled out one character at a time: 46 of the 59 trainable tokens are the tool-call syntax. And 123 of the 182 tokens are the system prompt and the user turn, which is why the policy is the `small` model: the same conversation does not fit a nano model's 128 positions, and the lab asserts that every training conversation fits before it starts.
 
-The SFT loop is fifteen lines in the lab: `chat.build_sft_example` per conversation, `chat.collate` per batch, `model(x, y, loss_mask=m)`. The masked loss goes from 8.63 to 0.05 in 700 steps at learning rate 1e-3 (at 3e-4 it stalls near 0.3 and the model copies the wrong numbers into the expression; the sum is not the hard part for this model, copying two numbers across 60 tokens of JSON is). After SFT, one sampled rollout and the greedy evaluation on 16 fixed tasks:
+The SFT loop is fifteen lines in the lab: `chat.build_sft_example` per conversation, `chat.collate` per batch, `model(x, y, loss_mask=m)`. The masked loss goes from 13.3 to 0.03 in 500 steps at learning rate 1e-3. (An earlier version of this lab used the nano model with a four-word system prompt; at learning rate 3e-4 it stalled near a loss of 0.3 and copied the wrong numbers into the expression. The sum is not the hard part for a small model, copying two numbers across 60 tokens of JSON is.) After SFT, one sampled rollout and the greedy evaluation on 40 fixed tasks:
 
 ```
       user         'What is 4 + 18?'
-      assistant    '4 + 19 = 20<|end|>'
-      reward 0.0 | tool calls 0 | 31 tokens | done=True
-   before GRPO (16 greedy episodes, 7s): tool_rate 0.56 | accuracy 0.69 | tool_and_correct 0.56 | reward 0.80 | turns 1.56
+      assistant    '4 + 19 = 30<|end|>'
+      reward 0.0 | tool calls 0 | 127 tokens | done=True
+   before GRPO (40 greedy episodes, 13s): tool_rate 0.78 | accuracy 0.80 | tool_and_correct 0.75 | reward 0.95 | turns 1.77
 ```
 
-The sample shows the failure mode the tool exists to fix: without the calculator the model writes a wrong sum (and here even a wrong operand). The greedy numbers say the SFT policy calls the tool in 56% of episodes, matching the 60% of its training data, and *every* tool episode was correct (`tool_and_correct` equals `tool_rate`), while the direct answers were right about a third of the time. The reward gap between the two behaviours (1.2 versus about 0.3 in expectation) is what GRPO can exploit.
+The sample shows the failure mode the tool exists to fix: without the calculator the model writes a wrong sum (and here a wrong operand). The greedy numbers say the SFT policy calls the tool in 78% of episodes (its training data had 60%; the small model already leans toward the tool because tool episodes are the ones whose answers are consistent with the prompt), and `tool_and_correct` tracks `tool_rate` closely: whenever it calls the tool, it is nearly always right. The reward gap between a tool episode (1.2) and a direct answer (1.0 times a coin flip) is what GRPO can exploit.
 
-**(c) Multi-turn GRPO.** Four steps in quick mode, each with 2 tasks × 4 trajectories:
+**(c) Multi-turn GRPO.** Thirty steps in full mode, each with 2 tasks × 4 trajectories:
 
 ```
-   step   0 | reward 0.75 | acc 0.62 | tool rate 0.62 | turns 1.6 | skipped 0.50 | loss -1.064 | 5s
-   step   1 | reward 1.02 | acc 0.88 | tool rate 0.88 | turns 1.9 | skipped 0.50 | loss +0.083 | 10s
-   step   2 | reward 0.82 | acc 0.75 | tool rate 0.38 | turns 1.4 | skipped 0.00 | loss -0.407 | 13s
-   step   3 | reward 0.90 | acc 0.75 | tool rate 0.75 | turns 1.8 | skipped 0.50 | loss -0.081 | 20s
+   step   0 | reward 0.28 | acc 0.25 | tool rate 0.12 | turns 1.1 | skipped 0.50 | loss -0.720 | 1s
+   step   5 | reward 0.90 | acc 0.75 | tool rate 1.00 | turns 2.0 | skipped 0.50 | loss +0.000 | 14s
+   step  10 | reward 0.90 | acc 0.75 | tool rate 0.88 | turns 1.9 | skipped 0.50 | loss -0.276 | 28s
+   step  15 | reward 1.20 | acc 1.00 | tool rate 1.00 | turns 2.0 | skipped 1.00 | loss +0.000 | 44s
+   step  20 | reward 1.20 | acc 1.00 | tool rate 1.00 | turns 2.0 | skipped 1.00 | loss +0.000 | 60s
+   step  29 | reward 1.20 | acc 1.00 | tool rate 1.00 | turns 2.0 | skipped 1.00 | loss +0.000 | 89s
 
+   GRPO wall-clock 89s (3.0s per step)
    metric               before    after
-   tool_rate              0.56     0.62
-   accuracy               0.69     0.75
-   tool_and_correct       0.56     0.62
-   reward                 0.80     0.87
-```
-
-Read `skipped 0.50` as: in half the groups all four trajectories got the same reward, so their advantages are zero and DAPO's dynamic sampling dropped them (Chapter 19). With only two tasks per step this happens often, and four steps is too few to see more than a nudge: every metric moves up by one episode in sixteen. The `--full` run is where the trend shows:
-
-```
-   before GRPO (40 greedy episodes, 17s): tool_rate 0.47 | accuracy 0.62 | tool_and_correct 0.47 | reward 0.72 | turns 1.48
-   step   0 | reward 0.75 | acc 0.62 | tool rate 0.62 | turns 1.6 | skipped 0.50 | loss -1.064 | 5s
-   step   5 | reward 0.25 | acc 0.25 | tool rate 0.25 | turns 1.2 | skipped 0.00 | loss +0.355 | 30s
-   step  10 | reward 0.67 | acc 0.62 | tool rate 0.25 | turns 1.2 | skipped 0.00 | loss -1.045 | 48s
-   step  15 | reward 0.90 | acc 0.75 | tool rate 0.88 | turns 1.9 | skipped 0.50 | loss -0.276 | 65s
-   step  20 | reward 0.90 | acc 0.75 | tool rate 0.88 | turns 1.9 | skipped 0.00 | loss -0.210 | 83s
-   step  29 | reward 0.90 | acc 0.75 | tool rate 0.75 | turns 1.8 | skipped 0.00 | loss -0.477 | 114s
-
-   GRPO wall-clock 114s (3.8s per step)
-   metric               before    after
-   tool_rate              0.47     0.72
-   accuracy               0.62     0.80
-   tool_and_correct       0.47     0.70
-   reward                 0.72     0.94
-   turns                  1.48     1.73
+   tool_rate              0.78     0.97
+   accuracy               0.80     0.97
+   tool_and_correct       0.75     0.95
+   reward                 0.95     1.17
+   turns                  1.77     1.98
 ✅ mean reward did not fall after GRPO
 ✅ the tool-use rate did not fall: tool trajectories earn the bonus
 ```
 
-Thirty steps, two minutes, 240 trajectories in total. On 40 fixed tasks the greedy tool-use rate goes from 0.47 to 0.72, accuracy from 0.62 to 0.80, mean reward from 0.72 to 0.94, and the mean number of assistant turns from 1.48 to 1.73 (a tool episode has two turns). `tool_and_correct` tracks `tool_rate` almost exactly both before and after: whenever this policy calls the tool it gets the answer right, so the whole gain is the policy choosing the tool more often. That is the intended lesson of the environment's reward design: the tool episode is worth 1.2 and the direct answer is worth 1.0 times a coin flip, and the group-relative advantage turns that gap into a gradient toward calling the tool. Look also at steps 5–10: the rollout statistics collapse (tool rate 0.25, reward 0.25) and recover by step 15. With 8 trajectories per step the per-step numbers are noisy, and an early update that happened to push down a tool-call trajectory (a group where the direct answers were lucky) can suppress the tool for a few steps until the next group where it wins; larger groups and more tasks per step (the frontier uses hundreds) are what smooth this out.
+Ninety seconds and 240 trajectories. On 40 fixed tasks the greedy tool-use rate goes from 0.78 to 0.97, accuracy from 0.80 to 0.97, mean reward from 0.95 to 1.17 (the maximum is 1.2), and the mean number of assistant turns from 1.77 to 1.98: almost every episode is now "call the tool, copy the result". Read the `skipped` column: from step 15 on it is 1.00, meaning every group of four trajectories earned the same reward (1.2 each), every advantage is zero, DAPO's dynamic sampling (Chapter 19) discards the group, and the reported loss is exactly 0. The policy has saturated the task, and the remaining fifteen steps changed nothing; on a real run this is the moment to raise `max_value`, which is what a curriculum is. Read also step 0: with 8 trajectories per step the per-step numbers are noisy (a tool rate of 0.12 from a policy whose greedy tool rate is 0.78, because at temperature 1 the small model's sampled turns often wander), and the frontier uses hundreds of trajectories per step to smooth this out.
 
 **The mask on a trained trajectory.** The lab decodes the tokens where `mask == 1` and where `mask == 0` separately for one trajectory of the last step:
 
 ```
-      user         'What is 15 + 0?'
-      assistant    '<|tool_call|>{"name": "calc", "arguments": {"expression": "15 + 0"}}<|end|>'
-      tool_result  '15'
-      assistant    '1515 + 0 = 15<|end|>'
-      reward 1.2 | tool calls 1 | 87 tokens | done=True
-   trained  (60 tokens): '<|tool_call|>{"name": "calc", "arguments": {"expression": "15 + 0"}}<|end|>1515 + 0 = 15<|end|>'
-   given    (26 tokens): '<|system|>Use the calc tool.<|end|><|user|>What is 15 + 0?<|end|><|assistant|><|tool_result|>15<|end|><|assistant|>'
+      user         'What is 15 + 13?'
+      assistant    '<|tool_call|>{"name": "calc", "arguments": {"expression": "15 + 13"}}<|end|>'
+      tool_result  '28'
+      assistant    '15 + 13 = 28<|end|>'
+      reward 1.2 | tool calls 1 | 182 tokens | done=True
+   trained  (59 tokens): '<|tool_call|>{"name": "calc", "arguments": {"expression": "15 + 13"}}<|end|>15 + 13 = 28<|end|>'
+   given    (122 tokens): '<|system|>Use the calc tool.\nTools (call with <|tool_call|>{"name":..,"arguments":{..}}<|end|>):\n- calc(expression): Evaluate an arithmetic expression.\n<|end|><|user|>What is 15 + 13?<|end|><|assistant|><|tool_result|>28<|end|><|assistant|>'
 ✅ no environment or prompt token is in the loss
 ```
 
-The trained string is exactly the two assistant turns concatenated; the given string is the prompt, both `<|assistant|>` tags and the tool result. Notice `1515 + 0 = 15`: the model stuttered on the copied number, the grader (`tasks.extract_answer` takes the last number after `=`) accepted it, and the trajectory earned the full 1.2. Lenient graders are how small hacks get reinforced; Chapter 23 returns to this.
+The trained string is exactly the two assistant turns concatenated; the given string is the system prompt with its tool listing, the user turn, both `<|assistant|>` tags and the tool result. In the quick run the same printout shows a trajectory whose final answer reads `1515 + 0 = 15`: the model stuttered on the copied number, the grader (`tasks.extract_answer` takes the last number after `=`) accepted it, and the trajectory earned the full 1.2. Lenient graders are how small hacks get reinforced; Chapter 23 returns to this.
 
-The lab saves `figures/generated/lab21_agentic_rl.png` (reward, accuracy and tool rate per step; before/after bars) and `runs/lab21_tool_grpo.pt`, which Chapter 23's lab will evaluate alongside everything else.
+**(d) Train with the prompt you serve with.** The final section evaluates the *same* trained policy on the same 40 tasks under a different system prompt, the four-word `Use the calc tool.` without the tool listing:
+
+```
+   served prompt (trained on it): tool rate 0.97 | accuracy 0.97 | reward 1.17
+   short prompt  'Use the calc tool.': tool rate 0.00 | accuracy 0.05 | reward 0.05
+```
+
+Nothing about the task changed; the only difference is 90 tokens of system prompt the policy never saw during training, and its tool use goes from 97% to 0% and its accuracy from 0.97 to 0.05. This is the most practically important number in the chapter. A fine-tuned agent policy is conditioned on the exact prefix it was trained under, and the tool listing the harness prepends is part of that prefix; build the training conversations from the same function that builds the serving prompt (the lab calls `TinyLMBackend.to_chat_messages` for both), version the prompt with the checkpoint (the lab stores it in the checkpoint's `extra` field), and re-evaluate whenever either changes. Chapter 24's author found the earlier, nano-trained version of these checkpoints scoring 0 of 4 in the harness for exactly this reason.
+
+The lab saves `figures/generated/lab21_agentic_rl.png` (reward, accuracy and tool rate per step; before/after bars) and `runs/lab21_tool_grpo.pt`, which Chapter 23's lab evaluates alongside everything else.
 
 ## 🆕 The 2026 infrastructure and research landscape
 
@@ -232,8 +249,9 @@ What changes at scale is almost entirely about rollouts. A frontier agentic-RL s
 2. **Turn-level rewards.** Subclass `CalculatorEnv` so that `step` returns +0.1 on a syntactically valid tool call and 1.0 on a correct answer. Does `tool_call_rate` rise faster than in the lab? Does the final accuracy change?
 3. **Hack the bonus.** Change the environment so the 0.2 bonus is paid whenever the tool is called, regardless of the answer. Train for the lab's number of steps and report `tool_call_rate` and `accuracy`. Explain what the policy found.
 4. **Curriculum.** Train 20 steps with `max_value=10`, then 20 with `max_value=20`, versus 40 steps at 20. Compare accuracy at 20.
-5. **Context budget.** The nano model has 128 positions and a trajectory in the lab is about 90 tokens. Add a second tool call (change `max_turns` to 4 and make the environment return an error the first time) and see what `multi_turn_rollout` does when the context fills. Which tokens get dropped, and why is that the safe choice?
-6. **Interactive** 🎛️: open `interactive/24_agent_loop_tracer.html` and step through a transcript. For each event, say whether its tokens would be mask 1 or mask 0 in this chapter's trajectory, and which turn's reward it would receive under trajectory-level credit assignment.
+5. **Context budget.** The small model has 256 positions and a two-turn trajectory in the lab is about 190 tokens. Add a second tool call (change `max_turns` to 4 and make the environment return an error the first time) and see what `multi_turn_rollout` does when the context fills. Which tokens get dropped, and why is that the safe choice? Then try the same lab with `POLICY_BASE = "base_nano.pt"` and explain the assertion that fires.
+6. **Serve with a third prompt.** Write a system prompt that lists the tool with a different description (`calc(expression): adds two numbers`) and evaluate `runs/lab21_tool_grpo.pt` under it with the lab's `evaluate` helper. Is a *paraphrase* of the training prompt as harmful as dropping the listing altogether?
+7. **Interactive** 🎛️: open `interactive/24_agent_loop_tracer.html` and step through a transcript. For each event, say whether its tokens would be mask 1 or mask 0 in this chapter's trajectory, and which turn's reward it would receive under trajectory-level credit assignment.
 
 ## Check yourself ✅
 
@@ -270,6 +288,7 @@ Call the tool (collect the bonus) and then write any answer, or even the same an
 - Credit assignment across turns is the open problem; trajectory-level credit works on short episodes and weakens as episodes grow.
 - 🆕 2026 infrastructure is about rollouts: asynchronous generation, environment fleets as a service, failure-driven and synthesised data, curricula.
 - Agents can act, so they have more ways to hack a reward; pay shaping bonuses only when they coincide with the outcome you want.
+- The system prompt (including the tool listing) is part of the environment: build training conversations with the exact string the harness will send, or the checkpoint will not work when served.
 
 ## Going deeper
 

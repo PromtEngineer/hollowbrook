@@ -8,7 +8,12 @@ right answer, +0.2 if the tool was called with the right expression *and* the an
     that keeps tool results out of the loss, and an SFT warm-start written in ~15 lines with
     ``chat.build_sft_example`` + ``chat.collate``. Cached as runs/lab21_tool_sft.pt.
 (c) multi-turn GRPO for N steps; tool-use rate, correctness and reward before/after, and the
-    trained tokens of one trajectory decoded from its mask.
+    trained tokens of one trajectory decoded from its mask;
+(d) "train with the prompt you serve with": the same policy evaluated under a different system prompt.
+
+The system prompt is the one ``llm.agent.backends.TinyLMBackend`` builds (a short instruction plus a
+compact tool listing), so the saved checkpoints work with Chapter 24's harness. That prompt alone is
+~110 Storyland tokens, so the policy is the `small` TinyLM (256-token window), not `nano` (128).
 
 Run:  python3 labs/lab21_agentic_rl.py            (quick)
       python3 labs/lab21_agentic_rl.py --full
@@ -23,23 +28,39 @@ import time
 import torch
 
 from llm import chat, rl, tasks
+from llm.agent.backends import TinyLMBackend
+from llm.agent.tools import Tool, ToolRegistry, safe_eval
 from llm.model import TinyLM
 from llm.pipeline import TOKENIZER_PATH, get_tokenizer, run_path
 from llm.rl import CalculatorEnv, GRPOConfig, make_optimizer, multi_turn_grpo_step, multi_turn_rollout
 
 args = setup("Lab 21: agentic RL — learning to use a calculator tool")
 
-SFT_STEPS = 700                      # one-time warm-start (cached); ~4 min on a laptop CPU
+SFT_STEPS = 500                      # one-time warm-start (cached); ~6 min on a laptop CPU
+POLICY_BASE = "base_small.pt"        # 256-token window: the served system prompt + a tool call + an answer fit
 GRPO_STEPS = 4 if args.quick else 30
 N_TASKS, GROUP, MAX_NEW, MAX_TURNS = 2, 4, 70, 3
 N_EVAL = 16 if args.quick else 40
 TOOL_FRAC = 0.6                      # share of SFT conversations that use the tool
-SYSTEM = "Use the calc tool."        # short: a nano TinyLM has 128 positions and a tool call costs ~60
+
+# The system prompt the agent harness (Chapter 24) will actually send: build it with the backend's own
+# function so that training and serving see byte-identical text.
+CALC = Tool("calc", "Evaluate an arithmetic expression.",
+            {"type": "object", "properties": {"expression": {"type": "string", "description": "e.g. '2 + 3'"}},
+             "required": ["expression"]}, lambda expression: str(safe_eval(expression)))
+REGISTRY = ToolRegistry([CALC])
+SYSTEM = TinyLMBackend.to_chat_messages([], REGISTRY.schemas(), "Use the calc tool.")[0]["content"]
+SHORT_SYSTEM = "Use the calc tool."   # the mismatched prompt used in (d)
 
 
 class CalcEnv(CalculatorEnv):
-    """CalculatorEnv with a system prompt short enough for the nano context."""
+    """CalculatorEnv with the served system prompt."""
     system_prompt = SYSTEM
+
+
+class ShortPromptEnv(CalculatorEnv):
+    """The same task under a different system prompt (for the mismatch demo)."""
+    system_prompt = SHORT_SYSTEM
 
 
 tok = get_tokenizer()
@@ -54,9 +75,9 @@ def show(traj: rl.Trajectory) -> None:
     print(f"      reward {traj.reward:.1f} | tool calls {traj.n_tool_calls} | {len(traj.ids)} tokens | done={traj.done}")
 
 
-def evaluate(model: TinyLM, n: int, seed0: int = 5000) -> dict:
+def evaluate(model: TinyLM, n: int, seed0: int = 5000, env_cls=CalcEnv) -> dict:
     """Greedy episodes on n fixed tasks: tool-use rate, accuracy, mean reward."""
-    trajs = [multi_turn_rollout(model, tok, CalcEnv.from_seed(seed0 + i), eval_cfg, MAX_TURNS) for i in range(n)]
+    trajs = [multi_turn_rollout(model, tok, env_cls.from_seed(seed0 + i), eval_cfg, MAX_TURNS) for i in range(n)]
     return {"tool_rate": sum(t.n_tool_calls > 0 for t in trajs) / n,
             "accuracy": sum(t.reward >= 1.0 for t in trajs) / n,
             "tool_and_correct": sum(t.reward >= 1.2 for t in trajs) / n,
@@ -66,7 +87,10 @@ def evaluate(model: TinyLM, n: int, seed0: int = 5000) -> dict:
 
 # ------------------------------------------------------------------ (a) untrained
 section("(a) a rollout on the untrained base model")
-base = TinyLM.load(run_path("base_nano.pt"))
+print("   system prompt (as the Chapter 24 backend renders it):")
+print("   " + repr(SYSTEM))
+print(f"   {len(rl.encode_turn(tok, 'system', SYSTEM))} tokens for the system turn alone")
+base = TinyLM.load(run_path(POLICY_BASE))
 torch.manual_seed(args.seed)
 traj = multi_turn_rollout(base, tok, CalcEnv.from_seed(1), roll_cfg, MAX_TURNS)
 show(traj)
@@ -92,8 +116,9 @@ n_tool = sum(len(c) == 5 for c in convs)
 print(f"   {len(convs)} conversations: {n_tool} with a tool call, {len(convs) - n_tool} direct answers")
 ids, mask = chat.build_sft_example(tok, convs[0])
 print(f"   example 0: {len(ids)} tokens, {sum(mask)} trainable")
-print("   trained tokens in [brackets]:")
-print("   " + "".join(f"[{tok.token_str(i)}]" if m else tok.token_str(i) for i, m in zip(ids, mask)))
+print("   trained tokens in [brackets] (system prompt elided):")
+user_start = ids.index(tok.special_tokens["<|user|>"])
+print("   ..." + "".join(f"[{tok.token_str(i)}]" if m else tok.token_str(i) for i, m in zip(ids[user_start:], mask[user_start:])))
 trained_text = tok.decode([i for i, m in zip(ids, mask) if m])
 given_text = tok.decode([i for i, m in zip(ids, mask) if not m])
 check("<|tool_result|>" in given_text and "<|tool_call|>" in trained_text,
@@ -107,8 +132,9 @@ if os.path.exists(sft_path):
     print(f"   loaded cached warm-start {sft_path}")
 else:
     print(f"   [one-time] SFT warm-start: {SFT_STEPS} steps, batch 16, lr 1e-3 (masked CE on assistant tokens)")
-    policy = TinyLM.load(run_path("base_nano.pt"))
+    policy = TinyLM.load(run_path(POLICY_BASE))
     data = [chat.build_sft_example(tok, c, max_len=policy.cfg.max_seq_len) for c in convs]
+    assert max(len(ids) for ids, _ in data) < policy.cfg.max_seq_len, "a conversation does not fit the context"
     opt = torch.optim.AdamW(policy.parameters(), lr=1e-3, betas=(0.9, 0.95))
     g = torch.Generator().manual_seed(args.seed)
     policy.train()
@@ -124,7 +150,7 @@ else:
         if step % 100 == 0 or step == SFT_STEPS - 1:
             print(f"      sft step {step:4d} | masked loss {loss.item():.3f} | {time.perf_counter() - t0:.0f}s")
     policy.eval()
-    policy.save(sft_path, TOKENIZER_PATH, extra={"stage": "sft-tool-use", "steps": SFT_STEPS})
+    policy.save(sft_path, TOKENIZER_PATH, extra={"stage": "sft-tool-use", "steps": SFT_STEPS, "system_prompt": SYSTEM})
     print(f"   saved {sft_path}")
 
 print("   a rollout from the SFT model (temperature 1):")
@@ -176,8 +202,15 @@ print(f"   given    ({int((traj.mask == 0).sum())} tokens): {untrained!r}")
 check("<|tool_result|>" not in trained and "<|user|>" not in trained, "no environment or prompt token is in the loss")
 check(all(tr.text in trained for tr in traj.turns if tr.role == "assistant"), "every assistant turn is in the loss")
 
-policy.save(run_path("lab21_tool_grpo.pt"), TOKENIZER_PATH, extra={"stage": "agentic-grpo", "steps": GRPO_STEPS})
+policy.save(run_path("lab21_tool_grpo.pt"), TOKENIZER_PATH, extra={"stage": "agentic-grpo", "steps": GRPO_STEPS, "system_prompt": SYSTEM})
 print(f"   saved runs/lab21_tool_grpo.pt")
+
+# ------------------------------------------------------------------ (d) prompt mismatch
+section("(d) train with the prompt you serve with: the same policy under a different system prompt")
+mismatch = evaluate(policy, N_EVAL, env_cls=ShortPromptEnv)
+print(f"   served prompt (trained on it): tool rate {after['tool_rate']:.2f} | accuracy {after['accuracy']:.2f} | reward {after['reward']:.2f}")
+print(f"   short prompt  {SHORT_SYSTEM!r}: tool rate {mismatch['tool_rate']:.2f} | accuracy {mismatch['accuracy']:.2f} | reward {mismatch['reward']:.2f}")
+check(mismatch["reward"] <= after["reward"] + 1e-9, "a system prompt the policy never saw does not do better than the one it was trained with")
 
 # ------------------------------------------------------------------ figure
 fig, axes = plt().subplots(1, 2, figsize=(11, 4))

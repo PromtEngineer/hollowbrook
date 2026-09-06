@@ -412,6 +412,9 @@ def rubric_reward(completion: str, rubric: Sequence[tuple[str, Criterion]]) -> t
 
 
 # A demo rubric for arithmetic answers such as "23 + 45 = 68".
+# WARNING (deliberate): no criterion checks *correctness*, so ``rubric_reward("0 + 0 = 0")``
+# scores 1.0 for any question. Lab 17 uses this to show a policy exploiting a rubric; a real
+# rubric pairs style criteria with a verifiable-correctness criterion (``tasks.strict_verify``).
 ARITHMETIC_RUBRIC: list[tuple[str, Criterion]] = [
     ("has_equation", lambda c: re.search(r"\d+ [+-] \d+ = -?\d+", c) is not None),
     ("single_line", lambda c: len(c.strip().split("\n")) == 1),

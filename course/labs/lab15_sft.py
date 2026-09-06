@@ -180,7 +180,7 @@ bench_full = ms_per_step(copy.deepcopy(base))
 bench_lora = ms_per_step(apply_lora(copy.deepcopy(base), LORA_RANK))
 print(f"one training step, evals excluded: full FT {bench_full:.0f} ms | LoRA {bench_lora:.0f} ms "
       f"(the wall-clock column above includes the periodic evals, which are slow until a model learns to stop)")
-check(bench_lora < 1.3 * bench_full, "a LoRA step costs about the same as a full step on CPU: the backward pass still runs through every layer")
+check(bench_lora < 1.3 * bench_full, "a LoRA step is no more expensive than a full step: frozen weights need no weight-gradients and no optimizer state")
 
 # ------------------------------------------------------------ figure
 fig, axes = plt().subplots(1, 3, figsize=(15, 4))

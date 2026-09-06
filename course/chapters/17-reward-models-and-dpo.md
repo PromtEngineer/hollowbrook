@@ -229,7 +229,7 @@ Two related 2026 ideas. A **generative reward model** (also *critic model*) is a
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab17_reward_dpo.py            # quick: nano model, about 2 min after a one-off ~3 min SFT warm start
+python3 labs/lab17_reward_dpo.py            # quick: nano model, 324 s including a one-off ~3 min SFT warm start
 python3 labs/lab17_reward_dpo.py --full     # small model, see the timing note below
 ```
 
@@ -281,7 +281,45 @@ Section (d) samples four answers per prompt and pairs a correct one with a wrong
 
 Three things to read. DPO separates the training pairs (0.95, margin +0.50) and none of the ten held-out ones: with 43 pairs that differ only in a number, the nano model memorises which string was chosen. The displacement run shows the mechanism in miniature: after 60 steps on 24 pairs the pairs are perfectly separated, the rejected answers have fallen 4.87 nats, and the chosen answers did not rise at all (−0.05 nats); the whole margin came from pushing the rejected side down, and greedy accuracy slipped from 0.23 to 0.19. SimPO reaches 0.80 held-out pair accuracy where DPO reached 0.20, because its length-normalised, reference-free reward is closer to what greedy decoding uses, but its task accuracy is no better. The full run below, on the larger model, is where the displacement becomes a collapse.
 
-<!-- FULL_MODE_17 -->
+### Full mode (small, 2.4M parameters)
+
+The full run uses a 700-step SFT warm start (0.65 greedy on fresh sums), 400 synthetic pairs, 120 RM steps, 200 prompts for on-policy pairs and 60 DPO steps. It took 1,963 s in total because it shared the machine with Labs 18 and 19 running at the same time (the RM stage alone took 876 s under that contention; the DPO stage 47 s).
+
+```
+   greedy accuracy [SFT warm start]: 0.65  (95% CI [0.56, 0.74], n=100)
+   held-out pair accuracy: 0.00 (zero head: every margin is 0) -> 0.88   [876s]
+   accuracy by failure style: empty=1.00 (n=18), junk=1.00 (n=14), off_by_one=0.68 (n=19), verbose=1.00 (n=13), wrong=0.75 (n=16)
+   24 held-out prompts x 16 samples at T=1: sample accuracy 0.51
+     N | RM pick: proxy  gold | rubric pick: proxy  gold | any correct
+     1 |           1.31  0.42 |               0.99  0.42 |        0.42
+     2 |           1.32  0.50 |               1.00  0.42 |        0.58
+     4 |           1.32  0.46 |               1.00  0.42 |        0.62
+     8 |           1.32  0.42 |               1.00  0.42 |        0.62
+    16 |           1.32  0.25 |               1.00  0.42 |        0.75
+```
+
+The bigger reward model is better on numbers (0.75 on `wrong`, 0.68 on `off_by_one`) but still far from its 1.00 on style. The best-of-N table is now the full Gao et al. curve: gold accuracy under the reward model *rises* to 0.50 at N = 2, then falls as N grows, to 0.25 at N = 16, below the N = 1 value, while the ceiling climbs to 0.75 and the proxy score sits at 1.32 throughout. With more samples to choose from, the reward model increasingly finds the answer that looks best to *it*, and among 16 candidates that is usually a well-formed wrong one. This is overoptimisation: more optimisation pressure against the same proxy makes the true objective worse.
+
+```
+   80/200 prompts yield a pair; 119 were all-correct (nothing to rank), 1 all-wrong (no positive example)
+      chosen='6 + 3 = 9'      rejected='6 + 3 = 8'
+--- (e) DPO on 64 on-policy pairs, 60 steps ---
+   after:  val pair acc 0.25 | margin -0.041 | loss 0.714   [47s]
+   train pairs: acc 1.00 | margin +0.383
+   greedy accuracy: SFT 0.65 -> DPO 0.61
+--- (f) likelihood displacement: 100 DPO steps at lr 5e-5 on 24 pairs ---
+   train pair accuracy 1.00, margin +0.80
+   mean log pi(chosen):     -0.23 ->   -0.55   (DOWN by 0.32 nats)
+   mean log pi(rejected):  -10.40 ->  -18.69   (down by 8.29 nats)
+   greedy accuracy: SFT 0.65 -> 0.51
+--- (g) SimPO vs DPO ---
+   method val pair acc   margin  greedy acc
+   DPO            0.25   -0.041        0.61
+   SimPO          0.94   +1.232        0.61
+```
+
+The on-policy statistics have flipped: the stronger model gets 119 of 200 prompts right on all four samples, so only 80 prompts yield a pair, and the pairs differ in one number (`6 + 3 = 9` vs `6 + 3 = 8`). DPO again fits its training pairs perfectly and its held-out pairs not at all, with greedy accuracy slipping within noise. Section (f) is the displacement the module's author reported (100 steps at lr 5e-5 on 24 pairs: pair accuracy 1.0, greedy accuracy 0.33 → 0.15 on their warm start) reproduced on ours: pair accuracy 1.00, the chosen answers 0.32 nats *less* likely than under the reference, the rejected ones 8.29 nats less likely, and greedy accuracy 0.65 → 0.51, a drop whose confidence intervals ([0.56, 0.74] vs [0.42, 0.61]) barely touch. The chosen answers started at −0.23 nats, already near certainty, so there was almost nothing to gain on that side; every step's easiest way to widen the margin was to push the rejected answers down, and because those share seven of their eight tokens with the chosen answers, the chosen answers went down with them. SimPO separates held-out pairs (0.94) where DPO does not (0.25) and lands on the same task accuracy. The figure `figures/generated/lab17_reward_dpo.png` shows the four panels: RM training, the best-of-N curves, DPO/SimPO margins, and the before/after log-probabilities of section (f).
+
 
 ## Try it yourself ✍️
 
