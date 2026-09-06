@@ -95,7 +95,7 @@ The score matrix is `T × T` per head: 65,536 entries at T = 256, 17 *billion* a
 
 ### Restricting the lookup: sliding windows and 🆕 sparse attention
 
-A **sliding-window** mask lets query i see only keys in `(i − w, i]`. The lab's `causal_mask(6, 6, 0, window=4)` shows the band; a model built with `preset("nano", sliding_window=4)` puts exactly zero weight beyond the window. The cache then holds `w` tokens per layer however long the conversation, and the score matrix is `T × w`. Mistral 7B (2023) and Gemma 2/3 (2024–25) interleave windowed and full-attention layers so some layers keep long-range recall.
+A **sliding-window** mask lets query i see only keys in `(i − w, i]`. The lab's `causal_mask(6, 6, 0, window=4)` shows the band; a model built with `preset("nano", sliding_window=4)` puts exactly zero weight beyond the window. The cache then holds `w` tokens per layer however long the conversation, and the score matrix is `T × w`. Mistral 7B (2023) used a 4,096-token window in every layer; Gemma 2/3 (2024–25) interleave windowed and full-attention layers so some layers keep long-range recall.
 
 🆕 The 2025–2026 frontier goes further, and the pattern is worth knowing even though this course implements only the mask. *Native Sparse Attention* (NSA, 2025) and *DeepSeek Sparse Attention* (DSA, DeepSeek-V3.2, 2025) let each query attend to a small **top-k** subset of keys chosen by a cheap "lightning indexer" rather than to all of them. DeepSeek-V4 (report at https://arxiv.org/abs/2606.19348 ; summary at https://www.lmsys.org/blog/2026-04-25-deepseek-v4/) interleaves two kinds of layer — *Compressed Sparse Attention* (compress every m key/value tokens into one entry, then DSA top-k over the compressed entries, plus a sliding window) and *Heavily Compressed Attention* (much stronger compression, dense attention over what remains) — to make a 1M-token context tractable. Separately, hybrid models (Nemotron-H, Qwen3-Next, Kimi Linear, 2025) replace most attention layers with linear/state-space layers that have no growing cache at all and keep a few full-attention layers for recall. All of these keep the four-token picture intact: scores, a (now sparse or compressed) set of keys, softmax, weighted values. What changes is *which* keys a query is allowed to score.
 
@@ -201,7 +201,7 @@ k = apply_rope(attn.k_proj(x).view(B, T, kv, hd).transpose(1, 2), cos[:T], sin[:
 v = attn.v_proj(x).view(B, T, kv, hd).transpose(1, 2)
 k, v = k.repeat_interleave(h // kv, dim=1), v.repeat_interleave(h // kv, dim=1)
 ref = attn.o_proj(F.scaled_dot_product_attention(q, k, v, is_causal=True).transpose(1, 2).reshape(B, T, h * hd))
-print((ours - ref).abs().max())                                # tensor(1.8e-07)
+print((ours - ref).abs().max())                                # ≈ 1e-7 (random init; the digits vary)
 ```
 
 ### KV cache size, and attention maps from a trained model
@@ -220,7 +220,7 @@ maps[0][0, 0]                                          # layer 0, head 0: rows =
 
 ## Worked example 🧪
 
-Run `python3 labs/lab05_attention.py` (quick mode, nano base model; about 15 seconds when the checkpoint exists) and `--full` (small base model; 5–10 minutes if it has to train one, seconds otherwise). Sections 1–5 need no trained model and are identical in both modes except for the sequence length used in the reference comparison (16 vs 64). The excerpts are real output.
+Run `python3 labs/lab05_attention.py` (quick mode, nano base model; 5 seconds when `runs/base_nano.pt` exists, about a minute if it has to train one) and `--full` (small base model; 10 seconds with the checkpoint, 5–10 minutes if it has to train one). Sections 1–5 need no trained model and are identical in both modes except for the sequence length used in the reference comparison (16 vs 64). The excerpts are real output.
 
 **Section 1 — six lines of attention on a toy.**
 
@@ -292,11 +292,11 @@ Going from 6 to 2 kv heads cuts the k/v projection parameters by 3× and the cac
 ✅ every attention row sums to 1
 ✅ trained model is causal: zero weight on future tokens
   strongest 'previous token' head: layer 1 head 0 (mean weight on t-1 = 0.33)
-  strongest 'first token' head:    layer 2 head 2 (mean weight on token 0 = 0.12)
-  layer 0 head 0, query = second ' kite' (pos 12): top keys ' the'@11 0.24, ' a'@2 0.13, ' kite'@4 0.11
+  strongest 'first token' head:    layer 1 head 1 (mean weight on token 0 = 0.10)
+  layer 0 head 0, query = second ' kite' (pos 12): top keys ' took'@10 0.78, ' the'@11 0.11, ' day'@8 0.05
 ```
 
-The query for the second `" kite"` in layer 0 head 0 spends 0.24 on the previous token `" the"`, then 0.13 on the earlier `" a"` and 0.11 on the *first* `" kite"` — the beginning of the copy-from-earlier-context behaviour that lets a model track "Mia's kite" across a sentence.
+The query for the second `" kite"` in layer 0 head 0 puts 0.78 of its weight on `" took"`, two positions back, and 0.11 on the previous token `" the"`: a local pattern (which verb governs this noun?) rather than a look-up of the first `" kite"`. The three-layer nano model has no head that reaches back to the earlier mention; the small model below does more. These numbers depend on the checkpoint in `runs/` — retrain it and they change, the structure does not.
 
 **Full mode — the small model (6 layers × 6 heads).**
 
@@ -343,7 +343,7 @@ The lab ends with `16/16 checks passed`.
 5. **Head hunting.** For the small model (`--full`), find the head whose attention from the second `" kite"` to the first `" kite"` is largest. Plot it with token labels (the lab's second figure shows how).
 6. **Window in the toy.** Add a sliding window of 2 to the six-line attention using `causal_mask(T, T, 0, 2, "cpu")` and confirm the output matches `TinyLM` built with `sliding_window=2` in spirit: every row has at most two non-zero weights.
 
-🎛️ In `interactive/05_attention_explorer.html` you type a sentence and see the attention matrix of the trained TinyLM for each layer and head, with a toggle for the causal mask and a slider for a sliding window. Try a sentence that mentions the same name twice, hover over the second mention and look for a head that lights up the first; then switch off the mask and watch the upper triangle fill in. The challenge asks you to find the layer and head that most consistently attends to the previous token across three different sentences.
+🎛️ `interactive/05_attention_explorer.html` computes every step of scaled dot-product attention — Q, K, V, scores, mask, softmax, weighted sum — for a sentence you type, using two hand-built heads (there is no trained model on the page: token vectors come from a seeded hash plus shared "meaning" vectors for related words, so head 1 matches related words and head 2 gets its structure from RoPE). Hover any cell of a heat-map to read where its number comes from. Switch the causal mask off and watch the upper triangle fill in; switch RoPE off and watch head 2 lose its position pattern; drag the temperature from 0.2 to 3 and watch rows go from one winner to everyone-equal. The challenge asks you to explain exactly what changes in the first row and in the last row when the mask is toggled, and why one of them shows a weight of exactly 1.000.
 
 ## Check yourself ✅
 
