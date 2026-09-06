@@ -106,16 +106,16 @@ cfg = GRPOConfig(group_size=8, prompts_per_step=4, max_new_tokens=12, lr=1e-4,
                  clip_eps_low=0.2, clip_eps_high=0.28, dynamic_sampling=True,
                  token_level_loss=True, normalize_std=True, kl_coef=0.0, ppo_epochs=2)
 ro = rollout_group(model, tok, ex, cfg, seed=0)
-print(ro.ids.shape, ro.mask.shape, ro.prompt_len)     # torch.Size([8, 64]) torch.Size([8, 63]) 55
-print(ro.completions[:3], ro.rewards[:3])             # ['3 + 12 = 12', '3 + 15 = 14', 'y7 + 17 = 17'] tensor([0.1, 0.1, 0.1])
+print(ro.ids.shape, ro.mask.shape, ro.prompt_len)     # torch.Size([8, 63]) torch.Size([8, 62]) 55
+print(ro.completions[:3], ro.rewards[:3])             # ['3 + 12 = 12', '3 + 15 = 14', 'y 7 = 12'] tensor([0.1, 0.1, 0.0])
 opt = make_optimizer(model, cfg)
-st = grpo_step(model, None, tok, [ex] * 4, cfg, opt)
+st = grpo_step(model, None, tok, [ex] * 4, cfg, opt)  # unseeded rollouts: your numbers will differ
 print({k: round(v, 3) for k, v in st.items() if isinstance(v, float)})
-# {'reward': 0.219, 'accuracy': 0.125, 'resp_len': 8.156, 'skipped_frac': 0.0, 'clip_frac': 0.046,
-#  'approx_kl': 0.021, 'ratio_mean': 0.983, 'entropy': 0.861, 'grad_norm': 2.781, 'loss': 0.027, ...}
+# {'reward': 0.347, 'accuracy': 0.25, 'resp_len': 8.0, 'skipped_frac': 0.0, 'clip_frac': 0.09,
+#  'approx_kl': 0.01, 'ratio_mean': 1.003, 'entropy': 0.737, 'grad_norm': 1.784, 'loss': -0.017, ...}
 ```
 
-`Rollout` carries everything a step needs: the padded ids, the prompt length, rewards, decoded completions and the response mask aligned with `token_logprobs`. `grpo_step` runs `rollout_group` for each prompt, computes advantages, drops all-equal groups when `dynamic_sampling` is on, collates the survivors and calls `policy_update`. `grpo_train` cycles through the prompts for `cfg.steps` steps and returns one dictionary of statistics per step; those are the curves in the lab's figure.
+`Rollout` carries everything a step needs: the padded ids (8 rows, prompt 55 tokens plus up to 12 new; the longest answer here stopped after 8), the prompt length, rewards, decoded completions and the response mask aligned with `token_logprobs`. The step's statistics come from four *unseeded* groups, so they change from run to run; the clip fraction is non-zero (0.09) only because `ppo_epochs=2` re-uses the samples for a second pass, and `loss` is not a number to read (the clipped surrogate hovers around zero by construction; its gradient is the signal). `grpo_step` runs `rollout_group` for each prompt, computes advantages, drops all-equal groups when `dynamic_sampling` is on, collates the survivors and calls `policy_update`. `grpo_train` cycles through the prompts for `cfg.steps` steps and returns one dictionary of statistics per step; those are the curves in the lab's figure.
 
 ### Step 5: the DeepSeek-R1 recipe
 
@@ -145,7 +145,7 @@ Here is the argument, as of September 2026. One camp, starting from Yue et al. (
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab19_grpo.py            # quick: nano model, 20 GRPO steps, 96 s
+python3 labs/lab19_grpo.py            # quick: nano model, 20 GRPO steps, ~100 s on an idle laptop CPU (438 s on our shared box)
 python3 labs/lab19_grpo.py --full     # small model, 40 steps + six 10-step ablations, see timing below
 ```
 
