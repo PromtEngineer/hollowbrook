@@ -297,8 +297,7 @@ def rollout_group(model: TinyLM, tok: BPETokenizer, example: TaskExample, cfg: G
     """
     reward_fn = reward_fn or default_reward
     pad_id, end_id, _ = _special(tok)
-    prompt = chat.render(example.messages(with_answer=False))
-    prompt_ids = tok.encode(prompt)
+    prompt_ids = chat.encode_chat(tok, example.messages(with_answer=False))   # safe encoding (Ch. 14)
     ids = sample_group(model, prompt_ids, cfg.group_size, cfg.max_new_tokens, cfg.temperature,
                        stop_ids=[end_id], pad_id=pad_id, seed=seed)          # (G, T)
     P = len(prompt_ids)
