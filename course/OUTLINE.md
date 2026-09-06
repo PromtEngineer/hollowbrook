@@ -62,7 +62,7 @@ Each chapter lists:
   whitespace, non-English, "strawberry"), 2026 directions (byte-level models, BLT, tokenizer-free).
 - You will build: `llm/tokenizer.py` — a byte-level BPE tokenizer you train on your own corpus.
 - Interactive: `02_bpe_stepper.html` — watch merges happen one at a time on your own text.
-- Lab: `lab02_tokenizer.py` — train a 4k-vocab tokenizer, measure compression, inspect merges.
+- Lab: `lab02_tokenizer.py` — train 512- and 1024-entry tokenizers, measure compression, inspect merges.
 
 ### Chapter 3: Embeddings — words as vectors
 - Goal: Explain what an embedding is and why similar tokens end up near each other.
@@ -74,7 +74,7 @@ Each chapter lists:
 ### Chapter 4: How neural networks learn (the minimum you need)
 - Goal: Explain loss, gradient, backpropagation and an optimizer step in your own words.
 - Covers: a neuron, a layer, a loss function, the gradient as "which way is downhill", autograd
-  (a 100-line scalar autograd engine), SGD, momentum, Adam/AdamW, learning rate, batch size,
+  (a ~200-line scalar autograd engine), SGD, momentum, Adam/AdamW, learning rate, batch size,
   overfitting, train/validation split.
 - You will build: `llm/microautograd.py` — a tiny autograd engine, then the same in PyTorch.
 - Interactive: `04_gradient_descent.html` — a loss landscape you can roll a ball down with different optimizers.

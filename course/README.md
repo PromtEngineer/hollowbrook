@@ -28,8 +28,8 @@ Python 3.10+ and any CPU. A GPU is never required; where one helps, the chapter 
 |---|---|
 | `chapters/` | 30 chapters + appendices, in reading order (`00-...` to `29-...`) |
 | `labs/` | One runnable script per chapter. `--quick` (default, < 1 min) or `--full` (minutes) |
-| `interactive/` | Browser playgrounds, one per chapter. Open `interactive/index.html` |
-| `llm/` | The library you build: tokenizer, model, training, RL, agents (≈ 4 k lines, all tested) |
+| `interactive/` | 21 browser playgrounds (most chapters have one). Open `interactive/index.html` |
+| `llm/` | The library you build: tokenizer, model, training, RL, agents (≈ 5.8 k lines, all tested) |
 | `figures/` | Diagrams used by the chapters; `figures/generated/` is written by the labs |
 | `tests/` | `python3 -m pytest tests -q` — every library function is covered |
 | `runs/` | Checkpoints and tokenizers the labs produce (git-ignored) |
