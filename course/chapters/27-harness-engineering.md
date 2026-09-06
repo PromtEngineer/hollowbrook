@@ -228,14 +228,14 @@ A few findings that recur in 2025–2026 reports, stated with the confidence the
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab27_miniharness.py            # quick: scripted runs + the nano model, about 40 s
-python3 labs/lab27_miniharness.py --full     # the same with the small model, about 60 s
+python3 labs/lab27_miniharness.py            # quick: scripted runs + the nano model, about 16 s
+python3 labs/lab27_miniharness.py --full     # the same with the small model, about 25 s
 ```
 
 The lab builds a sandbox repository with `mathlib.py` (a `mean` that divides by `len(xs) - 1` and no `median`) and `tests/test_math.py` (three tests, two of which fail at import). Section 1 is the honest run:
 
 ```
-loop() -> True after 1 session(s) in 2.3s; session 1: stop_reason=done, turns=4, tool_calls=3
+loop() -> True after 1 session(s) in 1.4s; session 1: stop_reason=done, turns=4, tool_calls=3
 events: assistant -> tool_call -> tool_result -> assistant -> tool_call -> tool_result -> assistant -> tool_call -> tool_result -> assistant -> done
 ✅ the honest agent passes verification in one session
 
@@ -309,7 +309,7 @@ Section 4 puts the real TinyLM base model behind the same harness, and finds two
 ```
 session 1: stop=done, turns=1, tool calls=0, said: '=  +  +  +  +  +  +  +  +  +  +  +  +  +  +  +  +  +  +  +'   (nano, quick)
 session 1: stop=done, turns=1, tool calls=0, said: 'one, two, three.'                                          (small, --full)
-loop() -> False in 24.1s
+loop() -> False in 7.3s
 ✅ a base model produces no tool calls; the harness records two failed sessions and stops
 ✅ PROGRESS.md says FAIL, not the model
 ```

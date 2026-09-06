@@ -167,8 +167,8 @@ A note on the method, since it is an instance of this chapter. The draft of this
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab28_multiagent.py            # quick: scripted agents only, about 12 s
-python3 labs/lab28_multiagent.py --full     # + six workers, + three TinyLM models debating, about 80 s
+python3 labs/lab28_multiagent.py            # quick: scripted agents only, about 5 s
+python3 labs/lab28_multiagent.py --full     # + six workers, + three TinyLM models debating, about 20 s
 ```
 
 Section 1 is the baseline: one agent computes three numbers with three calculator calls, one after the other, at 0.25 s of simulated latency per model call:
@@ -233,11 +233,11 @@ Section 5 is the bill, which is the table you should produce for any multi-agent
 Section 6 (`--full`) ends with three copies of the small base model debating "What is 17 + 25?" at temperatures 0, 0.7 and 1.0:
 
 ```
-three TinyLM base models (T = 0, 0.7, 1.0) after 2 rounds: ['and Nora looked for the shell ', 'had a blue flag. One warm day ', 'and Nora looked for the map ne']  [64.3s]
+three TinyLM base models (T = 0, 0.7, 1.0) after 2 rounds: ['and Jack looked for the kite n', 'had a brown book.', 'and Nora looked for the kite n']  [13.8s]
 ✅ debating base models are all wrong: debate cannot create capability
 ```
 
-A base model continues stories; three of them continue three stories. Capability is not a vote, and the only pattern in this chapter that can turn a wrong answer into a right one is the one with a verifier in it. The lab's figure `figures/generated/lab28_patterns.png` shows the Gantt chart and the token bars side by side.
+A base model continues stories; three of them continue three stories (the sampled ones vary between runs; the greedy one at T = 0 is always a story). Capability is not a vote, and the only pattern in this chapter that can turn a wrong answer into a right one is the one with a verifier in it. The lab's figure `figures/generated/lab28_patterns.png` shows the Gantt chart and the token bars side by side.
 
 ## Try it yourself ✍️
 

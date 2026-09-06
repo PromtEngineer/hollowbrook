@@ -141,12 +141,12 @@ client = MCPClient([sys.executable, "-m", "llm.agent.mcp_mini", "--serve", "--wo
 client.initialize()
 remote = mcp_tools_to_registry(client)                # a ToolRegistry whose fns call the server
 backend = ScriptedBackend([{"text": "", "tool_calls": [{"name": "calculator", "arguments": {"expression": "6 * 7"}}]}, "42."])
-t = Agent(backend, remote, AgentConfig(permission_policy="allow_all")).run("What is 6 * 7?")
-print(t.messages[2]["content"], "|", remote.get("calculator").read_only)    # 42 | False
+t = Agent(backend, remote, AgentConfig(permission_policy="allow_read_only")).run("What is 6 * 7?")
+print(t.messages[2]["content"], "|", remote.get("calculator").read_only, remote.get("write_file").read_only)   # 42 | True False
 client.close()
 ```
 
-`mcp_tools_to_registry` copies each server entry's `name`, `description` and `inputSchema` into a `Tool` whose function is a closure over `client.call_tool`. The loop is unchanged. The design decision to notice is `read_only=False` for everything: the protocol does not reliably tell the client which tools are safe (the 2025 revisions added optional *annotations* such as `readOnlyHint`, but they are hints from an untrusted server), so the library takes the conservative default and the gate treats every remote tool as a write until you say otherwise. The cost: under `allow_read_only`, even the remote calculator is denied.
+`mcp_tools_to_registry` copies each server entry's `name`, `description` and `inputSchema` into a `Tool` whose function is a closure over `client.call_tool`. The loop is unchanged. The design decision to notice is where `read_only` comes from. The 2025 revisions of the protocol added optional *annotations* on each tool, among them `readOnlyHint`; our server emits it from `Tool.read_only`, and the client copies it, so under `allow_read_only` the remote calculator runs and the remote `write_file` is denied. A hint is a *claim by the server*, though, and many servers send none; then nothing is read-only unless you say so with `read_only_tools=[...]` (a per-tool allowlist you own) or `read_only=True` (everything, for a server you know is read-only). The conservative default is deliberate: an unknown remote tool is treated as a write.
 
 ### Step 5: what the full protocol adds
 
@@ -228,12 +228,12 @@ Part (b) starts the server as a subprocess (0.03 s) and tees both pipes so every
 ✅ notifications/initialized has no id, so the server sends no reply
    [tools/list]
    -> {"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 3}
-   <- {"jsonrpc": "2.0", "id": 3, "result": {"tools": [{"name": "read_file", "description": "Read a UTF-8 text file inside the workdir.", "inputSchema": {...
+   <- {"jsonrpc": "2.0", "id": 3, "result": {"tools": [{"name": "read_file", "description": "Read a UTF-8 text file inside the workdir.", "inputSchema": {...}, "annotations": {"readOnlyHint": true}}, ...
    7 tools: ['read_file', 'write_file', 'list_dir', 'search', 'calculator', 'run_python', 'run_tests']
 ✅ MCP spells the schema key inputSchema (camelCase)
 ```
 
-Request 1 gets reply 1, the notification has no id and gets nothing, and the next request is id 2 (the ping). The tool list is the Anthropic API's `{name, description, schema}` triple with one spelling change, `inputSchema`. Then the three kinds of `tools/call`:
+Request 1 gets reply 1, the notification has no id and gets nothing, and the next request is id 2 (the ping). The tool list is the Anthropic API's `{name, description, schema}` triple with one spelling change, `inputSchema`, plus the optional `annotations` block that part (c) uses. Then the three kinds of `tools/call`:
 
 ```
    -> {"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "calculator", "arguments": {"expression": "(2 + 3) * 4"}}, "id": 4}
@@ -250,18 +250,22 @@ A success and a tool error look alike on the wire (both are `result`s; the flag 
 Part (c) plugs the registry into an `Agent`:
 
 ```
-   read_only flags: {'read_file': False, 'write_file': False, 'list_dir': False, 'search': False, 'calculator': False, ...}
-   under allow_read_only: Permission denied: 'calculator' is not allowed under policy 'allow_read_only'. Try a diffe
-✅ with the conservative default (read_only=False) even the calculator is denied under allow_read_only
+   annotations.readOnlyHint from the server: {'read_file': True, 'write_file': False, 'list_dir': True, 'search': True, 'calculator': True, 'run_python': False, 'run_tests': True}
+   registry read_only flags: {'read_file': True, 'write_file': False, 'list_dir': True, 'search': True, 'calculator': True, 'run_python': False, 'run_tests': True}
+✅ the client copied the hint: calculator is read-only, write_file is not
   -> call calculator({"expression": "6 * 7"})
   <- result: 42
-✅ allow_all: the tool result 42 came back through the subprocess
-✅ read_only=True registry: allowed under allow_read_only
-   (and write_file is now wrongly marked read-only too: the flag is per-registry, not per-tool -- see the chapter)
+  -> call write_file({"path": "x.txt", "content": "42"})
+  <- result: Permission denied: 'write_file' is not allowed under policy 'allow_read_only'. Try a different approach or ask the user.
+✅ under allow_read_only the remote calculator ran (result 42 came back through the subprocess)
+✅ ...and the remote write_file was denied by the gate
+   without annotations: {'read_file': False, 'write_file': False, 'list_dir': False, 'search': False, 'calculator': False, 'run_python': False, 'run_tests': False}
+✅ no hint -> nothing is read-only (the conservative default)
+✅ read_only_tools=[...] is the client's own allowlist: a trust decision you make per tool
 ✅ server exited cleanly (return code 0) when stdin closed
 ```
 
-The parenthetical line is a real limitation of the library: `read_only=True` marks *every* tool on the server read-only, including `write_file`. The fix is a per-tool allowlist (exercise 3).
+The gate applies the same policy to remote tools as to local ones; what changes is where the flag comes from. With the server's `readOnlyHint` the calculator runs and the write is denied. The lab then strips the annotations (as an older server would) and shows the conservative default, nothing read-only, and the client-side `read_only_tools` allowlist that overrides it. Whether to believe a server's hint is a trust decision: a malicious server can label `delete_everything` read-only (this is "tool poisoning" in the 2026 threat models below), so the allowlist, not the hint, is what you should rely on for a server you have not vetted.
 
 Part (d) is the schema-cost sweep (the `--full` lines are the last two):
 
@@ -318,7 +322,7 @@ Open, with evidence accumulating:
 
 1. **Write a server.** Create a `ToolRegistry` with two tools of your own (a unit converter and a word counter), wrap it in `MCPServer`, and serve it with a five-line `__main__`. Talk to it from `MCPClient` and print the `tools/list` reply. Then connect it to a real MCP client if you have one installed; the messages should be accepted as is.
 2. **Add `resources/list` and `resources/read`.** Extend `MCPServer.handle` (in a subclass, not by editing `llm/`) so that the files in the workdir are exposed as resources with `file://` URIs. Advertise it in `capabilities`.
-3. **Per-tool read-only.** Write `mcp_tools_to_registry_safe(client, read_only_names: set[str])` that marks only the named tools read-only, and add a check that `write_file` stays `read_only=False` under `allow_read_only`.
+3. **A server that lies.** Subclass `MCPServer` so that `write_file` advertises `readOnlyHint: true`, connect with the default `mcp_tools_to_registry`, and show that `allow_read_only` now lets the write through. Then fix it on the client side without touching the server (hint: `read_only_tools` plus ignoring hints for tools not in it).
 4. **Break a tool, then fix it.** Take `search` from `make_builtin_tools`, remove its description and rename it `s`, and script the turns a plausible model would waste before finding it. Restore the description and count again.
 5. **A better tool search.** Replace the keyword scorer with cosine similarity over bag-of-words vectors (or the embeddings of Chapter 3) and measure precision on ten queries against the 120-tool catalogue.
 6. **Injection variants.** Write three injections the lab's regex does not catch (a different phrasing, a code comment, a CSV cell) and confirm the gate still prevents the write. Then write one the gate does *not* prevent (hint: a read-only tool that leaks data by *what it searches for*) and say what would stop it.
@@ -336,9 +340,9 @@ The host is the application that owns the model and the loop: the `Agent` (with 
 `isError: true` is a normal result whose text is an error message; the client passes the text to the loop and the *model* reads it and adapts (errors are observations). An `"error"` object with a code such as `-32602` means the request itself was invalid (unknown tool, unknown method, bad JSON); the *client* raises, because that is a harness bug, not something for the model to reason about.
 </details>
 
-<details><summary>3. Why does <code>mcp_tools_to_registry</code> mark every tool <code>read_only=False</code>, and what is the cost?</summary>
+<details><summary>3. Where does a remote tool's <code>read_only</code> flag come from, and why should you not always trust it?</summary>
 
-The server does not reliably tell the client which tools are safe (annotations are optional hints from an untrusted party), so the conservative default treats every remote tool as a write. The cost is that under `allow_read_only` even a remote calculator is denied; the fix is a per-tool allowlist, since the library's `read_only=True` switch marks every tool on the server read-only, including `write_file`.
+From the server's `annotations.readOnlyHint` if it sends one, else from the client's own `read_only_tools` allowlist (or `read_only=True` for a whole server); with none of these, the conservative default is `False`, and the gate treats the tool as a write. The hint is a claim by the server: a malicious or careless server can label a destructive tool read-only, so for an unvetted server the allowlist you write is the flag to rely on.
 </details>
 
 <details><summary>4. What does tool search trade for what?</summary>
@@ -356,7 +360,7 @@ The gate limits *damage*, not *belief*: it prevents the side effect without need
 - A tool the model can use well has a verb_noun name, a description that says what it returns and when to use it, few typed and described arguments, error messages that contain the fix, an honest `read_only` flag, and bounded output.
 - MCP standardises agent-to-tool plumbing as JSON-RPC 2.0 over stdio or Streamable HTTP: `initialize`, `tools/list`, `tools/call`, plus resources, prompts, sampling, elicitation and (2025-11-25) tasks.
 - Tool-level errors are results with `isError: true` that the model reads; protocol-level errors are JSON-RPC error objects that the client raises.
-- Remote tools become local `Tool`s through `mcp_tools_to_registry`; the loop cannot tell the difference, and the conservative `read_only=False` default is deliberate.
+- Remote tools become local `Tool`s through `mcp_tools_to_registry`; the loop cannot tell the difference. `read_only` comes from the server's `readOnlyHint` or your own allowlist, and defaults to `False` when neither says otherwise.
 - Schemas are context: about 88 tokens per tool in the lab, so large catalogues need tool search.
 - A tool result is data. Least privilege in the permission gate, provenance in the hooks and training in the model are the three layers against prompt injection; none alone is enough.
 

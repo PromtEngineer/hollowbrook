@@ -109,7 +109,7 @@ print(backend.complete([], [], "").text, len(backend.calls))               # (sc
 
 The **scripted backend** replays a fixed list of replies and records every call it receives in `.calls`. It is what every test in `tests/test_agent.py` uses and what most of the lab uses, because it makes the *harness* the thing under test: deterministic, instant, no model, and you can assert exactly what the model was shown. When the script runs out it returns a text-only reply, so the loop always terminates.
 
-`TinyLMBackend` drives your own model through the chat template: tool schemas go into the system prompt, tool calls become `<|tool_call|>{json}` turns, results become `<|tool_result|>` turns, and the reply is parsed with `parse_tool_call`:
+`TinyLMBackend` drives your own model through the chat template: tools are listed in the system prompt (compactly by default, `- calculator(expression): Evaluate ...`, because a full JSON schema costs ~300 Storyland tokens; `compact_tools=False` pastes the schemas), tool calls become `<|tool_call|>{json}` turns, results become `<|tool_result|>` turns, and the reply is parsed with `parse_tool_call`. If the rendered prompt does not fit the model's window, `complete` raises `ContextTooLongError` rather than generating nothing; `Agent.run` turns that into `stop_reason="error"`.
 
 ```python
 raw = '<|tool_call|>{"name": "calculator", "arguments": {"expression": "6*7"}}<|end|>'
@@ -225,8 +225,8 @@ Claude Code, the Claude Agent SDK and their equivalents from other labs are repo
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab24_agent_loop.py            # quick: about 8 s on an idle laptop CPU (15 s when busy)
-python3 labs/lab24_agent_loop.py --full     # adds a 150-step tool-call SFT of the nano model: about 80 s
+python3 labs/lab24_agent_loop.py            # quick: about 35 s (8 s importing torch, the rest nano-model decoding)
+python3 labs/lab24_agent_loop.py --full     # adds a 150-step tool-call SFT of the nano model: about 3 min
 ```
 
 Part (1) runs the two-tool task with a scripted model and prints the transcript and the events:
@@ -292,19 +292,21 @@ Part (3) attaches three hooks and prints the live trace from `on_event`:
 ✅ the file on disk is untouched
 ```
 
-Part (4) puts real models on the other side. The first thing it finds is a limitation of the library worth knowing:
+Part (4) puts real models on the other side. The first thing it shows is why the backend lists tools compactly:
 
 ```
    nano model: 295,584 params, window 128 tokens
-   prompt with ONE tool schema pasted in: 299 tokens -> does not fit
-✅ with the schema in the prompt the model returns an EMPTY reply (0 new tokens): a silent failure
+   prompt with ONE full JSON schema (compact_tools=False): 314 tokens; with the compact listing (default): 156 tokens
+   -> ContextTooLongError: prompt is 314 tokens but the model's window is 128; compact the context (Chapter 25)
+✅ an over-long prompt raises ContextTooLongError instead of silently generating nothing
+✅ inside Agent.run the same error becomes stop_reason='error'
 ```
 
-`TinyLMBackend.to_chat_messages` pastes the full JSON schemas into the system prompt (`backends.py` lines 133–135); with the Storyland tokenizer, which compresses JSON poorly, one schema is already about 300 tokens against the nano model's 128-token window, and `generate` then produces zero tokens, with only a `UserWarning` on stderr that nothing in the loop reads. The lab works around it with a subclass that names the tool in the system prompt and omits the schemas. Then three models, in order of how much tool training they have had:
+With the Storyland tokenizer, which compresses JSON poorly, one full schema is 314 tokens against the nano model's 128-token window; even the compact listing is 156 (the built-in calculator's description is long). `TinyLMBackend.complete` refuses with `ContextTooLongError`, and in the loop that is the `except` on line 5 of Step 4: `stop_reason="error"`, with the message in the last event. For the three nano models below the lab uses a backend subclass that sends *no* tool listing at all, because the tool-trained checkpoints were fine-tuned with the tool named in the system prompt only and the listing is out of distribution for them (the lab measured 0/4 with it against 4/4 without). Then three models, in order of how much tool training they have had:
 
 ```
    instruction-SFT model (Lab 15, no tool data): on 3 questions: 0/3 well-formed tool calls, 0/3 with the right expression
-   instruction-SFT model (Lab 15, no tool data) in the loop: raw '75 + 75 = 105' -> stop_reason='done', tool calls 0
+   instruction-SFT model (Lab 15, no tool data) in the loop: raw '55 + 63 = 118' -> stop_reason='done', tool calls 0
    -> a model with no tool training did NOT emit a valid <|tool_call|>: tool use is a trained behaviour (Chapters 15, 21)
    Chapter 21 model (runs/lab21_tool_grpo.pt): on 3 questions: 3/3 well-formed tool calls, 3/3 with the right expression
 USER: What is 17 + 5?
@@ -317,10 +319,10 @@ ASSISTANT: 17 + 5 = 22
 ✅ its final answer uses the result: '17 + 5 = 22'
 ```
 
-The instruction-tuned model of Lab 15 follows instructions but has never seen `<|tool_call|>`; asked "What is 17 + 25?" with a calculator on offer, it answers `75 + 75 = 105` directly, and the loop reads a reply with no tool calls as "done" and ends with a wrong answer rather than a crash. Chapter 21's model (700 steps of SFT on tool traces, then 30 GRPO steps with a verifiable reward, on sums up to 20) is the successful case: it emits a well-formed call with the *right* expression, the harness runs `calc`, the result comes back as a `<|tool_result|>` turn, and the model answers from it. (If `runs/lab21_tool_grpo.pt` is missing, run Lab 21 first.) `--full` adds a third model, a 150-step SFT on 600 traces trained inside this lab (74 s):
+The instruction-tuned model of Lab 15 follows instructions but has never seen `<|tool_call|>`; asked "What is 17 + 25?" with a calculator on offer, it answers `55 + 63 = 118` directly, and the loop reads a reply with no tool calls as "done" and ends with a wrong answer rather than a crash. Chapter 21's model (700 steps of SFT on tool traces, then 30 GRPO steps with a verifiable reward, on sums up to 20) is the successful case: it emits a well-formed call with the *right* expression, the harness runs `calc`, the result comes back as a `<|tool_result|>` turn, and the model answers from it. (If `runs/lab21_tool_grpo.pt` is missing, run Lab 21 first.) `--full` adds a third model, a 150-step SFT on 600 traces trained inside this lab (106 s):
 
 ```
-   SFT done in 74s: loss 9.38 -> 0.56
+   SFT done in 106s: loss 9.38 -> 0.56
    150-step tool-SFT model: on 3 questions: 3/3 well-formed tool calls, 0/3 with the right expression
 USER: What is 17 + 25?
 ASSISTANT:
@@ -374,7 +376,7 @@ Inside a *user* message, as a `tool_result` content block whose `tool_use_id` ma
 Yes: hooks run before the gate and are an independent layer, so a hook can block under any policy (the lab blocks `secrets/` under `allow_all`). No: with `allow_read_only` a non-read-only tool is denied before `permission_fn` is consulted; the function is only asked under `ask` (and under `allow_read_only` only for read-only tools, which are already allowed).
 </details>
 
-<details><summary>5. The instruction-tuned model answered <code>75 + 75 = 105</code> instead of calling the calculator. Is that a parsing problem?</summary>
+<details><summary>5. The instruction-tuned model answered <code>55 + 63 = 118</code> instead of calling the calculator. Is that a parsing problem?</summary>
 
 No. `parse_tool_call` works (the lab checks it on valid and malformed strings); the model never emitted `<|tool_call|>` because nothing in its training taught it to. Tool calling is trained: 150 steps of SFT on tool traces make the same architecture emit well-formed calls (with wrong arguments), and Chapter 21's SFT-plus-GRPO model emits well-formed calls with the right arguments.
 </details>

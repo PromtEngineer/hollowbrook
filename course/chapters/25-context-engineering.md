@@ -7,7 +7,7 @@
 
 ## Why this matters
 
-The agent loop of Chapter 24 appends to its message list forever. Every tool result, every intermediate reply, stays in the context and is re-sent on every call. After thirty tool calls the lab's agent has 8,337 tokens of history against an 8,000-token window; after ninety it has 25,089. Three things go wrong as that number grows. The model is *cut off*: a real API rejects a request that exceeds the window, and TinyLM, as the lab shows, returns an empty string, which the loop reads as "I am done". The model gets *worse before that*: the current evidence, which this chapter cites, is that accuracy falls as relevant facts are buried under more tokens, a phenomenon the 2025–2026 literature calls **context rot**. And the bill grows *quadratically*: each call re-sends everything, so N turns cost about N²/2 turns' worth of input tokens unless a prompt cache is reused. **Context engineering** is the discipline of deciding what is in the window at each call: what is fixed, what is history, what gets compacted, what lives outside the window in files and sub-agents, and how to keep the prefix stable so that caching works. The library's `llm/agent/context.py` is 130 lines and does all of it.
+The agent loop of Chapter 24 appends to its message list forever. Every tool result, every intermediate reply, stays in the context and is re-sent on every call. After thirty tool calls the lab's agent has 8,337 tokens of history against an 8,000-token window; after ninety it has 25,089. Three things go wrong as that number grows. The model is *cut off*: a real API rejects a request that exceeds the window, and `TinyLMBackend`, as the lab shows, raises `ContextTooLongError`, which ends the run with `stop_reason="error"`. The model gets *worse before that*: the current evidence, which this chapter cites, is that accuracy falls as relevant facts are buried under more tokens, a phenomenon the 2025–2026 literature calls **context rot**. And the bill grows *quadratically*: each call re-sends everything, so N turns cost about N²/2 turns' worth of input tokens unless a prompt cache is reused. **Context engineering** is the discipline of deciding what is in the window at each call: what is fixed, what is history, what gets compacted, what lives outside the window in files and sub-agents, and how to keep the prefix stable so that caching works. The library's `llm/agent/context.py` is 130 lines and does all of it.
 
 ## The idea in pictures 📐
 
@@ -104,7 +104,7 @@ out = compact(msgs, keep_last=4, summarizer=summariser)
 print(len(out), out[1]["content"][:60])      # 6 [Summary of earlier work]\n16 older messages; facts: []
 ```
 
-The summariser sees the *full* older messages, not the stubs, so it can pull out what matters. In production the summariser is a model call with a prompt like "list the decisions made, the facts learned and the open questions", and it is the most expensive and the most valuable line in this file: a summary that drops a fact loses it forever, and a summary that keeps it is the difference between the lab's compacted run, which loses `db_port=4242`, and its summarised run, which keeps it. `Agent.run` uses stubbing only (no summariser argument); exercise 1 wires one in.
+The summariser sees the *full* older messages, not the stubs, so it can pull out what matters. In production the summariser is a model call with a prompt like "list the decisions made, the facts learned and the open questions", and it is the most expensive and the most valuable line in this file: a summary that drops a fact loses it forever, and a summary that keeps it is the difference between the lab's compacted run, which loses `db_port=4242`, and its summarised run, which keeps it. `AgentConfig(summarizer=fn)` wires it into `Agent.run`; note that after the second compaction the summariser is summarising an earlier *summary*, so it (or its prompt) must be told to carry facts forward, which is what the lab's rule does and what its `--full` run tests over four compactions.
 
 ### Step 4: memory files, outside the window
 
@@ -167,12 +167,13 @@ Three things break the prefix, and the lab shows each: a value that changes ever
 # from Agent.run (harness.py), after the tool results of a turn are appended:
 # if budget.needs_compaction(t.messages, self.config.compaction_threshold):
 #     before = budget.used(t.messages)
-#     t.messages = compact(t.messages, keep_last=self.config.compaction_keep_last)
+#     t.messages = compact(t.messages, keep_last=self.config.compaction_keep_last,
+#                              summarizer=self.config.summarizer)
 #     after = budget.used(t.messages)
 #     self._emit(t, "compaction", {"tokens_before": before, "tokens_after": after}, turn)
 ```
 
-`AgentConfig` exposes the four knobs: `context_budget_tokens` (8,000 by default, chosen small so the lab can show compaction in thirty turns), `compaction_threshold` (0.8), `compaction_keep_last` (6) and `max_tool_result_chars` (2,000). The interactive lets you move all four and watch the bar.
+`AgentConfig` exposes the knobs: `context_budget_tokens` (8,000 by default, chosen small so the lab can show compaction in thirty turns), `compaction_threshold` (0.8), `compaction_keep_last` (6), `max_tool_result_chars` (2,000) and `summarizer` (`None` = stub only). The interactive lets you move all four and watch the bar.
 
 ### Step 8: what the 2026 evidence says about long contexts
 
@@ -206,11 +207,12 @@ The lab builds a sandbox with a small `config.txt` (containing the planted fact 
 
    what an over-full window does to TinyLM (nano, 128-token window):
    short prompt (8 tokens): raw reply '.'
-   8 messages (809 est. tokens): raw reply ''
-✅ past its window the model returns an EMPTY reply, which the loop would read as 'done'
+   8 messages (809 est. tokens): ContextTooLongError: prompt is 2320 tokens but the model's window is 128; compact the context (Chapter 25)
+✅ past its window the backend REFUSES with ContextTooLongError instead of replying
+✅ Agent.run turns it into stop_reason='error' (ContextTooLongError: prompt is 1214 tokens but the model's w...)
 ```
 
-Ninety-two per cent of the history is tool results. The TinyLM lines are the honest version of "what happens when the window overflows": `generate` in `llm/generate.py` computes `max_seq_len − prompt_length` as its token budget, which is negative, so it generates zero tokens (with a Python `UserWarning` on stderr that nothing in the loop reads) and the backend returns `''`; the loop sees a reply with no tool calls and stops with `stop_reason="done"` and an empty answer. A real API returns an error instead, which is better, but the lesson is the same: overflow is silent unless the harness checks for it. In `--full` the 90-turn episode ends at 25,089 tokens, three times the window.
+Ninety-two per cent of the history is tool results. The TinyLM lines show what an overflow looks like when the harness is honest about it: `TinyLMBackend.complete` counts the rendered prompt against the model's window and raises `ContextTooLongError` (a direct call must catch it; inside `Agent.run` it becomes `stop_reason="error"` with the message in the last event). A real API rejects the request the same way. The failure mode to avoid is the quiet one, where a truncated or empty reply is read as "done"; an error you can see is an error you can handle, by compacting and retrying. In `--full` the 90-turn episode ends at 25,089 tokens, three times the window.
 
 Part (b) is the same script with the default budget:
 
@@ -222,12 +224,15 @@ Part (b) is the same script with the default budget:
 ✅ the task (first message) survived every compaction
 ✅ the planted fact (db_port=4242, read at turn 1) did NOT survive: its tool result became a stub
    the final answer still says 4242 only because it was scripted; a real model would have to guess
-   with a summariser: 60 messages -> 8; 8,337 -> 1,337 tokens
+   compact() with a summariser: 60 messages -> 8; 8,337 -> 1,337 tokens
    summary message: '[Summary of earlier work]\nRan 27 tool calls (list_dir, read_file, search). Facts: db_port=4242; retries=3; service=billing'
 ✅ the summariser carried db_port=4242 across the compaction
+   Agent.run with summarizer: 1 compactions, 1 summary message(s) in the final context, peak 6,143 tokens, 23 messages
+   final context's summary: '[Summary of earlier work]\nRan 19 tool calls (list_dir, read_file, search). Facts: db_port=4242; retries=3; service=billing'
+✅ inside the loop the summary kept db_port=4242 through every compaction
 ```
 
-Compaction fires once, at turn 22, when usage crosses 6,400 (80 % of 8,000), and cuts the window by two thirds. The three lines that follow are the chapter's argument in numbers: the task survived, the fact did not, and a summariser (here a rule that keeps `key=value` lines; in practice a model call) keeps the fact in 1,337 tokens. In `--full` the 90-turn run compacts six times (turns 22, 37, 52, 66, 78, 87), the model never sees more than 6,308 tokens, and 84 of 89 results end as stubs.
+Compaction fires once, at turn 22, when usage crosses 6,400 (80 % of 8,000), and cuts the window by two thirds. The lines that follow are the chapter's argument in numbers: the task survived, the fact did not, and a summariser (here a rule that keeps `key=value` facts; in practice a model call) keeps it, both when `compact()` is called by hand and when `AgentConfig(summarizer=...)` runs it inside the loop. In `--full` the 90-turn run compacts six times with stubbing (turns 22, 37, 52, 66, 78, 87), the model never sees more than 6,308 tokens, and 84 of 89 results end as stubs; with the summariser it compacts four times and the final summary still contains `db_port=4242`, because the rule mines facts from the earlier summary as well as from tool results.
 
 Part (c) is the memory file across two separate `Agent.run` calls:
 
@@ -274,7 +279,7 @@ In A every request reuses all of the previous one except its closing `]`, and ab
 
 ## Try it yourself ✍️
 
-1. **A model-backed summariser.** Subclass `Agent` (do not edit `llm/`) so that when compaction fires it calls `compact(..., summarizer=...)` with a function that asks the same backend to summarise the older turns. With `ScriptedBackend`, script the summary; check that `db_port=4242` survives.
+1. **A model-backed summariser.** Write a `summarizer` for `AgentConfig` that asks the same backend to summarise the older turns (render them as text, call `backend.complete`, return the reply). With `ScriptedBackend`, script the summary; check that `db_port=4242` survives two compactions, then make the scripted summary forget it and watch what the final answer has to work with.
 2. **Find the knee.** Run the 30-turn episode with `context_budget_tokens` in {2000, 4000, 8000, 16000} and `compaction_keep_last` in {2, 6, 12}. Tabulate the number of compactions and the peak tokens. Which combination keeps the most tool results verbatim while never exceeding 80 % of the window?
 3. **Truncation strategies.** `truncate_tool_result` keeps head and tail. Write a version that keeps every line containing `ERROR` plus the head, and compare what survives on the lab's `log.txt`.
 4. **Memory hygiene.** Make the memory-file agent append a note on *every* turn for 50 turns, then look at `render_for_prompt(max_chars=4000)`. Which notes survive, and what would you change so the important ones do (hint: a `## Facts` section that is rewritten, not appended)?
@@ -294,9 +299,9 @@ The system prompt plus every tool schema, re-sent on every call whether or not a
 The *content* of older results is lost: the lab's `db_port=4242`, read at turn 1, became `[tool result truncated: 39 chars]`. The assistant turns are kept, so the agent still sees what it did. The alternative is a summariser, which sees the full older messages and collapses them into one message that can carry the facts, at the price of a model call and the risk that the summary omits something.
 </details>
 
-<details><summary>3. Why does the TinyLM backend return an empty string when the context is too long, and why is that dangerous for the loop?</summary>
+<details><summary>3. What happens in <code>Agent.run</code> when the rendered prompt no longer fits TinyLM's window, and why is that better than a silent empty reply?</summary>
 
-`generate` computes its token budget as `max_seq_len − prompt_length`, which is negative for an over-long prompt, so it generates nothing (a `UserWarning` goes to stderr, which the loop never reads) and returns `''`. The loop treats a reply with no tool calls as the final answer and stops with `stop_reason="done"`, so the run looks finished with an empty answer. The harness must check for overflow (or the API must reject it) rather than trust the stop condition.
+`TinyLMBackend.complete` counts the prompt against `max_seq_len` and raises `ContextTooLongError`; `Agent.run` catches it, records an `error` event with the message, and returns `stop_reason="error"`. An empty reply would instead be read as a final answer (`stop_reason="done"`), so the run would look finished with nothing in it. An error you can see can be handled: compact and retry, or raise the budget.
 </details>
 
 <details><summary>4. A sub-agent shares the parent's backend and hooks. What does it <em>not</em> share, and why is that the point?</summary>
@@ -313,7 +318,7 @@ Appending a tool result hurts nothing: the previous request is a prefix of the n
 
 - The context is a budget: fixed cost (system prompt + schemas) plus history; tool results dominate the history (92 % in the lab) and are truncated first, compacted second.
 - `compact` never touches the task, keeps the recent tail, and stubs older results; a summariser keeps facts across compaction at the cost of a model call.
-- Overflow can be silent: TinyLM returns `''` and the loop reads it as "done". Measure and act at 80 %, not at the limit.
+- Overflow must be loud: `TinyLMBackend` raises `ContextTooLongError` and the loop stops with `stop_reason="error"`. Measure and compact at 80 %, not at the limit.
 - What must outlive the window goes outside it: memory files (read back via the system prompt), sub-agents (their windows absorb the noise), retrieval (identifiers in context, content on demand).
 - Keep the prefix stable: append-only histories reuse 100 % of the previous request; a timestamp at the top reuses 28 bytes; a compaction costs one cache miss.
 - The 2026 evidence (Context Rot, arXiv 2606.29718, LOCA-bench) says models get worse as the window fills, not only more expensive; bigger windows did not make this chapter unnecessary.

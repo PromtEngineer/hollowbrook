@@ -47,9 +47,9 @@
   <path d="M392 238 L676 238" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ar)"/>
   <text x="535" y="232" text-anchor="middle" font-size="10.5" font-family="ui-monospace, monospace" fill="#0f172a">{"jsonrpc":"2.0","id":2,"method":"tools/list"}</text>
   <path d="M676 266 L392 266" stroke="#16a34a" stroke-width="1.5" marker-end="url(#al)"/>
-  <text x="535" y="260" text-anchor="middle" font-size="10.5" font-family="ui-monospace, monospace" fill="#0f172a">{"id":2,"result":{"tools":[{"name":"calculator","description":"…","inputSchema":{"type":"object",…}},…]}}</text>
+  <text x="535" y="260" text-anchor="middle" font-size="10.5" font-family="ui-monospace, monospace" fill="#0f172a">{"id":2,"result":{"tools":[{"name":"calculator","description":"…","inputSchema":{…},"annotations":{"readOnlyHint":true}},…]}}</text>
   <path d="M386 280 L132 280" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#ar)"/>
-  <text x="259" y="294" text-anchor="middle" font-size="10.5" fill="#0f172a">mcp_tools_to_registry → Tool(name, description, inputSchema, fn, read_only=False)</text>
+  <text x="259" y="294" text-anchor="middle" font-size="10.5" fill="#0f172a">mcp_tools_to_registry → Tool(…, read_only = annotations.readOnlyHint or your allowlist)</text>
   <rect x="20" y="212" width="100" height="74" rx="6" fill="#7c3aed" fill-opacity="0.08"/>
   <text x="70" y="234" text-anchor="middle" font-size="11" font-weight="600" fill="#7c3aed">② discovery</text>
   <text x="70" y="250" text-anchor="middle" font-size="10" fill="#64748b">schemas become</text>

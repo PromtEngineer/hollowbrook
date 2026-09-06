@@ -19,3 +19,4 @@
 - **Agent2Agent protocol (A2A)** — the protocol (Google, April 2025; v1.0 reported April 2026) by which one agent sends tasks to another agent and exchanges messages and artefacts with it (Ch. 26)
 - **prompt injection** — text placed where a model will read it (a file, a web page, a tool result) that is written to make the model act against its user's instructions (Ch. 26)
 - **least privilege** — giving the agent only the tools and the write targets a task needs, so that a persuaded model cannot do more damage than the task allows (Ch. 26)
+- **readOnlyHint** — the optional MCP tool annotation by which a server claims a tool has no side effects; a client may copy it into its permission gate, but it is a claim, not a guarantee (Ch. 26)
