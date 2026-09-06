@@ -83,8 +83,9 @@
       <text x="12" y="362" fill="#64748b">step, history) for resume</text>
       <text x="12" y="387" font-weight="600">log_every</text>
       <text x="12" y="402" fill="#64748b">History: step, loss, lr, tok/s</text>
-      <text x="12" y="427" fill="#64748b">One pass = one "step"; steps × B × T = D.</text>
+      <text x="12" y="427" fill="#64748b">one pass = one step;</text>
+      <text x="12" y="442" fill="#64748b">steps × B × T = D tokens</text>
     </g>
   </g>
-  <text x="450" y="548" text-anchor="middle" font-size="12" fill="#64748b">Line numbers: 0 → train.py:126, 1 → :134, 2 → :137, 3–4 → :138, 5 → :143, 6 → :145, 7 → :148–168.</text>
+  <text x="450" y="548" text-anchor="middle" font-size="12" fill="#64748b">Line numbers: 0 → train.py:127, 1 → :135, 2 → :138, 3–4 → :139, 5 → :144, 6 → :146, 7 → :149–169.</text>
 </svg>

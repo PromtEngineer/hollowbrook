@@ -7,7 +7,7 @@
 
 ## Why this matters
 
-You now have a shelf of TinyLM checkpoints: base models of two sizes, an annealed one, SFT, distilled, tool-using and constitution-aligned ones. Which is best? The question sounds simple and every part of it is a trap. "Best at what" has to be a task with a checkable answer, or a judge, and judges have biases. The number you get has an error bar, and with a few dozen items the error bar is wider than the differences you are trying to see. The items may have leaked into training, in which case the score measures memory rather than skill; in 2026 this happened to the most-cited coding benchmark in the field. And an agent can score well by gaming the grader rather than solving the task. **Evaluation** is the discipline of producing numbers that survive these traps, and it is what every other chapter's claims rest on: "GRPO raised accuracy from 0.4 to 0.8" is only a fact if the eval was clean, large enough, and measured the right thing. In this chapter you build the harness, run every checkpoint through it with confidence intervals, plant a contamination and watch it inflate a score, and catch a biased judge with a two-line test.
+You now have a shelf of TinyLM checkpoints: base models of two sizes, an annealed one, SFT, distilled, tool-using and constitution-aligned ones. Which is best? The question sounds simple and every part of it is a trap. "Best at what" has to be a task with a checkable answer, or a judge, and judges have biases. The number you get has an error bar, and with a few dozen items the error bar is wider than the differences you are trying to see. The items may have leaked into training, in which case the score measures memory rather than skill; in 2026 this was reported to have happened to the most-cited coding benchmark in the field. And an agent can score well by gaming the grader rather than solving the task. **Evaluation** is the discipline of producing numbers that survive these traps, and it is what every other chapter's claims rest on: "GRPO raised accuracy from 0.4 to 0.8" is only a fact if the eval was clean, large enough, and measured the right thing. In this chapter you build the harness, run every checkpoint through it with confidence intervals, plant a contamination and watch it inflate a score, and catch a biased judge with a two-line test.
 
 ## The idea in pictures 📐
 
@@ -51,7 +51,7 @@ from llm.pipeline import get_tokenizer, get_tokens, run_path
 tok = get_tokenizer()
 _, val_tokens = get_tokens(tok)                              # held-out Storyland stream, (N,) ids
 model = TinyLM.load(run_path("base_small.pt"))
-print(perplexity(model, val_tokens, batch_size=8, seq_len=128, n_batches=10))   # e.g. 3.2
+print(perplexity(model, val_tokens, batch_size=8, seq_len=128, n_batches=10))   # 2.07 for base_small.pt
 ```
 
 `perplexity` is `exp` of the mean next-token loss over fixed random windows of the stream (same windows every call, so it is reproducible). Read the number as "the model is as unsure as if it were choosing uniformly among this many tokens". It is a fine way to compare two pretraining runs on the same data; it says nothing about whether the model can add.
@@ -60,10 +60,11 @@ print(perplexity(model, val_tokens, batch_size=8, seq_len=128, n_batches=10))   
 
 ```python
 eval_set = tasks.make_examples(84, seed=2023, max_value=20)  # 7 task types, checkable answers
+model = TinyLM.load(run_path("sft_small.pt"))                # the base model scores 0.00 on every task
 res = eval_tasks(model, tok, eval_set, max_new_tokens=24)    # greedy decoding
-print(res.accuracy, res.per_task)                            # overall and per task
+print(res.accuracy, res.per_task)                            # 0.43 {'reverse': 1.0, 'first': 0.0, 'add': 0.0, ...}
 print(res.table())                                           # markdown with 95% CIs per task
-lo, hi = bootstrap_ci(res.correct)                           # (0.31, 0.52) for accuracy 0.42 on 84 items
+lo, hi = bootstrap_ci(res.correct)                           # (0.32, 0.54) for accuracy 0.43 on 84 items
 ```
 
 `eval_tasks` asks every question through the chat template at temperature 0, grades with `tasks.verify` (the same function that was the reward in Chapter 19), and keeps the per-item 0/1 scores. `bootstrap_ci` resamples those scores with replacement 1,000 times and reports the central 95% of the resampled means. The formula for a rough half-width is:
@@ -83,18 +84,20 @@ train_docs = [{"text": "Reverse the word: kite etik"}, {"text": "Mia had a red k
 print(contamination_check(train_docs, ["Reverse the word: kite"], n=4))   # 1.0: it leaked
 print(contamination_check(train_docs, ["Write in capitals: boat"], n=4))  # 0.0
 kept = decontaminate(train_docs, ["Reverse the word: kite"], n=4)          # training-side: drop the doc
+print(len(kept))                                                           # 1: the leaked document is gone
+print(contamination_check([{"text": "Reverse the word: boat taob"}], ["Reverse the word: kite"], n=3))  # 1.0, but NOT a leak
 ```
 
-`n` matters: with `n=13` (a common production choice) a four-word prompt can never match, so the lab uses `n=4` for its short items and says so. The check catches verbatim leaks; paraphrased leaks (the same problem in different words, the same code with renamed variables) are the 2026 problem, discussed below.
+`n` matters in both directions. With `n=13` (the GPT-3 and Llama reports' choice) a four-word prompt can never match. With a small `n`, *templated* prompts are flagged even when they did not leak: the last line reports 1.0 because "reverse the word" is three words shared by every reversal item, clean or not, which is a false positive, not contamination (`contamination_check`'s docstring warns about this). The lab therefore runs the check on story-QA items of about 45 words with `n=13`, where a match means a real leak. The check catches verbatim leaks only; paraphrased leaks (the same problem in different words, the same code with renamed variables) are the 2026 problem, discussed below.
 
 ### LLM-as-judge and the swap test
 
 ```python
 ex = tasks.TaskExample("add", "What is 3 + 4?", "3 + 4 = 7", {"answer": 7})
-judge_pairwise(ex, "3 + 4 = 7", "3 + 4 = 8", rule_based_judge)          # "A"
-position_bias_check(rule_based_judge, ex, "3 + 4 = 7", "3 + 4 = 8")
+print(judge_pairwise(ex, "3 + 4 = 7", "3 + 4 = 8", rule_based_judge))          # A
+print(position_bias_check(rule_based_judge, ex, "3 + 4 = 7", "3 + 4 = 8"))
 # {'forward': 'A', 'swapped': 'A', 'consistent': True, 'position_bias': False}
-position_bias_check(lambda p, a, b: "A", ex, "3 + 4 = 7", "3 + 4 = 8")     # a judge that always picks the first
+print(position_bias_check(lambda p, a, b: "A", ex, "3 + 4 = 7", "3 + 4 = 8"))  # a judge that always picks the first
 # {'forward': 'A', 'swapped': 'B', 'consistent': False, 'position_bias': True}
 ```
 
@@ -106,8 +109,8 @@ A **judge** is any function `(prompt, answer_a, answer_b) → "A" | "B" | "tie"`
 print(compare_checkpoints([run_path("base_nano.pt"), run_path("lab20_student_opd.pt")], tok, eval_set[:8]))
 # | checkpoint | accuracy | perplexity |
 # |---|---:|---:|
-# | base_nano.pt | 0.00 | 26799.0 |
-# | lab20_student_opd.pt | 0.12 | 46963.0 |
+# | base_nano.pt | 0.00 | 25849.2 |
+# | lab20_student_opd.pt | 0.12 | 45242.1 |      (these change whenever Lab 20 is rerun)
 ```
 
 `compare_checkpoints` loads each path, runs `eval_tasks`, and measures perplexity on the chat-formatted eval items themselves (so it tracks how well each checkpoint models the conversation format; a base model that has never seen a chat token scores in the tens of thousands here, and even fine-tuned models score in the thousands because the eight items are short and the window is 128 tokens of mostly special-token structure). The lab builds a richer table on top of it: per-task accuracy, bootstrap CIs, and Storyland perplexity, saved as markdown.
@@ -119,7 +122,7 @@ python3 labs/lab23_evals.py            # quick: 28 eval items per checkpoint, ab
 python3 labs/lab23_evals.py --full     # 84 items, about 5.5 min
 ```
 
-The lab evaluates *every* loadable checkpoint in `runs/` (Lab 10's optimizer checkpoints are skipped), so its table depends on which labs you have run. All numbers below are from one CPU thread on a shared machine.
+The lab evaluates *every* loadable checkpoint in `runs/` (Lab 10's optimizer checkpoints are skipped), so its table depends on which labs you have run, and every row changes whenever the lab that produced that checkpoint is rerun: the excerpt below is one snapshot, and yours will list different files with different numbers. (The lab also skips a checkpoint that another process is writing at that moment, so it can run while other labs are running.) All numbers below are from one CPU thread on a shared machine; the wall-clock times assume an otherwise idle machine.
 
 **(a) Every checkpoint, with error bars.** Task accuracy on 84 items spread over the seven task types (greedy, 24 new tokens), a 95% bootstrap CI, and Storyland perplexity on the held-out stream:
 
@@ -222,7 +225,7 @@ The benchmarks above are for comparing labs. For your own model, the useful eval
 
 1. **Rank by perplexity, rank by accuracy.** From the lab's table, rank the checkpoints by Storyland perplexity and by task accuracy. Where do the rankings disagree, and what does each disagreement tell you about what the checkpoint was trained on?
 2. **Widen the eval.** Re-run `eval_tasks` on the best checkpoint with 84, 168 and 336 items (`make_examples(n, seed=2023, max_value=20)`) and print the CI each time. At what `n` can you distinguish it from the second-best?
-3. **Paraphrase contamination.** Re-run the lab's contamination demo but plant the leaked items *rephrased* ("Please reverse this word: kite"). Does `contamination_check` at `n=4` still catch them? Does the score still inflate?
+3. **Paraphrase contamination.** Re-run the lab's contamination demo but plant the leaked story-QA items *rephrased* (reorder the story's sentences, or replace a name throughout). Does `contamination_check` at `n=13` still catch them? Does the score still inflate?
 4. **Length bias.** Write a judge that prefers the longer answer and run `position_bias_check` on it. Does the swap test catch it? Why not, and what test would?
 5. **Your own eval.** Write 30 items for a task TinyLM has not been trained on (e.g. "What comes after Tuesday?"), with `tasks.verify`-style checking, and evaluate three checkpoints. Report accuracies with CIs and say whether any difference is real.
 6. **Interactive** 🎛️: open `interactive/19_grpo_simulator.html` and note that the reward it shows for each rollout is exactly the `verify` score the eval uses. What would change in the simulator if the reward were a judge's verdict with 20% position bias?
@@ -236,12 +239,12 @@ Perplexity averages next-token loss over all held-out text and rewards modelling
 
 <details><summary>2. Two models score 0.62 and 0.58 on 100 items. What can you conclude?</summary>
 
-Nothing yet. The 95% bootstrap CI on 100 items is roughly ±0.10, so both intervals overlap heavily; a 0.04 gap would need on the order of 1,000 items to be resolved. Report "not distinguishable at n = 100" or add items.
+Nothing yet. The 95% bootstrap CI on 100 items is roughly ±0.10, so both intervals overlap heavily; a half-width of 0.04 needs 1/0.04² ≈ 625 items, and more still if you want the two intervals not to overlap at all. Report "not distinguishable at n = 100" or add items.
 </details>
 
 <details><summary>3. What does <code>contamination_check</code> detect, what does it miss, and how does <code>n</code> affect it?</summary>
 
-It detects verbatim overlap: any n-word sequence shared between an eval item and a training document. It misses paraphrases, translations and renamed-variable code. A large `n` (13) never matches short prompts; a small `n` (4) flags common phrases as leaks; choose it with the item length in mind.
+It detects verbatim overlap: any n-word sequence shared between an eval item and a training document. It misses paraphrases, translations and renamed-variable code. A large `n` (13) never matches short prompts; a small `n` flags shared templates and common phrases as leaks (false positives); choose it with the item length in mind and check natural-language items rather than templated ones.
 </details>
 
 <details><summary>4. What is the swap test and which judge bias does it catch?</summary>

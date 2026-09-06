@@ -56,12 +56,17 @@ print(f"   {len(paths)} checkpoints: {[os.path.basename(p) for p in paths]}")
 t0 = time.perf_counter()
 rows = []
 per_ckpt: dict[str, list[float]] = {}
-for p in paths:
-    model = TinyLM.load(p)
+for p in list(paths):
+    try:                                                                # another lab may be rewriting this file right now
+        model = TinyLM.load(p)
+        stage = torch.load(p, map_location="cpu").get("extra", {}).get("stage", "?")
+    except Exception as e:                                              # noqa: BLE001
+        print(f"   skipping {os.path.basename(p)} (being rewritten? {type(e).__name__})")
+        paths.remove(p)
+        continue
     res = eval_tasks(model, tok, eval_set, max_new_tokens=24)
     ppl_story = perplexity(model, val_tokens, batch_size=8, seq_len=min(128, model.cfg.max_seq_len), n_batches=PPL_BATCHES)
     lo, hi = bootstrap_ci(res.correct)
-    stage = torch.load(p, map_location="cpu").get("extra", {}).get("stage", "?")
     rows.append((os.path.basename(p), stage, model.num_params(), res.accuracy, lo, hi, ppl_story, res.per_task))
     per_ckpt[os.path.basename(p)] = res.correct
     print(f"   {os.path.basename(p):28s} {stage:14s} acc {res.accuracy:.2f} [{lo:.2f}, {hi:.2f}]  ppl(story) {ppl_story:6.1f}  "

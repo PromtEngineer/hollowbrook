@@ -26,23 +26,23 @@
   <text x="500" y="52" text-anchor="middle" font-size="10" fill="#b45309">branch point: any stable checkpoint can be annealed</text>
 
   <!-- phase labels -->
-  <g font-size="13" font-weight="600">
+  <g font-size="12" font-weight="600">
     <text x="280" y="225" text-anchor="middle" fill="#2563eb">1. pretraining</text>
     <text x="575" y="225" text-anchor="middle" fill="#b45309">2. anneal</text>
     <text x="695" y="225" text-anchor="middle" fill="#16a34a">3. long-context</text>
-    <text x="800" y="225" text-anchor="middle" fill="#7c3aed">4. post-training</text>
+    <text x="806" y="225" text-anchor="middle" fill="#7c3aed">4. post-training</text>
   </g>
   <g font-size="10" fill="#64748b">
     <text x="280" y="241" text-anchor="middle">~90–95% of tokens</text>
     <text x="575" y="241" text-anchor="middle">last ~5–10%</text>
-    <text x="695" y="241" text-anchor="middle">~0.1–1%</text>
+    <text x="695" y="241" text-anchor="middle">~1–5%</text>
     <text x="800" y="241" text-anchor="middle">Chapters 14–22</text>
   </g>
   <rect x="490" y="215" width="260" height="34" rx="6" fill="none" stroke="#f59e0b" stroke-dasharray="5 3"/>
   <text x="620" y="262" text-anchor="middle" font-size="11" fill="#b45309">← "mid-training" (2025–26 vocabulary) →</text>
 
   <!-- data mix bars -->
-  <text x="40" y="300" text-anchor="end" font-size="11" fill="#64748b">data mix</text>
+  <text x="55" y="300" text-anchor="end" font-size="10" fill="#64748b">data mix</text>
   <!-- pretraining mix -->
   <rect x="60" y="285" width="440" height="24" fill="#64748b" fill-opacity="0.25"/>
   <rect x="60" y="285" width="330" height="24" fill="#2563eb" fill-opacity="0.35"/>
@@ -52,21 +52,23 @@
   <rect x="500" y="285" width="150" height="24" fill="#f59e0b" fill-opacity="0.35"/>
   <rect x="500" y="285" width="45" height="24" fill="#64748b" fill-opacity="0.25"/>
   <text x="522" y="301" text-anchor="middle" font-size="9" fill="#0f172a">replay</text>
-  <text x="598" y="301" text-anchor="middle" font-size="9" fill="#0f172a">high-quality, math, code,</text>
-  <text x="598" y="320" text-anchor="middle" font-size="9" fill="#b45309">instruction &amp; reasoning data</text>
+  <text x="600" y="301" text-anchor="middle" font-size="9" fill="#0f172a">high-quality mix</text>
+  <text x="598" y="320" text-anchor="middle" font-size="9" fill="#b45309">math, code, instruction</text>
+  <text x="598" y="332" text-anchor="middle" font-size="9" fill="#b45309">&amp; reasoning data</text>
   <!-- long context mix -->
   <rect x="650" y="285" width="90" height="24" fill="#16a34a" fill-opacity="0.35"/>
   <text x="695" y="301" text-anchor="middle" font-size="9" fill="#0f172a">long docs</text>
-  <text x="695" y="320" text-anchor="middle" font-size="9" fill="#16a34a">RoPE θ ↑, seq 8k→128k+</text>
+  <text x="695" y="320" text-anchor="middle" font-size="9" fill="#16a34a">RoPE θ ↑,</text>
+  <text x="695" y="332" text-anchor="middle" font-size="9" fill="#16a34a">seq 8k→128k+</text>
   <!-- post -->
   <rect x="740" y="285" width="120" height="24" fill="#7c3aed" fill-opacity="0.3"/>
   <text x="800" y="301" text-anchor="middle" font-size="9" fill="#0f172a">chats, prefs, RL</text>
 
   <!-- checkpoints -->
   <g font-size="10" fill="#0f172a">
-    <rect x="455" y="340" width="90" height="26" rx="5" fill="#ffffff" stroke="#2563eb"/><text x="500" y="357" text-anchor="middle">stable ckpt</text>
-    <rect x="605" y="340" width="90" height="26" rx="5" fill="#ffffff" stroke="#f59e0b"/><text x="650" y="357" text-anchor="middle">annealed ckpt</text>
-    <rect x="700" y="340" width="90" height="26" rx="5" fill="#ffffff" stroke="#16a34a"/><text x="745" y="357" text-anchor="middle">"base" release</text>
+    <rect x="455" y="350" width="90" height="26" rx="5" fill="#ffffff" stroke="#2563eb"/><text x="500" y="367" text-anchor="middle">stable ckpt</text>
+    <rect x="605" y="350" width="90" height="26" rx="5" fill="#ffffff" stroke="#f59e0b"/><text x="650" y="367" text-anchor="middle">annealed ckpt</text>
+    <rect x="700" y="350" width="90" height="26" rx="5" fill="#ffffff" stroke="#16a34a"/><text x="745" y="367" text-anchor="middle">"base" release</text>
   </g>
-  <text x="450" y="390" text-anchor="middle" font-size="10" fill="#64748b">the base checkpoint is a product: it is what everyone fine-tunes, distils from, and benchmarks against</text>
+  <text x="450" y="394" text-anchor="middle" font-size="10" fill="#64748b">the base checkpoint is a product: it is what everyone fine-tunes, distils from, and benchmarks against</text>
 </svg>

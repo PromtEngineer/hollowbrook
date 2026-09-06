@@ -82,11 +82,19 @@ def build_sft_dataset(tok: BPETokenizer, examples: Sequence[TaskExample], max_le
     nothing to the loss.
     """
     out = []
+    n_cut = 0
     for ex in examples:
         # accept either a TaskExample or a raw conversation (list of {"role","content"} dicts),
         # so tool-use traces (Chapters 21, 27) can use the same training loop
         msgs = ex if isinstance(ex, (list, tuple)) else ex.messages(with_answer=True, system=system)
-        out.append(build_sft_example(tok, msgs, max_len))
+        ids, mask = build_sft_example(tok, msgs, max_len)
+        if max_len is not None and sum(mask) == 0:
+            n_cut += 1                                    # truncation removed every trainable token
+        out.append((ids, mask))
+    if n_cut:
+        import warnings
+        warnings.warn(f"{n_cut}/{len(out)} examples have no trainable tokens after truncation to "
+                      f"max_len={max_len}; raise max_len (and the model's max_seq_len)", stacklevel=2)
     return out
 
 
@@ -130,7 +138,7 @@ def estimate_sft_loss(model: TinyLM, data: list, pad_id: int, batch_size: int = 
 
 
 # --------------------------------------------------------------- the loop
-def sft_train(model: TinyLM, tok: BPETokenizer, examples: Sequence[TaskExample], cfg: SFTConfig,
+def sft_train(model: TinyLM, tok: BPETokenizer, examples: Sequence["TaskExample | list[dict]"], cfg: SFTConfig,
               val_examples: Optional[Sequence[TaskExample]] = None, verbose: bool = True) -> SFTHistory:
     """Fine-tune ``model`` in place on chat-formatted ``examples``; returns the history.
 

@@ -71,7 +71,6 @@
     <rect x="0" y="0" width="205" height="330" rx="8" fill="#f59e0b" fill-opacity="0.06" stroke="#f59e0b" stroke-opacity="0.5"/>
     <text x="102" y="22" text-anchor="middle" font-size="14" font-weight="600" fill="#b45309">Pipeline parallel (PP)</text>
     <text x="102" y="40" text-anchor="middle" font-size="11" fill="#64748b">consecutive layers per GPU</text>
-    <g id="pp-gpu"><rect x="18" y="0" width="170" height="30" rx="6" fill="#ffffff" stroke="#0f172a"/></g>
     <use href="#pp-gpu" y="55"/><rect x="26" y="62" width="154" height="16" fill="#f59e0b" fill-opacity="0.35"/><text x="102" y="74" text-anchor="middle" font-size="10" fill="#0f172a">layers 0–7</text>
     <use href="#pp-gpu" y="95"/><rect x="26" y="102" width="154" height="16" fill="#f59e0b" fill-opacity="0.35"/><text x="102" y="114" text-anchor="middle" font-size="10" fill="#0f172a">layers 8–15</text>
     <use href="#pp-gpu" y="135"/><rect x="26" y="142" width="154" height="16" fill="#f59e0b" fill-opacity="0.35"/><text x="102" y="154" text-anchor="middle" font-size="10" fill="#0f172a">layers 16–23</text>
@@ -112,11 +111,6 @@
     <rect x="0" y="0" width="210" height="330" rx="8" fill="#7c3aed" fill-opacity="0.06" stroke="#7c3aed" stroke-opacity="0.5"/>
     <text x="105" y="22" text-anchor="middle" font-size="14" font-weight="600" fill="#7c3aed">Expert parallel (EP)</text>
     <text x="105" y="40" text-anchor="middle" font-size="11" fill="#64748b">MoE experts spread out</text>
-    <g id="ep-gpu">
-      <rect x="0" y="0" width="82" height="70" rx="6" fill="#ffffff" stroke="#0f172a"/>
-      <rect x="8" y="8" width="30" height="54" rx="3" fill="#7c3aed" fill-opacity="0.35"/>
-      <rect x="44" y="8" width="30" height="54" rx="3" fill="#7c3aed" fill-opacity="0.35"/>
-    </g>
     <use href="#ep-gpu" x="18" y="55"/><text x="59" y="140" text-anchor="middle" font-size="10" fill="#0f172a">experts 0,1</text>
     <use href="#ep-gpu" x="110" y="55"/><text x="151" y="140" text-anchor="middle" font-size="10" fill="#0f172a">experts 2,3</text>
     <use href="#ep-gpu" x="18" y="155"/><text x="59" y="240" text-anchor="middle" font-size="10" fill="#0f172a">experts 4,5</text>
@@ -131,7 +125,13 @@
     <text x="105" y="312" text-anchor="middle" font-size="10" fill="#64748b">2026 runs stack DP×TP×PP×EP</text>
   </g>
 
-  <defs>
+  <defs>    <g id="ep-gpu">
+      <rect x="0" y="0" width="82" height="70" rx="6" fill="#ffffff" stroke="#0f172a"/>
+      <rect x="8" y="8" width="30" height="54" rx="3" fill="#7c3aed" fill-opacity="0.35"/>
+      <rect x="44" y="8" width="30" height="54" rx="3" fill="#7c3aed" fill-opacity="0.35"/>
+    </g>
+    <g id="pp-gpu"><rect x="18" y="0" width="170" height="30" rx="6" fill="#ffffff" stroke="#0f172a"/></g>
+
     <marker id="arrowR" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="#dc2626"/>
     </marker>

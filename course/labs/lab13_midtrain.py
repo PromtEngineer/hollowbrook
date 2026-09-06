@@ -22,8 +22,8 @@ import torch.nn.functional as F
 
 from llm.data import make_corpus, mix_sources, tokenize_and_pack
 from llm.model import TinyLM
-from llm.optim import build_optimizer, lr_at, set_lr
-from llm.train import get_batch, estimate_loss
+from llm.optim import lr_at
+from llm.train import TrainConfig, train, get_batch, estimate_loss
 from llm.pipeline import get_corpus, get_tokenizer, get_base_model, run_path, TOKENIZER_PATH
 
 args = setup("Lab 13: mid-training — anneal on a math-heavy mix, then extend the context")
@@ -74,24 +74,16 @@ math_before, story_before = eval_both(model)
 print(f"   BEFORE: math loss {math_before:.3f} (ppl {math.exp(math_before):.1f}) | "
       f"stories loss {story_before:.3f} (ppl {math.exp(story_before):.1f})")
 
-optimizers = build_optimizer(model, "adamw", lr=3e-4, weight_decay=0.1)   # lower LR than pretraining's 1e-3
-g = torch.Generator().manual_seed(args.seed)
-anneal_curve, lr_curve, t0 = [], [], time.perf_counter()
-for step in range(ANNEAL_STEPS):
-    scale = lr_at(step, ANNEAL_STEPS, 1.0, warmup_steps=0, kind="wsd", decay_frac=1.0)  # 1 -> 0 linearly
-    set_lr(optimizers, scale)
-    x, y = get_batch(mix_tokens, ANNEAL_B, T_SHORT, g)
-    _, loss = model(x, y)
-    for o in optimizers:
-        o.zero_grad(set_to_none=True)
-    loss.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-    for o in optimizers:
-        o.step()
-    anneal_curve.append(loss.item()); lr_curve.append(scale)
-    if step % max(1, ANNEAL_STEPS // 5) == 0 or step == ANNEAL_STEPS - 1:
-        print(f"   step {step:4d} | mix loss {loss.item():.4f} | lr x{scale:.2f}")
+# Chapter 10's train() with the schedule swapped: no warmup, WSD with decay_frac=1.0, so the
+# whole run is the linear decay 1 -> 0; a lower peak LR than pretraining's 1e-3; a fresh AdamW.
+anneal_tc = TrainConfig(steps=ANNEAL_STEPS, batch_size=ANNEAL_B, seq_len=T_SHORT, optimizer="adamw", lr=3e-4,
+                        weight_decay=0.1, warmup_steps=0, schedule="wsd", decay_frac=1.0, grad_clip=1.0,
+                        log_every=max(1, ANNEAL_STEPS // 5), seed=args.seed)
+anneal_curve, t0 = [], time.perf_counter()
+train(model, mix_tokens, None, anneal_tc, on_step=lambda step, loss: anneal_curve.append(loss))
+lr_curve = [lr_at(s, ANNEAL_STEPS, 1.0, 0, "wsd", decay_frac=1.0) for s in range(ANNEAL_STEPS)]
 anneal_wall = time.perf_counter() - t0
+model.train()
 math_after, story_after = eval_both(model)
 print(f"   AFTER:  math loss {math_after:.3f} (ppl {math.exp(math_after):.1f}) | "
       f"stories loss {story_after:.3f} (ppl {math.exp(story_after):.1f})   [{anneal_wall:.0f}s]")
@@ -137,21 +129,12 @@ curve_abf = loss_per_position(model)
 s_abf, l_abf = summarise(curve_abf, f"theta={NEW_THETA:.0f}, before fine-tune")
 check(l_naive > s_naive, "before extension training, positions the model never saw are worse (RoPE is relative and Storyland docs are short, so expect a small gap)")
 
-optimizers = build_optimizer(model, "adamw", lr=1e-4, weight_decay=0.1)
-g = torch.Generator().manual_seed(args.seed + 1)
+# the same loop at seq_len 512 on long windows from the packed mix, at an even lower LR
+long_tc = TrainConfig(steps=LONG_STEPS, batch_size=LONG_B, seq_len=LONG_T, optimizer="adamw", lr=1e-4,
+                      weight_decay=0.1, warmup_steps=0, schedule="wsd", decay_frac=1.0, grad_clip=1.0,
+                      log_every=max(1, LONG_STEPS // 4), seed=args.seed + 1)
 t0 = time.perf_counter()
-for step in range(LONG_STEPS):
-    set_lr(optimizers, lr_at(step, LONG_STEPS, 1.0, warmup_steps=0, kind="wsd", decay_frac=1.0))
-    x, y = get_batch(mix_tokens, LONG_B, LONG_T, g)           # long windows from the packed mix
-    _, loss = model(x, y)
-    for o in optimizers:
-        o.zero_grad(set_to_none=True)
-    loss.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-    for o in optimizers:
-        o.step()
-    if step % max(1, LONG_STEPS // 4) == 0 or step == LONG_STEPS - 1:
-        print(f"   step {step:4d} | loss at seq_len {LONG_T}: {loss.item():.4f}")
+train(model, mix_tokens, None, long_tc)
 long_wall = time.perf_counter() - t0
 curve_ft = loss_per_position(model)
 s_ft, l_ft = summarise(curve_ft, f"theta={NEW_THETA:.0f}, after {LONG_STEPS} steps")

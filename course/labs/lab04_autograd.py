@@ -3,7 +3,7 @@
 What you will see:
   1. One neuron, by hand, with llm.microautograd.Value — gradients match PyTorch.
   2. A derivative is a slope: finite differences agree with autograd.
-  3. XOR learned with the 120-line engine, then the same thing in PyTorch.
+  3. XOR learned with the micro autograd engine, then the same thing in PyTorch.
   4. SGD vs momentum vs Adam rolling down a narrow valley (numpy, 2-D).
   5. Learning rate too low / right / too high.
   6. Train/validation split and overfitting on a polynomial fit.
@@ -69,7 +69,7 @@ print(f"  f({x0}) = {y.data:.4f};  autograd df/dx = {xv.grad:.5f};  (f(x+h)-f(x-
 check(abs(xv.grad - slope) < 1e-4, "autograd derivative equals the numerical slope")
 
 # ----------------------------------------------------------------------------
-section("3. Learning XOR: the 120-line engine, then PyTorch")
+section("3. Learning XOR: the micro autograd engine, then PyTorch")
 steps = 200 if args.quick else 1000
 t0 = time.perf_counter()
 micro_losses = train_xor(steps=steps, lr=0.1, seed=args.seed)

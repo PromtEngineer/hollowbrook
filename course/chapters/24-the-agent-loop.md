@@ -129,11 +129,11 @@ print(api[1]["content"][1])   # {'type': 'tool_use', 'id': 'call_1', 'name': 'ca
 print(api[2])                 # {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': 'call_1', 'content': '42'}]}
 ```
 
-The tool result travels in a *user* message: from the API's point of view, the harness is the user, reporting what happened. The backend is imported lazily and refuses to construct without the `anthropic` package and an `ANTHROPIC_API_KEY`, so the whole course runs without either; to enable it, `pip install anthropic`, export the key, and pass `AnthropicBackend(model="claude-sonnet-4-5")` where the lab passes a `ScriptedBackend`. Nothing else changes.
+The tool result travels in a *user* message: from the API's point of view, the harness is the user, reporting what happened. The backend is imported lazily and refuses to construct without the `anthropic` package and an `ANTHROPIC_API_KEY`, so the whole course runs without either; to enable it, `pip install anthropic`, export the key, and pass `AnthropicBackend(model="claude-sonnet-5")` (or whichever current model id the provider lists; the library's own default is older) where the lab passes a `ScriptedBackend`. Nothing else changes.
 
 ### Step 4: `Agent.run`, line by line
 
-Here is the loop, with only the event bookkeeping removed (the full version is `harness.py` lines 160–200):
+Here is the loop, with only the event bookkeeping removed (the full version is `harness.py` lines 161–202):
 
 ```python
 # def run(self, task, permission_fn=None) -> Transcript:
@@ -183,7 +183,7 @@ Every branch returns a string, and every string goes back to the model. The orde
 
 ### Step 6: the permission gate
 
-The **permission gate** is `Agent._permitted`: it decides, per call, whether the tool may run. A **permission policy** is the config string that answers first: `allow_all` (tests and sandboxes), `allow_read_only` (any tool whose `read_only` flag is true runs; anything else is denied), or `ask`, which defers to a `permission_fn(call, tool) -> bool` that a real harness wires to a prompt on the user's screen. With `ask` and no function, the answer is *deny*: the safe default.
+The **permission gate** is `Agent._permitted`: it decides, per call, whether the tool may run. A **permission policy** is the config string that answers first: `allow_all` (tests and sandboxes); `allow_read_only` (any tool whose `read_only` flag is true runs without asking; for anything else the gate falls through to the permission function); or `ask`, which consults the permission function for every call. The **permission function** is a `permission_fn(call, tool) -> bool` passed to `run`, which a real harness wires to a prompt on the user's screen. With no function to ask, the answer is *deny*: the safe default. So `allow_read_only` is "auto-approve reads, ask about the rest", which is how the allowlists of production harnesses behave, and `ask` with no function is "deny everything".
 
 ```python
 def ask_user(call, tool):
@@ -225,8 +225,8 @@ Claude Code, the Claude Agent SDK and their equivalents from other labs are repo
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab24_agent_loop.py            # quick: about 35 s (8 s importing torch, the rest nano-model decoding)
-python3 labs/lab24_agent_loop.py --full     # adds a 150-step tool-call SFT of the nano model: about 3 min
+python3 labs/lab24_agent_loop.py            # quick: 1–2 min (8 s importing torch, the rest three tiny models decoding on CPU)
+python3 labs/lab24_agent_loop.py --full     # adds a 150-step tool-call SFT of the nano model: about 2 min more
 ```
 
 Part (1) runs the two-tool task with a scripted model and prints the transcript and the events:
@@ -278,7 +278,7 @@ ASSISTANT: I computed 126, but I am not allowed to write files under this policy
 ✅ result.txt was NOT written
       [permission prompt] write_file({"path": "result.txt", "content": "126\n"}) read_only=False -> allow
 ✅ under 'ask', the permission function allowed the .txt write and the file exists
-✅ under 'ask' with no permission function, non-read-only tools are denied (safe default)
+✅ under 'ask' with no permission function, every tool is denied, the read-only calculator included (safe default)
 ```
 
 Part (3) attaches three hooks and prints the live trace from `on_event`:
@@ -302,7 +302,7 @@ Part (4) puts real models on the other side. The first thing it shows is why the
 ✅ inside Agent.run the same error becomes stop_reason='error'
 ```
 
-With the Storyland tokenizer, which compresses JSON poorly, one full schema is 314 tokens against the nano model's 128-token window; even the compact listing is 156 (the built-in calculator's description is long). `TinyLMBackend.complete` refuses with `ContextTooLongError`, and in the loop that is the `except` on line 5 of Step 4: `stop_reason="error"`, with the message in the last event. For the three nano models below the lab uses a backend subclass that sends *no* tool listing at all, because the tool-trained checkpoints were fine-tuned with the tool named in the system prompt only and the listing is out of distribution for them (the lab measured 0/4 with it against 4/4 without). Then three models, in order of how much tool training they have had:
+With the Storyland tokenizer, which compresses JSON poorly, one full schema is 314 tokens against the nano model's 128-token window; even the compact listing is 156 (the built-in calculator's description is long). `TinyLMBackend.complete` refuses with `ContextTooLongError`, and in the loop that is the `except` on line 5 of Step 4: `stop_reason="error"`, with the message in the last event. For the two *nano* models below the lab uses a backend subclass that sends *no* tool listing at all (the listing alone would cost ~50 of their 128 tokens, and the lab's own SFT is trained without it); Chapter 21's model is served with the plain `TinyLMBackend`, because Chapter 21 trained it *with* the listing and stored the served prompt in the checkpoint. Then three models, in order of how much tool training they have had:
 
 ```
    instruction-SFT model (Lab 15, no tool data): on 3 questions: 0/3 well-formed tool calls, 0/3 with the right expression
@@ -319,7 +319,7 @@ ASSISTANT: 17 + 5 = 22
 ✅ its final answer uses the result: '17 + 5 = 22'
 ```
 
-The instruction-tuned model of Lab 15 follows instructions but has never seen `<|tool_call|>`; asked "What is 17 + 25?" with a calculator on offer, it answers `55 + 63 = 118` directly, and the loop reads a reply with no tool calls as "done" and ends with a wrong answer rather than a crash. Chapter 21's model (700 steps of SFT on tool traces, then 30 GRPO steps with a verifiable reward, on sums up to 20) is the successful case: it emits a well-formed call with the *right* expression, the harness runs `calc`, the result comes back as a `<|tool_result|>` turn, and the model answers from it. (If `runs/lab21_tool_grpo.pt` is missing, run Lab 21 first.) `--full` adds a third model, a 150-step SFT on 600 traces trained inside this lab (106 s):
+The instruction-tuned model of Lab 15 follows instructions but has never seen `<|tool_call|>`; asked "What is 17 + 25?" with a calculator on offer, it answers `55 + 63 = 118` directly, and the loop reads a reply with no tool calls as "done" and ends with a wrong answer rather than a crash. Chapter 21's model (the `small` TinyLM: 500 steps of SFT on tool traces, then 30 GRPO steps with a verifiable reward, on sums up to 20) is the successful case: it emits a well-formed call with the *right* expression, the harness runs `calc`, the result comes back as a `<|tool_result|>` turn, and the model answers from it. The line in between is Chapter 21's most practical lesson seen from the harness side: the *same weights* served without the tool listing they were trained under produce `<|tool_call|>{{nn{mm: "{aa"...`, JSON-shaped noise, 0/3. A fine-tuned policy is conditioned on its exact prefix, which is why the checkpoint carries the prompt and the lab checks that the harness serves it verbatim. (If `runs/lab21_tool_grpo.pt` is missing, run Lab 21 first.) `--full` adds a third model, a 150-step SFT on 600 traces trained inside this lab (106 s):
 
 ```
    SFT done in 106s: loss 9.38 -> 0.56
@@ -373,7 +373,7 @@ Inside a *user* message, as a `tool_result` content block whose `tool_use_id` ma
 
 <details><summary>4. Under <code>allow_all</code>, can a pre-tool hook still stop a call? Under <code>allow_read_only</code>, can a permission function allow a write?</summary>
 
-Yes: hooks run before the gate and are an independent layer, so a hook can block under any policy (the lab blocks `secrets/` under `allow_all`). No: with `allow_read_only` a non-read-only tool is denied before `permission_fn` is consulted; the function is only asked under `ask` (and under `allow_read_only` only for read-only tools, which are already allowed).
+Yes: hooks run before the gate and are an independent layer, so a hook can block under any policy (the lab blocks `secrets/` under `allow_all`). Yes, if one was passed: `_permitted` auto-approves read-only tools under `allow_read_only` and falls through to `permission_fn` for the rest, so a function that returns `True` lets the write run; with no function, the write is denied. Under `ask` the function is consulted for every tool, read-only ones included, and with no function everything is denied.
 </details>
 
 <details><summary>5. The instruction-tuned model answered <code>55 + 63 = 118</code> instead of calling the calculator. Is that a parsing problem?</summary>

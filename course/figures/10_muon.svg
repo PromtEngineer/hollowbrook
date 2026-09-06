@@ -12,7 +12,7 @@
     <text x="70" y="195" text-anchor="middle" font-size="10" fill="#64748b">unit circle (inputs)</text>
     <ellipse cx="190" cy="130" rx="60" ry="10" fill="#2563eb" fill-opacity="0.25" stroke="#2563eb" transform="rotate(-30 190 130)"/>
     <path d="M118 130 L 135 130" stroke="#64748b" stroke-width="2" marker-end="url(#ar2)"/>
-    <text x="190" y="195" text-anchor="middle" font-size="10" fill="#64748b">M squashes: σ₁ = 60, σ₂ = 10</text>
+    <text x="180" y="195" text-anchor="middle" font-size="10" fill="#64748b">M squashes: σ₁=60, σ₂=10</text>
     <text x="130" y="222" text-anchor="middle" font-size="11" fill="#0f172a">a few directions dominate the update</text>
   </g>
 
@@ -37,7 +37,7 @@
     <text x="244" y="134" font-size="10" fill="#16a34a">1</text>
     <text x="70" y="200" font-size="10" fill="#64748b">σ = 0.1</text>
     <text x="200" y="200" font-size="10" fill="#64748b">σ = 1</text>
-    <text x="130" y="112" text-anchor="middle" font-size="10" fill="#0f172a">each iteration pushes every σ toward 1 (matrix-only ops: matmuls)</text>
+    <text x="130" y="112" text-anchor="middle" font-size="10" fill="#0f172a">each pass pushes every σ toward 1 (only matmuls)</text>
   </g>
 
   <!-- Panel 3: orthogonal update -->
@@ -56,15 +56,17 @@
   <g transform="translate(30,320)">
     <rect x="0" y="0" width="840" height="150" rx="8" fill="#ffffff" stroke="#64748b"/>
     <text x="14" y="24" font-size="13" font-weight="600" fill="#0f172a">4. W ← W·(1 − lr·wd) − lr · sqrt(max(1, rows/cols)) · O</text>
-    <text x="14" y="44" font-size="11" fill="#64748b">Read this as: decay the weights a little, then move by a fixed-size orthogonal step; the sqrt factor makes the update RMS match Adam's so one LR (0.02) works for every matrix shape.</text>
+    <text x="14" y="42" font-size="11" fill="#64748b">Read this as: decay the weights a little, then move by a fixed-size orthogonal step;</text>
+    <text x="14" y="56" font-size="11" fill="#64748b">the sqrt factor makes the update RMS match Adam's, so one LR (0.02) works for every matrix shape.</text>
     <g font-size="11" fill="#0f172a">
-      <text x="14" y="76" font-weight="600" fill="#16a34a">Muon (2-D weights that are linear maps)</text>
-      <text x="14" y="94">q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj</text>
-      <text x="14" y="112" fill="#64748b">"orthogonal" is meaningful for a map from one vector space to another</text>
-      <text x="440" y="76" font-weight="600" fill="#f59e0b">AdamW (everything else)</text>
-      <text x="440" y="94">embed / lm_head (rows are lookup entries, not a map), RMSNorm gains (1-D)</text>
-      <text x="440" y="112" fill="#64748b">split_params() in llm/optim.py:85 makes this decision by name and ndim</text>
+      <text x="14" y="80" font-weight="600" fill="#16a34a">Muon (2-D weights that are linear maps)</text>
+      <text x="14" y="97">q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj</text>
+      <text x="14" y="114" fill="#64748b">"orthogonal" is meaningful for a map from one vector space to another</text>
+      <text x="440" y="80" font-weight="600" fill="#f59e0b">AdamW (everything else)</text>
+      <text x="440" y="97">embed / lm_head (rows are lookups, not a map), RMSNorm gains (1-D)</text>
+      <text x="440" y="114" fill="#64748b">split_params() in llm/optim.py:85 decides by name and ndim</text>
     </g>
-    <text x="14" y="138" font-size="11" fill="#64748b">Why it helps: Adam normalises each weight entry on its own; Muon normalises whole directions of the matrix, so rare-but-useful directions are not drowned out by dominant ones.</text>
+    <text x="14" y="133" font-size="11" fill="#64748b">Why it helps: Adam normalises each weight entry on its own; Muon normalises whole directions of the matrix,</text>
+    <text x="14" y="146" font-size="11" fill="#64748b">so rare-but-useful directions are not drowned out by dominant ones.</text>
   </g>
 </svg>

@@ -321,7 +321,7 @@ if sft_model is not None:
     if not right:
         print("   -> SYNTAX learned, SEMANTICS not: 150 steps teach this 0.3M-param model the tool-call format but not")
         print("      to copy the numbers from the question. The harness cannot tell: the call is valid, the tool runs,")
-        print("      and the model trusts the (wrong) result. Chapter 21's recipe (700 SFT steps on a 0-20 range, then")
+        print("      and the model trusts the (wrong) result. Chapter 21's recipe (500 SFT steps on a 0-20 range, then")
         print("      GRPO with a verifiable reward) is what grounds the arguments; see (4b).")
 
 
