@@ -48,6 +48,8 @@ class SFTConfig:
     epochs: Optional[int] = None      # if set, steps = epochs * ceil(n_examples / batch_size)
     log_every: int = 25
     eval_every: int = 100
+    eval_max_new_tokens: int = 16     # enough for every course task; keeps periodic evals fast
+    system: Optional[str] = SYSTEM_PROMPT   # the system prompt rendered into every example (None = omit)
     seed: int = 0
     device: str = "cpu"
     max_len: int = 192                # truncate conversations longer than this many tokens
@@ -147,8 +149,8 @@ def sft_train(model: TinyLM, tok: BPETokenizer, examples: Sequence[TaskExample],
     # Conversations longer than the RoPE tables would crash the forward pass, so
     # never build an example longer than the model can read.
     max_len = min(cfg.max_len, model.cfg.max_seq_len)
-    data = build_sft_dataset(tok, examples, max_len)
-    val_data = build_sft_dataset(tok, val_examples, max_len) if val_examples else None
+    data = build_sft_dataset(tok, examples, max_len, system=cfg.system)
+    val_data = build_sft_dataset(tok, val_examples, max_len, system=cfg.system) if val_examples else None
     pad_id = tok.special_tokens["<|pad|>"]
     batch_size = min(cfg.batch_size, len(data))
     steps = cfg.steps if cfg.epochs is None else cfg.epochs * math.ceil(len(data) / batch_size)
@@ -196,7 +198,8 @@ def sft_train(model: TinyLM, tok: BPETokenizer, examples: Sequence[TaskExample],
         last = step == steps - 1
         if val_data is not None and ((step % cfg.eval_every == 0 and step > 0) or last):
             vl = estimate_sft_loss(model, val_data, pad_id, batch_size, device=device)
-            res = eval_tasks(model, tok, val_examples)
+            res = eval_tasks(model, tok, val_examples, max_new_tokens=cfg.eval_max_new_tokens,
+                             system=cfg.system)
             model.train()                        # generation switched the model to eval()
             history.val_step.append(step)
             history.val_loss.append(vl)
@@ -249,6 +252,8 @@ def apply_lora(model: nn.Module, rank: int, alpha: Optional[float] = None,
     remain trainable afterwards. ``alpha`` defaults to ``2 * rank``.
     """
     alpha = 2 * rank if alpha is None else alpha
+    if any(isinstance(m, LoRALinear) for m in model.modules()):
+        return model                                  # already adapted: idempotent, keep adapters trainable
     for p in model.parameters():
         p.requires_grad_(False)
     for module in list(model.modules()):
