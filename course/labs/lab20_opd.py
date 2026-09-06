@@ -37,16 +37,17 @@ from llm.generate import sample_group
 args = setup("Lab 20: distillation and on-policy distillation")
 
 OPD_STEPS = 8 if args.quick else 60
-GROUP, PROMPTS_PER_STEP, MAX_NEW = 4, 4, 16
+GROUP, PROMPTS_PER_STEP, MAX_NEW = (4, 4, 16) if args.quick else (8, 8, 16)
 OFFLINE_PROMPTS = 8 if args.quick else 60          # teacher samples 4 answers per prompt
 OFFLINE_SFT_STEPS = 8 if args.quick else 60
-N_EVAL = 30 if args.quick else 60
+N_EVAL = 30 if args.quick else 100
 
 tok = get_tokenizer()
 pad_id, end_id, _ = _special(tok)
-train_examples = tasks.make_examples(400, seed=20, tasks=["add"], max_value=20)   # SFT warm-start set
-opd_examples = tasks.make_examples(200, seed=22, tasks=["add"], max_value=20)     # prompts for (c)
-held = tasks.make_examples(60, seed=21, tasks=["add"], max_value=20)[:N_EVAL]     # evaluation
+student_train = tasks.make_examples(400, seed=20, tasks=["add"], max_value=20)    # student warm-start: ~270 of the 441 problems
+teacher_train = tasks.make_examples(1200, seed=20, tasks=["add"], max_value=20)   # teacher: nearly all 441 problems, many times
+opd_examples = tasks.make_examples(600, seed=22, tasks=["add"], max_value=20)     # prompts for (c)
+held = tasks.make_examples(100, seed=21, tasks=["add"], max_value=20)[:N_EVAL]    # evaluation
 
 
 def accuracy(model: TinyLM) -> float:
@@ -54,16 +55,16 @@ def accuracy(model: TinyLM) -> float:
 
 
 # ------------------------------------------------------------------ warm-starts
-def warm_start(preset_ckpt: str, out_name: str, steps: int, tag: str) -> TinyLM:
+def warm_start(preset_ckpt: str, out_name: str, steps: int, tag: str, examples) -> TinyLM:
     """SFT a base checkpoint on addition <= 20; cache the result under runs/."""
     path = run_path(out_name)
     if os.path.exists(path):
         return TinyLM.load(path)
-    print(f"   [one-time] training the {tag}: {preset_ckpt} -> {out_name} ({steps} SFT steps, lr 1e-3)")
+    print(f"   [one-time] training the {tag}: {preset_ckpt} -> {out_name} ({steps} SFT steps on {len(examples)} examples, lr 1e-3)")
     model = TinyLM.load(run_path(preset_ckpt))
     t0 = time.perf_counter()
-    sft_train(model, tok, train_examples, SFTConfig(steps=steps, batch_size=16, lr=1e-3, log_every=100,
-                                                    eval_every=200), val_examples=held[:30], verbose=True)
+    sft_train(model, tok, examples, SFTConfig(steps=steps, batch_size=16, lr=1e-3, log_every=250,
+                                              eval_every=500), val_examples=held[:30], verbose=True)
     model.save(path, TOKENIZER_PATH, extra={"stage": "sft", "tasks": ["add"], "max_value": 20, "steps": steps})
     print(f"   saved {path} after {time.perf_counter() - t0:.0f}s")
     return model
@@ -83,12 +84,12 @@ def first_usable(candidates: list[str], min_acc: float) -> tuple[TinyLM, str] | 
 
 
 section("models: a small teacher and a nano student")
-teacher, teacher_name = first_usable(["grpo_small.pt", "sft_small.pt"], min_acc=0.6)
+teacher, teacher_name = first_usable(["lab20_teacher_strong.pt", "grpo_small.pt", "sft_small.pt"], min_acc=0.8)
 if teacher is None:
-    teacher, teacher_name = warm_start("base_small.pt", "lab20_teacher_sft_small.pt", 800, "teacher"), "lab20_teacher_sft_small.pt"
+    teacher, teacher_name = warm_start("base_small.pt", "lab20_teacher_strong.pt", 1500, "teacher", teacher_train), "lab20_teacher_strong.pt"
 student0, student_name = first_usable(["sft_nano.pt"], min_acc=0.1)
 if student0 is None:
-    student0, student_name = warm_start("base_nano.pt", "lab20_student_sft_nano.pt", 600, "student"), "lab20_student_sft_nano.pt"
+    student0, student_name = warm_start("base_nano.pt", "lab20_student_sft_nano.pt", 600, "student", student_train), "lab20_student_sft_nano.pt"
 teacher.eval(); student0.eval()
 t0 = time.perf_counter()
 acc_teacher, acc_student0 = accuracy(teacher), accuracy(student0)
@@ -155,7 +156,7 @@ print(f"   offline: teacher keep rate {off['keep_rate']:.2f} ({off['n_kept']}/{o
 
 student_opd = copy.deepcopy(student0)
 cfg = OPDConfig(steps=OPD_STEPS, group_size=GROUP, prompts_per_step=PROMPTS_PER_STEP, max_new_tokens=MAX_NEW,
-                lr=2e-4, seed=args.seed, log_every=max(1, OPD_STEPS // 6))
+                lr=1e-4, seed=args.seed, log_every=max(1, OPD_STEPS // 6))
 t0 = time.perf_counter()
 hist = opd_train(student_opd, teacher, tok, opd_examples, cfg)
 t_opd = time.perf_counter() - t0
@@ -166,11 +167,14 @@ acc_curve = [h["accuracy"] for h in hist]
 print(f"   OPD: {OPD_STEPS} steps x {GROUP * PROMPTS_PER_STEP} student samples, {t_opd:.0f}s "
       f"-> accuracy {acc_student0:.2f} -> {acc_opd:.2f}")
 print(f"   reverse KL: {kl_curve[0]:.3f} (step 0) -> {min(kl_curve):.3f} (min) -> {kl_curve[-1]:.3f} (last)")
-print(f"   sample accuracy at temperature 1 during training: {acc_curve[0]:.2f} -> {acc_curve[-1]:.2f}")
 k = max(1, len(kl_curve) // 4)
+samp_first, samp_last = sum(acc_curve[:k]) / k, sum(acc_curve[-k:]) / k
+n_samp = k * GROUP * PROMPTS_PER_STEP
+print(f"   accuracy of the student's own samples (T=1): first {k} steps {samp_first:.2f} -> last {k} steps {samp_last:.2f} "
+      f"({n_samp} samples each; far less noisy than {N_EVAL} greedy items)")
 check(sum(kl_curve[-k:]) / k < sum(kl_curve[:k]) / k, "reverse KL falls over the run: the student's own answers move toward the teacher's")
 if args.full:
-    check(acc_opd > acc_student0, "on-policy distillation raised held-out accuracy")
+    check(samp_last > samp_first, "the student's sampled answers are correct more often at the end of OPD than at the start")
 
 if args.full:
     student_two = copy.deepcopy(student0)
@@ -178,7 +182,7 @@ if args.full:
     offline_distill(student_two, teacher, tok, opd_examples[:OFFLINE_PROMPTS // 2], n_samples=4,
                     sft_steps_n=OFFLINE_SFT_STEPS // 2, max_new_tokens=MAX_NEW, lr=3e-4)
     cfg2 = OPDConfig(steps=OPD_STEPS // 2, group_size=GROUP, prompts_per_step=PROMPTS_PER_STEP,
-                     max_new_tokens=MAX_NEW, lr=2e-4, seed=args.seed, log_every=10)
+                     max_new_tokens=MAX_NEW, lr=1e-4, seed=args.seed, log_every=10)
     hist2 = opd_train(student_two, teacher, tok, opd_examples, cfg2, verbose=False)
     t_two = time.perf_counter() - t0
     acc_two = accuracy(student_two)

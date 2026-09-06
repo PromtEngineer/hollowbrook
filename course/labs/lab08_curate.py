@@ -62,13 +62,20 @@ scrubbed, n_hits = scrub_pii(pii_doc)
 print(f"scrub_pii: replaced {n_hits} items -> ...{scrubbed[-60:]!r}")
 # Filters have false positives. Measure them on data you trust: the CLEAN corpus.
 bare_math = next(d for d in clean if d["source"] == "math" and "\n" not in d["text"])
-print(f"english_score({bare_math['text']!r}) = {english_score(bare_math['text']):.2f}  <- no stopwords at all")
+print(f"english_score({bare_math['text']!r}) = {english_score(bare_math['text']):.2f}  <- no stopwords at all, "
+      f"but < 3 alphabetic words, so language_filter passes it through")
+print(f"gopher_reason({bare_math['text']!r}) = {gopher_reason(bare_math['text'])!r}  <- a prose rule (mean word length "
+      f"2-12) rejects it; heuristic_filter skips source='math' for exactly this reason")
 fp_report = CurationReport()
 survivors_clean = curate(clean, report=fp_report)
-print("\nthe pipeline run on the CLEAN corpus (every drop here is a false positive):")
+print("\nthe pipeline run on the CLEAN corpus (every drop here is a false positive — or a real duplicate):")
 print(fp_report.table())
 by_src_lost = Counter(d["source"] for d in clean) - Counter(d["source"] for d in survivors_clean)
-print(f"clean docs lost by source: {dict(by_src_lost)}   (bare 'a + b = c' lines have no English stopwords)")
+n_true_dups = len(clean) - len({d["text"] for d in clean})
+print(f"clean docs lost by source: {dict(by_src_lost)}   ({n_true_dups} are genuine duplicates: the generator "
+      f"drew the same equation twice)")
+check(fp_report.stages[0].dropped == 0 and fp_report.stages[1].dropped == 0,
+      "language and heuristic filters drop nothing from the clean corpus (math is routed around the prose rules)")
 
 # ------------------------------------------- 3. a model-based quality classifier
 section("3. train a quality classifier on a small labelled set")
@@ -130,8 +137,11 @@ check(len({d["text"] for d in curated}) == len(curated), "every curated text is 
 check(not leftover_j or max(leftover_j) < 0.8, "no surviving pair has Jaccard >= 0.8 (MinHash-LSH missed nothing above threshold)")
 check(all("@" not in d["text"] for d in curated), "no e-mail address survives PII scrubbing")
 n_clean_left = sum(1 for d in curated if d.get("planted") is None)
-print(f"\nclean documents that survived: {n_clean_left:,} / {len(clean):,} "
-      f"({len(clean) - n_clean_left:,} clean docs were dropped — mostly short math lines, see stage 2)")
+untagged_survivors = {d["orig_id"] for d in curated if d.get("planted") is None}
+tagged_survivors = {d.get("orig_id") for d in curated if d.get("planted")}
+lost_with_twin = sum(1 for d in clean if d["id"] not in untagged_survivors and d["id"] in tagged_survivors)
+print(f"\nclean documents that survived untagged: {n_clean_left:,} / {len(clean):,}; of the {len(clean) - n_clean_left:,} "
+      f"dropped, {lost_with_twin:,} live on as their planted twin (dedup kept whichever copy came first)")
 
 # Decontamination on its own: the eval questions leaked into 3 docs.
 kept = decontaminate(dirty, EVAL_QUESTIONS, n=8)

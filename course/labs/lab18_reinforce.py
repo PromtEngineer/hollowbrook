@@ -101,14 +101,14 @@ tok = get_tokenizer()
 pad_id, end_id = tok.special_tokens["<|pad|>"], tok.special_tokens[chat.END]
 
 
-def add_example(a: int, b: int) -> TaskExample:
-    return TaskExample("add", f"What is {a} + {b}?", f"{a} + {b} = {a + b}", {"answer": a + b})
-
-
-ALL_PAIRS = [(a, b) for a in range(21) for b in range(21)]
-random.Random(0).shuffle(ALL_PAIRS)
-EVAL_SET = [add_example(a, b) for a, b in ALL_PAIRS[:100]]
-TRAIN_SET = [add_example(a, b) for a, b in ALL_PAIRS[100:]]
+# The task world is small: only 441 sums exist with a, b <= 20. SFT trains on 400 random draws
+# (seed 1) and every evaluation uses 100 fresh draws (seed 999). Most evaluation prompts therefore
+# also occur in the SFT set: these numbers measure accuracy on the task distribution, not
+# generalisation to unseen sums (a strict 341/100 split is exercise 8 of Chapter 19: the small
+# model memorises rather than generalises there).
+TRAIN_SET = tasks.make_examples(400, seed=1, tasks=["add"], max_value=20)
+EVAL_SET = tasks.make_examples(100, seed=999, tasks=["add"], max_value=20)
+EVAL_OVERLAP = len({e.prompt for e in EVAL_SET} & {e.prompt for e in TRAIN_SET})
 
 
 def warm_start(size: str) -> TinyLM:

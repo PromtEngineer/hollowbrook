@@ -31,7 +31,7 @@ Read the flow left to right. Everything before `dedup` is cheap and runs on ever
 
 ![The curation funnel with the lab's numbers](../figures/08_data_pipeline.svg)
 
-The funnel above is the lab's `--full` run: 7,743 documents in, 5,301 out. Each bar's width is the number of documents still alive after that stage. Two things to notice now and remember for the rest of the chapter. First, the language filter removed 1,425 documents, and 732 of them were *clean* arithmetic lines like `75 + 80 = 155` — a filter designed for prose has a false-positive rate on maths, and you only find out by running the pipeline on data you trust. Second, by the time the expensive quality classifier ran, only 25 documents were left for it to remove: ordering the stages by cost is not an optimisation detail, it is what makes a petabyte-scale pipeline affordable.
+The funnel above is the lab's `--full` run: 7,743 documents in, 6,045 out. Each bar's width is the number of documents still alive after that stage. Two things to notice now and remember for the rest of the chapter. First, the two cheap filters remove 660 documents — every planted foreign, spam and fragment document — and *nothing* from the clean corpus, but only because the pipeline routes maths around the prose rules: `gopher_reason("75 + 80 = 155")` returns `'odd_word_length'`, and a filter designed for prose has a false-positive rate on maths that you only discover by running it on data you trust. Second, by the time the expensive quality classifier ran, only 32 documents were left for it to remove: ordering the stages by cost is not an optimisation detail, it is what makes a petabyte-scale pipeline affordable.
 
 ### Where the raw text comes from
 
@@ -41,11 +41,13 @@ The funnel above is the lab's `--full` run: 7,743 documents in, 5,301 out. Each 
 
 ### Language identification
 
-**Language identification** assigns each document a language and a confidence. Real pipelines use fastText's 176-language classifier (a bag-of-character-n-grams linear model, trained on Wikipedia and Tatoeba) and keep documents above a confidence threshold, typically 0.65 for English. `llm/data.py` uses a two-line stand-in: the fraction of words that are common English stopwords. It catches every planted German, Spanish, French and Italian document in the lab — and, as we saw, also kills arithmetic lines that contain no words at all. fastText has the same blind spot on code and maths, which is why 2025–2026 pipelines route code and maths through separate extractors (Stack v2, OpenWebMath, FineMath) rather than the general web filter.
+**Language identification** assigns each document a language and a confidence. Real pipelines use fastText's 176-language classifier (a bag-of-character-n-grams linear model, trained on Wikipedia and Tatoeba) and keep documents above a confidence threshold, typically 0.65 for English. `llm/data.py` uses a two-line stand-in: the fraction of words that are common English stopwords. It catches every planted German, Spanish, French and Italian document in the lab. A bare equation like `75 + 80 = 155` has no words at all, so its score is 0 — not because it is foreign but because it carries no language signal — and `language_filter` therefore passes any document with fewer than three alphabetic words straight through. fastText-based filters make the same exception, and 2025–2026 pipelines go further: code and maths are routed through their own extractors and filters (Stack v2, OpenWebMath, FineMath) rather than the general web filter.
 
 ### Heuristic quality filters
 
 A **heuristic filter** is a hand-written rule that drops a document for a measurable property, without any learned model. The two canonical rule sets are from C4 (2019: keep lines that end in punctuation, drop pages with "lorem ipsum" or curly braces, drop pages with fewer than three sentences) and Gopher (2021: drop documents outside 50–100,000 words, with mean word length outside 3–10 characters, with more than 10% of lines starting with a bullet, more than 30% ending in an ellipsis, with too many symbols, or where fewer than 80% of words contain an alphabetic character). FineWeb added rules for repeated lines and repeated n-grams, which is what catches spam that pads itself with `free free free`. `gopher_reason()` in the library implements a small subset (word count, mean word length, symbol ratio, duplicated lines, repeated trigrams, boilerplate phrases) and returns the *reason* a document fails, so the report can show you which rule fired.
+
+Prose rules are wrong for non-prose. `gopher_reason("75 + 80 = 155")` returns `'odd_word_length'` (mean word length 1.4, below the 2–12 range that catches character-salad spam), and the same rule rejects most code. That is a **false positive** — a good document dropped by a filter — and it is why `heuristic_filter` takes `skip_sources=("math", "code")` and passes those documents through untouched. The real-pipeline version of this decision is bigger than one flag: maths and code get their *own* curation streams (their own extractors, their own quality classifiers trained on labelled maths and code, their own dedup thresholds), and the prose pipeline never sees them. The lab runs the pipeline on the clean corpus and reports every drop, which is how you find false positives before they cost you a training run.
 
 ### Deduplication
 
@@ -180,42 +182,42 @@ report = CurationReport()
 curated = curate(dirty, eval_texts=eval_qs, clf=clf, report=report)
 print(report.table())              # one line per stage: kept, dropped, planted problems caught
 tokens = tokenize_and_pack(curated, get_tokenizer())     # (n_tokens,) int64, EOS between docs
-print(len(curated), tokens.shape)                          # 1310 torch.Size([91177])
+print(len(curated), tokens.shape)                          # 1511 torch.Size([92782])
 ```
 
 ## Worked example 🧪
 
-Run `python3 labs/lab08_curate.py` (quick: 1,500 clean documents, 8 s) and then `--full` (6,000 documents, 19 s; both measured with two CPU threads on a shared 4-core VM). The report table from the full run:
+Run `python3 labs/lab08_curate.py` (quick: 1,500 clean documents, TIMING_Q8) and then `--full` (6,000 documents, TIMING_F8; both measured with two CPU threads on a shared 4-core VM). The report table from the full run:
 
 ```
 stage                           kept  dropped  planted problems caught
-language_filter                 6318     1425  exact_dup:73, near_dup:41, non_english:180, spam:268, too_short:131
-heuristic_filter                6237       81  spam:32, too_short:49
-pii_scrub (rewrites)            6237        0  pii:180
-exact_dedup                     5688      549  exact_dup:288, pii:3
-minhash_dedup                   5329      359  exact_dup:8, near_dup:110, pii:74
-quality_classifier              5304       25  pii:25
-decontaminate                   5301        3  contaminated:3
+language_filter                 7295      448  non_english:180, spam:268
+heuristic_filter                7083      212  spam:32, too_short:180
+pii_scrub (rewrites)            7083        0  pii:180
+exact_dedup                     6439      644  exact_dup:327, near_dup:1, pii:3
+minhash_dedup                   6080      359  exact_dup:8, near_dup:110, pii:74
+quality_classifier              6048       32  near_dup:7, pii:25
+decontaminate                   6045        3  contaminated:3
 
-7,743 raw -> 5,301 curated documents in 6.8s
+7,743 raw -> 6,045 curated documents in 9.0s
 ```
 
 What to look at:
 
-1. **The language filter does most of the work** — including catching 268 of 300 spam documents, because spam has few English stopwords. It also catches 73 exact duplicates: those were copies of the bare arithmetic lines, dropped for the same (wrong) reason as their originals. Run on the *clean* corpus alone, the same stage drops 732 documents, all maths.
-2. **Dedup counts are not what they look like.** 600 exact duplicates were planted, but `exact_dedup` reports catching 288 tagged copies and dropping 549 documents. The corpus is shuffled, so for 261 of the pairs the *copy* came first and was kept, and the original was dropped. The right check is the one the lab makes: every curated text is unique, and no surviving pair has Jaccard ≥ 0.8.
+1. **The cheap filters do the language work** — the language filter catches all 180 foreign documents and 268 of 300 spam documents (spam has few English stopwords); the Gopher rules catch the other 32 spam documents (`symbol_heavy`, `boilerplate`) and all 180 fragments (`too_short`). Run on the *clean* corpus alone, the two stages drop nothing, because bare equations bypass the language test and `source="math"` bypasses the prose rules. Section 2 of the lab shows what happens without the routing: `gopher_reason('75 + 80 = 155') = 'odd_word_length'`.
+2. **Dedup counts are not what they look like.** 600 exact duplicates were planted, but `exact_dedup` reports catching 327 tagged copies and dropping 644 documents. The corpus is shuffled, so for about half the pairs the *copy* came first and was kept, and the original was dropped — the lab reports that of the 480 clean documents that "disappear", TWIN_N live on as their planted twin. (The other 40 are genuine duplicates: the generator drew the same equation twice.) The right check is the one the lab makes: every curated text is unique, and no surviving pair has Jaccard ≥ 0.8.
 3. **PII is caught 282 times for 180 planted documents.** 180 rewrites, then 3 + 74 + 25 of the scrubbed copies dropped by later stages as near-duplicates of their originals. A document can be touched by several stages; a "caught" count is per stage, not per document.
 4. **The MinHash scatter** (`figures/generated/lab08_minhash.png`) shows the 64-hash estimate against the true Jaccard on 200 pairs: mean error 0.031, maximum 0.134, matching the √(J(1−J)/64) theory. The red line at 0.8 is the drop threshold.
 5. **The classifier thresholds:** `0.3 keeps 100% of clean, rejects 61% of junk · 0.5: 100% / 92% · 0.7: 76% / 100%`. Pick 0.5 here; a real pipeline would pick by the downstream loss of a proxy model.
-6. **Mixing and packing:** with weights stories:1, math:3, maths becomes 76% of a 2,000-document sample and each of the 665 surviving maths documents is repeated ~2.3×; packing the curated set gives 374,295 tokens, 96% of them story tokens.
+6. **Mixing and packing:** with weights stories:1, math:3, maths becomes 76% of a 2,000-document sample and each of the 944 distinct surviving maths documents is repeated ~1.6×; packing the curated set gives 380,245 tokens, 94% of them story tokens — maths documents are short, so 25% of the documents is 6% of the tokens. Weights are per *document*; if you care about tokens, weight by tokens.
 
-The quick run gives the same picture at a quarter of the size (1,938 raw → 1,310 curated, 91,115 tokens, 7 s). Both end with `21/21 checks passed`.
+The quick run gives the same picture at a quarter of the size (1,938 raw → 1,511 curated, 92,720 tokens). Both end with `22/22 checks passed`.
 
 🎛️ In `interactive/08_data_pipeline.html`, paste a paragraph of your own text and watch it pass through each stage: the language score, which Gopher rule fires (if any), the shingle set and MinHash signature next to a second document you edit, and the LSH candidate probability as you drag the band/row sliders. The challenge is to find the smallest edit to a 40-word paragraph that makes its copy survive dedup at threshold 0.8.
 
 ## Try it yourself ✍️
 
-1. **Save the maths.** Add a rule to the language filter (in your own copy, or by wrapping `language_filter`) that keeps documents made mostly of digits and operators. How many clean documents survive now? Does the quality classifier still reject the junk?
+1. **Turn off the routing.** Run `heuristic_filter(clean, skip_sources=())` and `language_filter(clean, min_alpha_words=0)` on the clean corpus and count the drops by reason and by source. Then invent one rule of your own that would keep the maths *without* the `source` tag (real crawls do not come labelled). What does your rule do to `"LOGIN | REGISTER | CART (0)"`?
 2. **Threshold sweep.** Run `minhash_dedup` with thresholds 0.6, 0.7, 0.8, 0.9 on the dirty corpus and count (a) planted near-duplicates removed and (b) clean documents removed. Plot both against the threshold. Where would you set it for Storyland?
 3. **Bands and rows.** Keep 64 hashes but try 8×8, 16×4, 32×2 bands×rows. For each, compute *P*(candidate) at *J* = 0.5 and 0.8, then measure how many candidate comparisons `minhash_dedup` actually makes (add a counter). Which setting would you choose for a billion documents?
 4. **A better classifier.** Replace the "bad" training set with only spam (no foreign text, no fragments). What does the classifier now do with the German documents? This is what happens when your labels do not cover a failure mode.
@@ -226,7 +228,7 @@ The quick run gives the same picture at a quarter of the size (1,938 raw → 1,3
 
 <details><summary>1. Why do real pipelines run the language filter and heuristic rules before MinHash and the quality classifier?</summary>
 
-Cost. Language ID and heuristic rules are a few microseconds per document; MinHash hashes every shingle 64+ times and the classifier runs a model. Cheap stages typically remove 80–90% of the crawl, so the expensive stages see a tenth of the data. In the lab the classifier had only 25 documents left to reject.
+Cost. Language ID and heuristic rules are a few microseconds per document; MinHash hashes every shingle 64+ times and the classifier runs a model. Cheap stages typically remove 80–90% of the crawl, so the expensive stages see a tenth of the data. In the lab the classifier had only 32 documents left to reject.
 </details>
 
 <details><summary>2. Two 3-word-shingle sets share 30 shingles and have 40 in their union. With 64 hashes, what fraction of signature positions agree, and with 16 bands of 4 rows what is the probability they become an LSH candidate?</summary>
@@ -252,7 +254,7 @@ Because 10% of a 15T-token crawl is 1.5T unique tokens, and a 15T-token run woul
 ## Key takeaways
 
 - Curation is a funnel ordered by cost: extraction → language → heuristics → dedup → classifier → PII → decontamination → mix → pack. Cheap stages remove most of the data.
-- Filters have false positives; measure them on data you trust. Prose rules kill maths and code.
+- Filters have false positives; measure them on data you trust. Prose rules reject maths and code, so those get their own curation streams.
 - MinHash turns "are these documents similar?" into "do these 64 numbers agree?", and LSH banding turns "compare all pairs" into "compare bucket-mates". *P*(candidate) = 1 − (1 − *J*<sup>r</sup>)<sup>b</sup>.
 - Dedup reduces memorisation ~10× and saves compute; decontamination removes the eval answers the web already contains.
 - Quality classifiers distil an expensive judge into a cheap scorer; balance the labels and pick the threshold on held-out data.

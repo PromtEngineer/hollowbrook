@@ -167,6 +167,7 @@ from llm.agent import TinyLMBackend                       # noqa: E402
 from llm.chat import render                               # noqa: E402
 
 base, tok = get_base_model(quick=True, verbose=False)     # the nano base model (Part II)
+from llm.model import TinyLM                              # noqa: E402
 calc_only = tools.subset(["calculator"])
 SYS = "Use the calculator tool, then answer."
 question = "What is 17 + 25?"
@@ -189,37 +190,70 @@ class CompactTinyLMBackend(TinyLMBackend):
         return TinyLMBackend.to_chat_messages(messages, [], system)
 
 
-def try_model(model, label: str, n: int = 4) -> tuple[int, int]:
-    """Probe a model on n fresh questions: how many replies parse as a tool call, and how
-    many of those carry the RIGHT expression. Returns (well_formed, correct_args)."""
+def calc_registry(tool_name: str) -> ToolRegistry:
+    """The calculator under the name a given model was trained with ('calculator' or Ch. 21's 'calc')."""
+    return ToolRegistry([Tool(tool_name, "Evaluate an arithmetic expression.",
+                              {"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"]},
+                              tools.get("calculator").fn)])
+
+
+def try_model(model, label: str, system: str, tool_name: str, questions) -> tuple[int, int]:
+    """Probe a model on fresh questions: how many replies parse as a tool call, and how many
+    of those carry the RIGHT expression. Returns (well_formed, correct_args)."""
     be = CompactTinyLMBackend(model, tok, max_new_tokens=80)      # a full tool call is ~55 Storyland tokens
     well_formed = correct = 0
-    for a, b_ in [(3, 4), (60, 31), (88, 9), (45, 54)][:n]:
-        r = be.complete([{"role": "user", "content": f"What is {a} + {b_}?"}], [], SYS)
+    for a, b_ in questions:
+        r = be.complete([{"role": "user", "content": f"What is {a} + {b_}?"}], [], system)
         well_formed += bool(r.tool_calls)
-        expr = r.tool_calls[0].arguments.get("expression", "") if r.tool_calls else ""
+        expr = r.tool_calls[0].arguments.get("expression", "") if r.tool_calls and r.tool_calls[0].name == tool_name else ""
         correct += expr.replace(" ", "") == f"{a}+{b_}"
-    r = be.complete([{"role": "user", "content": question}], [], SYS)
-    print(f"   {label}: raw reply to {question!r}: {r.raw[:90]!r}")
-    print(f"   {label}: parsed: {[c.to_dict() for c in r.tool_calls] or 'NO TOOL CALL'}")
-    print(f"   {label}: on {n} other questions: {well_formed}/{n} well-formed tool calls, {correct}/{n} with the right expression")
+    n = len(questions)
+    print(f"   {label}: on {n} questions: {well_formed}/{n} well-formed tool calls, {correct}/{n} with the right expression")
     return well_formed, correct
 
 
-t0 = time.perf_counter()
-ok_base, right_base = try_model(base, "base model")
-t_base = Agent(CompactTinyLMBackend(base, tok, max_new_tokens=80), calc_only,
-               AgentConfig(permission_policy="allow_all", max_turns=3), system_prompt=SYS).run(question)
-print(f"   base model in the loop: stop_reason={t_base.stop_reason!r}, tool calls {t_base.tool_calls_made}, final {t_base.final_text[:60]!r}  ({time.perf_counter() - t0:.1f}s)")
-check(t_base.stop_reason in ("done", "max_turns"), "the loop terminated cleanly whatever the base model produced")
-print(f"   -> a pretrained-only model {'DID' if ok_base else 'did NOT'} emit a valid <|tool_call|>: tool use is a trained behaviour (Chapters 15, 21)")
+def run_agent(model, system: str, tool_name: str, q: str):
+    return Agent(CompactTinyLMBackend(model, tok, max_new_tokens=80), calc_registry(tool_name),
+                 AgentConfig(permission_policy="allow_all", max_turns=3), system_prompt=system).run(q)
 
-# A tool-trained model: reuse one from Lab 21 / a previous --full run, or train it now.
-candidates = sorted(glob.glob(run_path("lab21_toolsft*.pt")) + glob.glob(run_path("lab24_toolsft*.pt")))
+
+# (4a) a model that was never trained on tool calls: the instruction-tuned model of Lab 15 if it
+#      exists (it follows instructions but has never seen <|tool_call|>), else the base model.
+QS = [(3, 4), (60, 31), (88, 9), (45, 54)]
+if os.path.exists(run_path("sft_nano.pt")):
+    untrained, label_u = TinyLM.load(run_path("sft_nano.pt")), "instruction-SFT model (Lab 15, no tool data)"
+else:
+    untrained, label_u = base, "base model"
+t0 = time.perf_counter()
+ok_u, right_u = try_model(untrained, label_u, SYS, "calculator", QS)
+t_u = run_agent(untrained, SYS, "calculator", question)
+print(f"   {label_u} in the loop: raw {t_u.messages[1]['content'][:60]!r} -> stop_reason={t_u.stop_reason!r}, "
+      f"tool calls {t_u.tool_calls_made}  ({time.perf_counter() - t0:.1f}s)")
+check(t_u.stop_reason in ("done", "max_turns"), f"the loop terminated cleanly whatever the {label_u.split(' (')[0]} produced")
+print(f"   -> a model with no tool training {'DID' if ok_u else 'did NOT'} emit a valid <|tool_call|>: tool use is a trained behaviour (Chapters 15, 21)")
+
+# (4b) Chapter 21's tool-trained model (SFT on tool traces + GRPO), in ITS format: tool 'calc',
+#      the short system prompt it was trained with, and questions in its 0-20 range.
+SYS21, Q21, QS21 = "Use the calc tool.", "What is 17 + 5?", [(3, 4), (8, 9), (15, 4), (6, 19)]
+ch21 = [n for n in ("lab21_tool_grpo.pt", "lab21_tool_sft.pt") if os.path.exists(run_path(n))]
+if ch21:
+    m21 = TinyLM.load(run_path(ch21[0]))
+    ok21, right21 = try_model(m21, f"Chapter 21 model (runs/{ch21[0]})", SYS21, "calc", QS21)
+    t21 = run_agent(m21, SYS21, "calc", Q21)
+    print(t21.pretty())
+    check(t21.tool_calls_made >= 1 and t21.messages[2]["content"] == "22",
+          f"Chapter 21's model called calc({(t21.messages[1].get('tool_calls') or [{}])[0].get('arguments')}) and the harness returned 22")
+    check("22" in t21.final_text, f"its final answer uses the result: {t21.final_text!r}")
+    check(right21 >= 2 and ok21 > ok_u, f"well-formed AND correct on fresh questions: {right21}/4 (vs {ok_u}/4 well-formed for the untrained model)")
+else:
+    print("   (no runs/lab21_tool_*.pt: run labs/lab21_agentic_rl.py to see a tool-trained model succeed here)")
+
+# (4c) our own short SFT: 150 steps on 600 traces. --full trains it (and saves it); later runs load it.
+own = run_path("lab24_toolsft_nano.pt")
 sft_model = None
-if candidates:
-    sft_model = base.__class__.load(candidates[-1])
-    print(f"   loaded a tool-trained model: {os.path.relpath(candidates[-1])}")
+if os.path.exists(own):
+    sft_model = TinyLM.load(own)
+    print(f"   loaded runs/lab24_toolsft_nano.pt from an earlier --full run")
 elif args.full:
     from llm.sft import sft_train, SFTConfig             # noqa: E402
     import random
@@ -244,28 +278,27 @@ elif args.full:
     t0 = time.perf_counter()
     hist = sft_train(sft_model, tok, tool_traces(600, 1), SFTConfig(steps=150, batch_size=8, lr=1e-3, warmup_steps=10, max_len=128, log_every=50), verbose=True)
     print(f"   SFT done in {time.perf_counter() - t0:.0f}s: loss {hist.train_loss[0]:.2f} -> {hist.train_loss[-1]:.2f}")
-    sft_model.save(run_path("lab24_toolsft_nano.pt"), extra={"stage": "toolsft"})
+    sft_model.save(own, extra={"stage": "toolsft"})
     print(f"   saved runs/lab24_toolsft_nano.pt")
 else:
-    print("   no tool-trained checkpoint found (runs/lab21_toolsft*.pt or runs/lab24_toolsft*.pt); run with --full to train one")
+    print("   (run with --full to train a 150-step tool-SFT here: ~3.5 min)")
 
 if sft_model is not None:
-    ok_sft, right_sft = try_model(sft_model, "tool-SFT model")
-    t_sft = Agent(CompactTinyLMBackend(sft_model, tok, max_new_tokens=80), calc_only,
-                  AgentConfig(permission_policy="allow_all", max_turns=3), system_prompt=SYS).run(question)
+    ok_sft, right_sft = try_model(sft_model, "150-step tool-SFT model", SYS, "calculator", QS)
+    t_sft = run_agent(sft_model, SYS, "calculator", question)
     print(t_sft.pretty())
     expr = (t_sft.messages[1].get("tool_calls") or [{}])[0].get("arguments", {}).get("expression")
     check(t_sft.tool_calls_made >= 1 and t_sft.messages[2]["role"] == "tool_result",
-          f"the tool-SFT model emitted a well-formed call, the harness parsed it and ran calculator({expr!r}) -> {t_sft.messages[2]['content']!r}")
-    check(ok_sft > ok_base, f"well-formed tool calls on 4 fresh questions: tool-SFT {ok_sft}/4 vs base {ok_base}/4")
+          f"the 150-step model emitted a well-formed call; the harness ran calculator({expr!r}) -> {t_sft.messages[2]['content']!r}")
+    check(ok_sft > ok_u, f"well-formed tool calls on 4 fresh questions: {ok_sft}/4 vs {ok_u}/4 untrained")
     check(t_sft.stop_reason == "done" and t_sft.turns == 2, f"the loop fed the result back and the model answered in turn 2: {t_sft.final_text!r}")
     right = expr is not None and expr.replace(" ", "") == "17+25"
     print(f"   expression correct for {question!r}: {right} (expected '17 + 25'); on the other 4: {right_sft}/4")
     if not right:
-        print("   -> SYNTAX learned, SEMANTICS not: after 150 SFT steps this 0.3M-param model reproduces the tool-call")
-        print("      format perfectly but does not copy the numbers from the question. The harness cannot tell: the call")
-        print("      is valid, the tool runs, and the model trusts the (wrong) result. Grounding arguments is what")
-        print("      Chapter 21's RL with a verifiable reward trains; more data, steps and parameters are exercise 6.")
+        print("   -> SYNTAX learned, SEMANTICS not: 150 steps teach this 0.3M-param model the tool-call format but not")
+        print("      to copy the numbers from the question. The harness cannot tell: the call is valid, the tool runs,")
+        print("      and the model trusts the (wrong) result. Chapter 21's recipe (700 SFT steps on a 0-20 range, then")
+        print("      GRPO with a verifiable reward) is what grounds the arguments; see (4b).")
 
 
 # =============================================================== (5) the API dialect

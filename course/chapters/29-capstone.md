@@ -7,7 +7,7 @@
 
 ## Why this matters
 
-Twenty-eight chapters ago the outline promised one thing: that you would take a language model through every stage a frontier model goes through in 2026, on a laptop, with code you can read in full. This chapter cashes that promise in a single script. `lab29_capstone.py` starts from raw documents and ends with a model calling a calculator tool inside the harness of Chapter 27, and between those two points it runs curation, tokenization, pretraining, mid-training, supervised fine-tuning, preference optimisation, reinforcement learning with a verifiable reward, on-policy distillation and an evaluation of every checkpoint on the same questions. The **capstone** is not a new technique; it is the discipline of running the old ones in one line and reading one table at the end. The second half of the chapter is the map you need next: what a $100 run does differently, what changes at 1B, 10B and 100B+ parameters, how to keep up, and a checklist of what you can now do.
+The outline promised that you would take a language model through every stage a frontier model goes through in 2026, on a laptop, with code you can read in full. This chapter cashes that promise in one script: `lab29_capstone.py` starts from raw documents and ends with a model calling a calculator tool inside the harness of Chapter 27, running curation, tokenization, pretraining, mid-training, SFT, DPO, GRPO, on-policy distillation and an evaluation of every checkpoint on the same questions in between. The **capstone** is not a new technique; it is the discipline of running the old ones in one line and reading one table at the end. The second half of the chapter is the map you need next: what a $100 run does differently, what changes at 1B, 10B and 100B+, how to keep up, and what you can now do.
 
 ## The idea in pictures 📐
 
@@ -50,9 +50,7 @@ with Stage("4. supervised fine-tuning (Chapter 15)") as st:          # times the
     paths["sft"] = p
 ```
 
-`existing()` checks that a candidate has the right width (`cfg.d_model`), because a nano checkpoint from Lab 13 must not be reused in a `--full` (small) run. Three stages deserve a closer look.
-
-**The curation report** (Chapter 8) is printed, not asserted: the numbers change with the planted noise, and the point of the stage is that you can read what each filter removed. **The evaluation** (Chapter 23) is the same call for every checkpoint, greedy decoding, `tasks.verify` as the grader, plus perplexity on held-out Storyland:
+`existing()` checks that a candidate has the right width (`cfg.d_model`), because a nano checkpoint from Lab 13 must not be reused in a `--full` (small) run. **The evaluation** (Chapter 23) is the same call for every checkpoint: greedy decoding, `tasks.verify` as the grader, plus perplexity on held-out Storyland:
 
 ```python
 from llm.evals import eval_tasks, perplexity
@@ -65,7 +63,7 @@ for name in ("base", "mid", "sft", "dpo", "grpo", "opd"):
     ppl = perplexity(m, val_tokens, batch_size=16, seq_len=128, n_batches=5)
 ```
 
-**Tool-SFT** is the one recipe that no earlier lab ran in exactly this form: supervised fine-tuning on conversations that contain a tool call and a tool result, so that the model learns to emit the harness's format. The training conversations use *exactly* the system prompt that `TinyLMBackend` will render at inference (the prompt plus the tool schemas as JSON), because a format learned under one system prompt does not transfer to another:
+**Tool-SFT** is supervised fine-tuning on conversations that contain a tool call and a tool result, so that the model learns to emit the harness's format. The training conversations use *exactly* the system prompt that `TinyLMBackend` renders at inference (the prompt plus the tool schemas as JSON), because a format learned under one system prompt does not transfer to another:
 
 ```python
 from llm.agent import TinyLMBackend, Tool, ToolRegistry
@@ -93,39 +91,68 @@ python3 labs/lab29_capstone.py --full     # the small model; about 25 minutes th
 python3 labs/lab29_capstone.py --fresh    # retrain every capstone_* checkpoint
 ```
 
-The timings below come from a 4-core machine that was also running other labs (load average above 20), so the script fell back to one PyTorch thread; an idle laptop is two to five times faster.
+The timings below come from a 4-core machine that was also running other labs (load average above 14), so the script fell back to one PyTorch thread; an idle laptop is two to five times faster.
 
-### Quick mode, first run (nano model)
+### Quick mode (nano model)
 
-The curation report is Chapter 8's table on 1,500 clean documents plus planted noise:
-
-```
-QUICK_CURATION_TODO
-```
-
-The base model is loaded rather than trained because `runs/base_nano.pt` exists from Lab 10, and mid-training reuses Lab 13's annealed checkpoint. Then the post-training stages run, each printing its own log:
+Quick mode is what you get after working through the course in order, because `runs/` then already holds Lab 13's annealed model, Lab 15's `sft_nano.pt`, Lab 17's `lab17_dpo_nano.pt` and Lab 19's `grpo_nano.pt`. The curation report is Chapter 8's table on 1,500 clean documents plus planted noise:
 
 ```
-QUICK_STAGES
+stage                           kept  dropped  planted problems caught
+language_filter                 1824      114  non_english:45, spam:69
+heuristic_filter                1773       51  spam:6, too_short:45
+pii_scrub (rewrites)            1773        0  pii:45
+exact_dedup                     1615      158  exact_dup:79, pii:1
+minhash_dedup                   1518       97  exact_dup:1, near_dup:32, pii:19
+quality_classifier              1514        4  pii:4
+decontaminate                   1511        3  contaminated:3
+   1,938 raw docs -> 1,511 curated
 ```
 
-Three things to read in those logs. SFT's masked loss falls from 9.6 to 3.4 in 120 steps, but validation accuracy is 0.04: a 300k-parameter model learns the *format* of an answer long before it learns the answers. DPO's margin on held-out pairs goes from 0.00 to +1.86 and pair accuracy from 0.50 to 0.68, using synthetic pairs only, because the SFT model was wrong on all 24 sampled prompts and so yielded no on-policy pairs (Chapter 17 explained why an all-wrong prompt teaches nothing about ranking). GRPO's reward barely moves (0.065 → 0.069) in 12 steps with `accuracy 0.00` on every step: with no correct answers in any group, every group has zero variance and there is no signal to learn from; Lab 19 needed a better starting point and many more steps. The lesson is the pipeline's, not the model's: every stage ran, logged the right diagnostics, and saved a checkpoint the next stage could load.
+Then four stages report `reusing ...` in under a second each, and the two stages no earlier lab produced in this form run for real:
+
+```
+--- 7. on-policy distillation into a student (Chapter 20) ---
+opd step    0 | reverse KL 6.1889 | acc 0.00 | len   8.1 | 0.6s
+opd step    5 | reverse KL 4.3418 | acc 0.06 | len   8.6 | 3.4s
+   student = the SFT checkpoint (same size), teacher = grpo_nano.pt: reverse KL 6.189 -> 4.342
+```
+
+A reverse KL of 6.2 nats per token says the SFT and GRPO models disagree violently about what to say next; six OPD steps close a third of the gap. On an empty `runs/` the script trains every stage itself (309 s on this machine): SFT's masked loss fell from 9.61 to 3.38 in 120 steps at a validation accuracy of 0.04; DPO's held-out margin rose from 0.00 to +1.86 on synthetic pairs alone (the SFT model was wrong on all 24 sampled prompts, so no on-policy pairs); GRPO's reward stayed at 0.06–0.07 for 12 steps with `acc 0.00` throughout, because a group with no correct answer has nothing to learn from. A 300k-parameter model learns the *format* of an answer long before the answers.
 
 The table that the whole course was building towards:
 
 ```
-QUICK_TABLE
+| stage | checkpoint            | acc (all) | acc (add) | perplexity | eval s |
+|---|---|---:|---:|---:|---:|
+| base  | base_nano.pt          | 0.00 | 0.00 |    2.90 | 5 |
+| mid   | lab13_annealed.pt     | 0.00 | 0.00 |    2.90 | 3 |
+| sft   | sft_nano.pt           | 0.12 | 0.00 |   39.24 | 3 |
+| dpo   | lab17_dpo_nano.pt     | 0.03 | 0.12 | 3568.72 | 6 |
+| grpo  | grpo_nano.pt          | 0.00 | 0.33 | 3573.12 | 6 |
+| opd   | capstone_opd_nano.pt  | 0.12 | 0.00 |   36.55 | 4 |
 ```
 
-Read it column by column. Perplexity is lowest for the base and mid checkpoints and *rises* through post-training (2.90 → 4.02): every stage after pretraining trades Storyland fluency for something else, which is the alignment tax of Chapter 14 measured at toy scale. Accuracy on the mixed tasks moves from 0.00 to 0.05 at SFT and stays there: the nano model is too small for most of the seven tasks, and 40 questions give a 95 % interval of roughly ±0.07, so none of the differences between sft, dpo and grpo are distinguishable (Chapter 23). The sample answers in the right-hand column say more than the numbers: the base model continues the prompt (`'+   78.'`), the SFT model answers in the right shape with the wrong arithmetic (`'5 + 3 = 3'`), and the DPO model has started to over-generate the pattern it was rewarded for.
+Read it with the sample answers to `'What is 7 + 2?'` beside it: base `'+   78.'`, mid `'?\nAnswer:   63 + 63?'`, sft `'75 + 75 = 105'`, dpo `'7 + 2 = 11'`, grpo `'7 + 2 = 9'`, opd `'75 + 75 = 97'`. Base and mid continue the prompt as a Storyland document and answer nothing. SFT produces the shape of an answer and scores 0.12 on the mixed tasks (`count` is the one it gets) at a Storyland perplexity of 39 instead of 2.9. DPO and GRPO are where the operands start to be copied, and Lab 19's GRPO checkpoint gets a third of the single-digit additions right at a perplexity of 3,573 on the text it was pretrained on: Chapter 14's alignment tax, taken to its limit by a 300k-parameter model pushed hard on one task. OPD moved the SFT model a third of the way toward the teacher in KL and not at all in addition accuracy. With 40 and 24 questions the 95 % intervals are about ±0.1 and ±0.2, so only `grpo`'s 0.33 and the base-versus-rest gap are real differences (Chapter 23).
 
 The last stage is the agent:
 
 ```
-QUICK_AGENT
+   tool-SFT: 300 traces of 320 tokens, 60 steps, loss 10.653 -> 0.774
+   raw generation for 'What is 17 + 25?': '<|tool_call|>{"name": "calc", "arguments": {"expression": "24 + 30"}}<|end|>: 30 = 30 = 30 = 30<|end'
+   TinyLM transcript:
+      USER: What is 17 + 25?
+      ASSISTANT:
+        -> call calc({"expression": "24 + 30"})
+        <- result: 54
+      ASSISTANT: 6 + 30 = 22
+      [done after 2 turns, 1 tool calls]
+   TinyLM called the tool and its final answer was wrong ('6 + 30 = 22')
+✅ the agent loop terminates with a real model behind it
+✅ the scripted reference agent uses the tool and answers
 ```
 
-QUICK_AGENT_TEXT
+Sixty steps of tool-SFT are enough for the nano model to emit a well-formed tool call that the harness parses and executes. The operands are invented (`24 + 30` for `17 + 25`), the final answer ignores the `54` it was given, and the raw generation runs on past its turn (`30 = 30 = 30`), which `TinyLMBackend` cuts at the first foreign role tag. The full-mode transcript is the same story with a bigger model.
 
 ### Full mode (small model)
 
@@ -156,9 +183,9 @@ report written to runs/capstone_report.md; total 837s
 11/11 checks passed in 842.7s
 ```
 
-Fourteen minutes on the loaded machine, 837 s of which 275 went to SFT and 224 to tool-SFT. The small model's mid-training anneal lowers the held-out math loss from 1.509 to 1.384 in 120 steps (Chapter 13's effect, reproduced), SFT takes the masked loss from 12.66 to 2.16, and DPO reaches a held-out margin of +2.74 with pair accuracy 0.85 using 320 synthetic pairs and the 3 on-policy pairs that the SFT model's 3 % sample accuracy allowed. Then GRPO shows something the quick run could not: the log reads `skipped 0.75` to `skipped 1.00` on every step and `H 1.57–1.75`, with `H nan` on the steps where every group was skipped. DPO had sharpened the policy so much that eight samples of the same prompt were usually eight copies of the same wrong answer; a group with zero variance has zero advantages, DAPO's dynamic sampling drops it, and in 20 steps the optimizer saw perhaps five groups. That is the entropy collapse of Chapter 19 arriving from the stage *before* RL, and it is the most useful number in the run: a preference stage that "worked" by its own metric (margin up, accuracy up) left the policy with too little diversity for the next stage to learn from. The 2026 fixes you implemented (clip-higher, no std normalisation, no KL) cannot help when there is nothing to clip; the fix is upstream, in DPO's `beta` or step count, or in sampling GRPO at a higher temperature.
+Fourteen minutes on the loaded machine (837 s, 275 of them SFT and 224 tool-SFT). Mid-training lowers the held-out math loss from 1.509 to 1.384 in 120 steps, SFT takes the masked loss from 12.66 to 2.16, and DPO reaches a held-out margin of +2.74 with pair accuracy 0.85. Then GRPO shows something the quick run could not: `skipped 0.75` to `skipped 1.00` on every step, and `H nan` where every group was skipped. DPO had sharpened the policy so much that eight samples of one prompt were usually eight copies of the same wrong answer; a zero-variance group has zero advantages, DAPO's dynamic sampling drops it, and in 20 steps the optimizer saw perhaps five groups. That is Chapter 19's entropy collapse arriving from the stage *before* RL, and it is the most useful number in the run: a preference stage that "worked" by its own metric left too little diversity for the next stage to learn from. Clip-higher and the other 2026 fixes cannot help when there is nothing to clip; the fix is upstream, in DPO's `beta` or step count, or in sampling GRPO at a higher temperature.
 
-The checkpoint table tells the same story in aggregate. Perplexity rises gently through SFT, DPO and GRPO (2.07 → 2.44) and jumps to 34 for the OPD row, which is a different, smaller model: the nano student from Lab 15 (`sft_nano.pt`) distilled from the small GRPO teacher, whose Storyland perplexity was already high before distillation. Its 0.17 on the mixed tasks is the highest in the table, and it is the smallest model; it comes from Lab 15's 300-step SFT on four task types, not from the 16 OPD steps, which lowered the reverse KL from 0.92 to 0.33 without changing its addition score. With 60 and 30 questions, the confidence intervals are about ±0.09 and ±0.12, so the only differences in the table that survive Chapter 23's scrutiny are base/mid versus the rest.
+In the table, perplexity rises gently through SFT, DPO and GRPO (2.07 → 2.44) and jumps to 34 for the OPD row, which is a different, smaller model: Lab 15's nano student distilled from the small GRPO teacher. Its 0.17 on the mixed tasks, the highest in the table, comes from Lab 15's 300-step SFT, not from the 16 OPD steps, which lowered the reverse KL from 0.92 to 0.33 without changing its addition score. With 60 and 30 questions the intervals are about ±0.09 and ±0.12, so only base/mid versus the rest survives Chapter 23's scrutiny.
 
 The agent is the finale, and it deserves to be read line by line:
 
@@ -175,9 +202,9 @@ The agent is the finale, and it deserves to be read line by line:
    TinyLM called the tool and its final answer was wrong ('6 + 13 = 21')
 ```
 
-After 200 steps of tool-SFT the 2.4M-parameter model emits a syntactically perfect tool call: the marker, valid JSON, the right tool name, the right argument key, a closing `<|end|>`. `parse_tool_call` accepts it, the harness runs `safe_eval("6 + 13")`, and the result `19` comes back as a `tool_result` turn. Then two failures that are worth more than a success would have been: the operands are `6 + 13`, not `17 + 25` (the model learned the template and not the copying of two numbers from the prompt into the call, which Chapter 5 would call an induction pattern it has not yet formed), and the final answer `6 + 13 = 21` ignores the `19` it was handed. The model learned the *protocol* of tool use, which is what tool-SFT teaches, and not the *purpose*, which is what Chapter 21's agentic RL rewards (a correct final answer, plus a bonus for a tool call whose result matches it). The harness, meanwhile, did exactly its job from Chapter 27: a bounded loop, a validated call, a sandboxed execution, and a transcript that records both the call and the wrong answer, so that a verifier, not the model, has the last word.
+After 200 steps of tool-SFT the 2.4M-parameter model emits a syntactically perfect tool call: marker, valid JSON, the right tool name and argument key, a closing `<|end|>`. `parse_tool_call` accepts it, the harness runs `safe_eval("6 + 13")`, and `19` comes back as a `tool_result` turn. Then two failures worth more than a success: the operands are `6 + 13`, not `17 + 25` (the model learned the template, not the copying of two numbers from the prompt, an induction pattern it has not formed), and the final answer `6 + 13 = 21` ignores the `19` it was handed. The model learned the *protocol* of tool use, which is what tool-SFT teaches, not the *purpose*, which is what Chapter 21's agentic RL rewards. The harness did exactly its Chapter 27 job: a bounded loop, a validated call, a sandboxed execution, and a transcript that records the call and the wrong answer, so that a verifier, not the model, has the last word.
 
-The quick run cannot get this far. The nano model after 60 tool-SFT steps produces `<|tool_call|>` followed by near-JSON with misspelled keys (the raw generation below shows it), `parse_tool_call` returns `None`, the reply is treated as text, and the loop ends after one turn with no tool call. Format learning is the first thing SFT teaches and the first thing a model too small for its context loses.
+Format learning is the first thing SFT teaches: in the experiments behind this lab, the nano model produced `<|tool_call|>` after 40 steps, near-JSON with misspelled keys (`"namm"`, `"arargments"`) after 160 steps at a lower learning rate, and a parseable call after 60 steps at `lr = 1e-3`; the small model produced valid JSON after 80 steps and never, in 240 steps, copied both operands correctly. Copying two numbers out of a 250-token prompt into a template is a harder skill than the template, and it is the skill Chapter 21's reward pays for.
 
 The report is saved to `runs/capstone_report.md` and the figure to `figures/generated/lab29_capstone.png` (accuracy per stage on the left, seconds per stage on the right).
 
@@ -189,91 +216,85 @@ Everything in the lab has a counterpart in a frontier run. The figure `29_scale_
 
 **nanochat** (Karpathy, October 2025) is the closest public relative of this course: one repository that trains a tokenizer, pretrains a Transformer, mid-trains, SFTs, optionally runs a little RL, evaluates, and serves a chat UI, in about four hours on 8×H100 for roughly $100. Set against Lab 29, the differences are instructive because they are *not* differences of kind:
 
-- **Data volume.** TinyLM sees about a million Storyland tokens; nanochat streams on the order of ten billion FineWeb-Edu tokens through the same kind of packed-window loader, so data arrives in shards from disk rather than from a Python list, and the tokens-per-parameter ratio is chosen from a scaling rule (Chapter 9) rather than by what fits in a minute.
-- **Tokenizer.** Its own byte-level BPE with 2¹⁶ = 65,536 entries (Chapter 2 discussed why the vocabulary grows with the model); ours saturates at 871 because Storyland has only 401 distinct chunks.
-- **Model and optimizer.** A ~560M-parameter model with the same block you built (pre-norm, RoPE, GQA-style attention, SwiGLU-like MLP), trained with Muon for the matrices and AdamW for embeddings and norms, in bfloat16; the speedrun lineage it borrows from (modded-nanogpt) had reached a GPT-2-grade result in a reported ~1.35 minutes on 8×H100 by April 2026 using Muon, FlashAttention-3, an FP8 head and multi-token prediction.
-- **Parallelism.** Plain data parallelism across eight GPUs with an all-reduce per step (Chapter 11's Lab 11 did this across two CPU processes); nothing more is needed at this size.
-- **Evals.** A fixed suite (a CORE-style aggregate, ARC, GSM8K, HumanEval, MMLU) run on every checkpoint, which is the same habit as the capstone's table with better questions.
-- **Post-training.** SFT on conversations and a modest amount of RL on GSM8K; no preference stage and no distillation, and no safety training at all, which is worth noticing: a $100 model is a research artefact, not a product.
+- **Data volume.** TinyLM sees about a million Storyland tokens; nanochat streams on the order of ten billion FineWeb-Edu tokens from disk shards through the same kind of packed-window loader, with the tokens-per-parameter ratio chosen from a scaling rule (Chapter 9).
+- **Tokenizer.** Its own byte-level BPE with 2¹⁶ = 65,536 entries; ours saturates at 871 because Storyland has 401 distinct chunks.
+- **Model and optimizer.** ~560M parameters with the block you built (pre-norm, RoPE, GQA, SwiGLU), Muon for the matrices and AdamW for the rest, in bfloat16; its speedrun lineage (modded-nanogpt) reached a GPT-2-grade result in a reported ~1.35 minutes on 8×H100 by April 2026 with Muon, FlashAttention-3, an FP8 head and multi-token prediction.
+- **Parallelism.** Data parallelism across eight GPUs with an all-reduce per step (Lab 11 did this across two CPU processes).
+- **Evals.** A fixed suite (a CORE-style aggregate, ARC, GSM8K, HumanEval, MMLU) on every checkpoint: the capstone's table with better questions.
+- **Post-training.** SFT and a little RL on GSM8K; no preference stage, no distillation, no safety training. A $100 model is a research artefact, not a product.
 
-The honest summary is that nanochat is Lab 29 with 10⁴ times the data, 200 times the parameters, real benchmarks, and a GPU. Every function name maps.
+nanochat is Lab 29 with 10⁴ times the data, 200 times the parameters, real benchmarks and a GPU. Every function name maps.
 
 ### What changes at 1B, 10B and 100B+
 
-**Data volume and curation infrastructure.** At 1B parameters a compute-optimal run wants tens of billions of tokens and an over-trained one (Chapter 9's 2026 practice for small models) hundreds of billions; deduplication and quality classification stop being a function call and become a cluster job over a shard store, with MinHash (Chapter 8) run at petabyte scale. At 10B+ the mix is engineered: multiple sources with tuned weights, a curriculum that shifts the mix over training, decontamination against every eval you will ever report, and synthetic rephrasing or generation (Nemotron-CC, FineInstructions). At the 10T+-token horizon the 2026 evidence (Nemotron-CC, and the "Data Darwinism" line of work) is that diversity matters more than aggressive filtering, and that curation pipelines themselves are being evolved by models.
+**Data volume and curation infrastructure.** At 1B parameters a compute-optimal run wants tens of billions of tokens and an over-trained one (Chapter 9) hundreds of billions; deduplication and quality classification become a cluster job over a shard store, with MinHash (Chapter 8) at petabyte scale. At 10B+ the mix is engineered: tuned source weights, a curriculum, decontamination against every eval you will report, synthetic rephrasing (Nemotron-CC, FineInstructions). At the 10T+-token horizon the 2026 evidence is that diversity beats aggressive filtering and that curation pipelines are themselves being evolved by models.
 
 **Tokenizer size.** 32k–128k vocabularies at 1–10B, 128k–256k at the frontier, trained on a sample of the actual pretraining mix, with digit chunking and code-whitespace merges deliberately designed. The rule from Chapter 2 holds: the tokenizer and the mix are designed together.
 
-**Precision, optimizer and architecture.** FP8 training is the 2026 default from about 10B up, with NVFP4 recipes reported validated on multi-trillion-token runs to ~120B and MXFP4 pretraining under study; Hadamard rotations are the trick that keeps FP4 stable. Muon is mainstream (Kimi K2, GLM-4.5/5, DeepSeek-V4 report using it), with the commonly cited ≈2× compute-efficiency over AdamW from Moonshot's 2025 scaling paper and a July 2026 study reporting that it matches or beats AdamW on hybrid Mamba-attention MoE models with gains that grow with batch size. At 100B+ the architecture is a mixture of experts (DeepSeek-V4 at ~1.6T total parameters keeps DeepSeekMoE and MTP, adds compressed sparse attention for million-token context, and replaces plain residuals with manifold-constrained hyper-connections); GLM-5 is reported to orthogonalise MLA up-projections per head ("Muon Split"). Chapter 12 built the MoE block; what changes is that expert placement becomes a networking problem.
+**Precision, optimizer and architecture.** FP8 training is the 2026 default from about 10B up; NVFP4 recipes are reported validated on multi-trillion-token runs to ~120B, MXFP4 pretraining is under study, and Hadamard rotations keep FP4 stable. Muon is mainstream (Kimi K2, GLM-4.5/5 and DeepSeek-V4 report using it), with the commonly cited ≈2× compute-efficiency over AdamW and a July 2026 study reporting it matches or beats AdamW on hybrid Mamba-attention MoE models. At 100B+ the model is a mixture of experts: DeepSeek-V4 (~1.6T parameters) keeps DeepSeekMoE and MTP, adds compressed sparse attention for million-token context and replaces plain residuals with manifold-constrained hyper-connections. Chapter 12 built the MoE block; what changes is that expert placement becomes a networking problem.
 
-**4-D parallelism.** Chapter 11's taxonomy becomes the daily job: tensor parallelism inside a node, pipeline parallelism across nodes, expert parallelism for the MoE layers, data parallelism over everything, and context parallelism for long sequences. Model FLOPs utilisation of 40–50 % is the target, fault tolerance (checkpoint restarts, straggler handling) is a first-class feature, and the training loop of Chapter 10 is unchanged in shape but wrapped in a scheduler.
+**4-D parallelism.** Chapter 11's taxonomy becomes the daily job: tensor parallelism inside a node, pipeline across nodes, expert parallelism for the MoE layers, data parallelism over everything, context parallelism for long sequences; 40–50 % MFU is the target and fault tolerance is a feature. The loop of Chapter 10 is unchanged in shape.
 
-**Evaluation infrastructure.** From "a table on every checkpoint" to a service: held-out internal evals that are never trained on, contamination checks on every data source, agentic benchmarks (SWE-bench Verified, Terminal-Bench) run inside containers, and, after the audits of 2026 (flawed tests in a majority of hard SWE-bench Verified tasks; BenchJack's exploits of agent benchmarks), a standing effort to audit the benchmarks themselves. Evals become the product's specification.
+**Evaluation infrastructure.** From a table on every checkpoint to a service: held-out internal evals, contamination checks on every source, agentic benchmarks (SWE-bench Verified, Terminal-Bench) in containers, and, after the 2026 audits (flawed tests in a majority of hard SWE-bench Verified tasks; BenchJack's benchmark exploits), a standing effort to audit the benchmarks themselves.
 
-**RL infrastructure with async rollouts.** Chapter 19's `grpo_step` samples a group, scores it and updates, in one process. At scale the sampler is a separate inference fleet (vLLM-style servers with paged KV caches), the trainer consumes trajectories as they arrive with a small policy lag (the off-policy correction is the clipped ratio you implemented), and the environments for agentic RL (Chapter 21) are containers started per episode. AgentRL, SkyRL-Agent, verl's agentic mode and Microsoft's rollout-as-a-service are the 2026 frameworks; the algorithmic fixes (DAPO, Dr. GRPO, GSPO, adaptive rollouts) address entropy collapse and gradient dead zones that you saw the seeds of when every group had zero variance in the lab. On-policy distillation from a large teacher (Chapter 20) is reported 10–30× cheaper than RL for comparable gains and is now a standard stage.
+**RL infrastructure with async rollouts.** Chapter 19's `grpo_step` samples, scores and updates in one process. At scale the sampler is a separate inference fleet with paged KV caches, the trainer consumes trajectories as they arrive with a small policy lag (corrected by the clipped ratio you implemented), and agentic environments (Chapter 21) are containers started per episode; AgentRL, SkyRL-Agent, verl and rollout-as-a-service are the 2026 frameworks. The algorithmic fixes (DAPO, Dr. GRPO, GSPO, adaptive rollouts) address the entropy collapse you saw when every group had zero variance. On-policy distillation from a large teacher (Chapter 20) is reported 10–30× cheaper than RL for comparable gains.
 
-**Safety.** Absent from the lab and from nanochat, mandatory in a product: a constitution or model spec (Chapter 22), RLAIF, refusal training, red-teaming, agentic-autonomy evaluations, and interpretability used as an audit. The harness of Chapter 27 is the last line, not the first.
+**Safety.** Absent from the lab and from nanochat, mandatory in a product: a model spec (Chapter 22), RLAIF, refusal training, red-teaming, agentic-autonomy evals, interpretability as audit. The harness of Chapter 27 is the last line, not the first.
 
 ### What does not change
 
-The next-token loss, byte-level BPE, the pre-norm Transformer block with RoPE and GQA and SwiGLU, the KV cache, loss-masked SFT, a KL-anchored preference loss, group-relative advantages, and a verifier as the reward. Every function you called in Lab 29 has a name in a frontier codebase; what scales is the data, the infrastructure around each function, and the number of people whose whole job is one row of the map.
+The next-token loss, byte-level BPE, the pre-norm block with RoPE, GQA and SwiGLU, the KV cache, loss-masked SFT, a KL-anchored preference loss, group-relative advantages, a verifier as the reward. Every function you called in Lab 29 has a name in a frontier codebase; what scales is the data, the infrastructure around each function, and the number of people whose whole job is one row of the map.
 
 ## A reading plan for staying current
 
 The field moves monthly and most of what moves is engineering, so a **reading plan** is a habit, not a list. The one that works for practitioners in 2026:
 
-1. **Primary sources first.** Read the tech report of each major open-weight release in full (DeepSeek-V4, Kimi K3, GLM-5.x, Qwen3.x, gpt-oss, Gemma 4, Llama 4 in 2025–2026), and for each, map its sections onto the chapters of this course: data, tokenizer, architecture, optimizer, parallelism, post-training, evals. If a section has no chapter, that is what to learn next.
-2. **The papers behind each stage.** Keep one reference per stage and update it when a better one appears: FineWeb/DCLM/Nemotron-CC for data; Chinchilla and the 2026 over-training practice for scaling; Muon and "Muon is Scalable" for optimisation; DeepSeekMoE, NSA/DSA and the hybrid SSM papers for architecture; DPO and the rubric-reward papers for preferences; GRPO, DAPO, Dr. GRPO and GSPO for RL; the Thinking Machines blog and "Rethinking On-Policy Distillation" for OPD; the SWE-bench Verified audit and Terminal-Bench for evals; the Anthropic harness posts and the context-rot papers for agents.
-3. **A few aggregators, treated as pointers.** Turing Post's reasoning-RL roundups, Cameron Wolfe's agentic-RL survey, the open-weight comparison pages, and InfoQ for harness news; use them to find primary sources, and say "reported" when you repeat something you only read there.
-4. **Reproduce one claim a month at toy scale.** Take one number from a paper and check its direction with TinyLM: does clip-higher raise entropy? does OPD beat rejection-sampling SFT on the same budget? does a longer context hurt the agent? The library is built for this, and it is the only reading method that produces understanding rather than familiarity.
-5. **Read the code.** nanochat and modded-nanogpt for training; verl and SkyRL for RL infrastructure; the MCP and A2A specifications for agents. Compare each with the corresponding file in `llm/`.
+1. **Primary sources first.** Read each major open-weight tech report in full (DeepSeek-V4, Kimi K3, GLM-5.x, Qwen3.x, gpt-oss, Gemma 4, Llama 4) and map its sections onto this course's chapters; a section with no chapter is what to learn next.
+2. **One reference per stage**, replaced when a better one appears: FineWeb/DCLM/Nemotron-CC for data; Muon for optimisation; DeepSeekMoE, NSA/DSA and the hybrid SSM papers for architecture; DPO and rubric rewards for preferences; GRPO, DAPO, Dr. GRPO, GSPO for RL; the Thinking Machines blog for OPD; the SWE-bench Verified audit for evals; the Anthropic harness posts and the context-rot papers for agents.
+3. **Aggregators as pointers** (Turing Post, Cameron Wolfe's surveys, the open-weight comparison pages, InfoQ): use them to find primary sources, and say "reported" when you repeat something you only read there.
+4. **Reproduce one claim a month at toy scale.** Does clip-higher raise entropy? Does OPD beat rejection-sampling SFT at equal budget? Does a longer context hurt the agent? The library is built for this; it is the only reading method that produces understanding rather than familiarity.
+5. **Read the code.** nanochat and modded-nanogpt for training; verl and SkyRL for RL infrastructure; the MCP and A2A specifications for agents; compare each with the file in `llm/`.
 
 ## What you can now do
 
 A checklist to tick honestly.
 
-- [ ] Explain why a language model is a next-token predictor and compute a perplexity by hand from a bigram table (Chapter 1).
-- [ ] Train a byte-level BPE tokenizer on your own data and measure bytes/token per language and domain (Chapter 2).
-- [ ] Draw a Transformer block from memory, count its parameters, and implement attention with GQA and RoPE that matches PyTorch's reference (Chapters 5, 6).
-- [ ] Generate text with a KV cache and explain every sampling knob (Chapter 7).
-- [ ] Run a curation pipeline with dedup, quality classification and decontamination, and read its report (Chapter 8).
-- [ ] Size a model and its data for a compute budget, and read a loss curve (Chapter 9).
-- [ ] Pretrain with AdamW or Muon, with warmup, a schedule, clipping, checkpointing and resume (Chapter 10); explain data, tensor, pipeline and expert parallelism (Chapter 11); build an MoE layer (Chapter 12).
-- [ ] Anneal a base model on a curated mix and extend its context (Chapter 13).
-- [ ] Turn a base model into an assistant with loss-masked SFT, with full fine-tuning or LoRA (Chapter 15); design a labeling task and measure agreement (Chapter 16).
-- [ ] Train a reward model and run DPO; explain when to prefer which (Chapter 17); derive the policy gradient and PPO's clip (Chapter 18); implement GRPO with a verifiable reward and its 2026 fixes (Chapter 19).
-- [ ] Distil on-policy from a teacher and say when it fails (Chapter 20); train a policy over multi-turn tool use (Chapter 21); run RLAIF against a written constitution (Chapter 22).
-- [ ] Build an eval harness with confidence intervals, a contamination check and a position-bias check for judges (Chapter 23).
-- [ ] Write an agent loop with tool calling, a permission gate and hooks; manage a context budget with compaction and memory; write an MCP server and client (Chapters 24–26).
-- [ ] Build a long-running harness whose sessions resume from files and whose "done" is decided by tests (Chapter 27); choose, measure or decline a multi-agent pattern (Chapter 28).
-- [ ] Run the whole pipeline in one script and read a table of every checkpoint (this chapter).
-- [ ] Read a 2026 model card and know, for every term, which chapter built it and what changes at scale.
+- [ ] Compute a perplexity by hand from a bigram table (Ch. 1); train a byte-level BPE tokenizer and measure bytes/token (Ch. 2).
+- [ ] Draw a Transformer block from memory, count its parameters, implement GQA attention with RoPE that matches PyTorch (Ch. 5–6); generate with a KV cache and explain every sampling knob (Ch. 7).
+- [ ] Run a curation pipeline with dedup, a quality classifier and decontamination, and read its report (Ch. 8); size a model and its data for a budget and read a loss curve (Ch. 9).
+- [ ] Pretrain with AdamW or Muon, with warmup, a schedule, clipping, checkpointing and resume (Ch. 10); explain the parallelisms (Ch. 11); build an MoE layer (Ch. 12); anneal and extend context (Ch. 13).
+- [ ] Turn a base model into an assistant with loss-masked SFT or LoRA (Ch. 15); design a labeling task and measure agreement (Ch. 16).
+- [ ] Train a reward model and run DPO (Ch. 17); derive the policy gradient and PPO's clip (Ch. 18); implement GRPO with a verifiable reward and its 2026 fixes (Ch. 19).
+- [ ] Distil on-policy and say when it fails (Ch. 20); train a policy over multi-turn tool use (Ch. 21); run RLAIF against a written constitution (Ch. 22).
+- [ ] Build an eval harness with confidence intervals, a contamination check and a position-bias check (Ch. 23).
+- [ ] Write an agent loop with tools, a permission gate and hooks; manage a context budget; write an MCP server and client (Ch. 24–26).
+- [ ] Build a harness whose sessions resume from files and whose "done" is decided by tests (Ch. 27); choose, measure or decline a multi-agent pattern (Ch. 28).
+- [ ] Run the whole pipeline in one script, read the table of every checkpoint, and read a 2026 model card knowing which chapter built each term and what changes at scale.
 
 ## Try it yourself ✍️
 
 1. **Fix a stage.** GRPO learned nothing in quick mode because no group ever contained a correct answer. Change `MAX_VALUE` to 5, raise `steps` to 40 and start GRPO from the DPO checkpoint with `temperature=1.2`. Does any group get a non-zero variance, and does the reward move?
-2. **Reuse across labs.** Run Labs 15, 17 and 19 in `--full` mode first, then the capstone in `--full`. Which stages say "reused", and does the table change? Explain any change using the lineage rule.
+2. **Reuse across labs.** Run Labs 15, 17 and 19 in `--full` mode, then the capstone in `--full`. Which stages say "reused", and does the table change?
 3. **A fairer table.** Add bootstrap confidence intervals (`llm.evals.bootstrap_ci`) to the checkpoint table and mark which differences are real at 95 %.
 4. **The alignment tax, measured.** Perplexity rises through post-training. Add a column with perplexity on the *chat-formatted* validation examples (as `compare_checkpoints` does) and check whether it falls while the Storyland perplexity rises.
 5. **Tool-SFT data.** Double the number of tool traces and include subtraction. Does the model copy the operands correctly more often? Count, over 20 questions, how many tool calls parse and how many have the right expression.
-6. **Your own scale-up row.** Pick a 2026 open-weight tech report and fill in one row of the scale-up map (data, tokenizer, precision, parallelism, RL infra, evals, safety) with the numbers it states. Mark every number you could not find.
-7. **A month of reading.** Choose one claim from the reading plan's second item and reproduce its direction with TinyLM in under an hour of CPU. Write down the number you got and the number the paper reports.
+6. **Your own scale-up row.** Pick a 2026 open-weight tech report and fill in one column of the scale-up map with the numbers it states; mark every number you could not find.
 
 ## Check yourself ✅
 
 <details><summary>1. Why does the capstone reuse checkpoints, and what could go wrong if it reused them blindly?</summary>
 
-Reuse makes the pipeline cheap to re-run and resumable after a failure: a stage loads its checkpoint from `runs/` and trains only if none exists. Blind reuse breaks the lineage: a DPO checkpoint trained from one SFT model would be evaluated as if it followed a different SFT model, and a nano checkpoint could be loaded into a small run. The script checks `d_model` and marks its own downstream files stale once an upstream stage is retrained.
+Reuse makes the pipeline cheap to re-run and resumable after a failure: a stage loads its checkpoint from `runs/` and trains only if none exists. Blind reuse breaks the lineage: a DPO checkpoint trained from one SFT model would be evaluated as if it followed a different one, and a nano checkpoint could be loaded into a small run. The script checks `d_model` and reuses its own files only when their recorded parent matches.
 </details>
 
 <details><summary>2. Perplexity rose from 2.90 to 4.02 across post-training while task accuracy did not fall. Is that a bug?</summary>
 
-No. Perplexity on Storyland prose measures how well the model continues stories; SFT, DPO and GRPO train it to answer questions in a chat format instead, and every step away from the pretraining distribution costs Storyland fluency. This is the alignment tax of Chapter 14 at toy scale, and it is why post-training is evaluated with task accuracy and preference metrics, not perplexity.
+No. Storyland perplexity measures how well the model continues stories; SFT, DPO and GRPO train it to answer questions instead, and every step away from the pretraining distribution costs fluency. This is Chapter 14's alignment tax at toy scale, and why post-training is evaluated with task accuracy and preference metrics, not perplexity.
 </details>
 
 <details><summary>3. GRPO's reward stayed flat in quick mode. What diagnostic in the log explains it, and what would you change first?</summary>
 
-`acc 0.00` on every step, with `skipped 0.00`: every group of eight answers was wrong, so within each group the rewards were (nearly) equal, advantages were zero and the update had nothing to push on. The first change is the starting point or the task difficulty (smaller operands, a better SFT model), not the RL hyperparameters; GRPO needs some correct samples to learn from.
+`acc 0.00` on every step: every group of eight answers was wrong, so within each group the rewards were equal, advantages were zero and the update had nothing to push on. Change the starting point or the task difficulty (smaller operands, a better SFT model) before the RL hyperparameters; GRPO needs some correct samples to learn from.
 </details>
 
 <details><summary>4. Name three things nanochat does differently from Lab 29 and one thing it does not do at all.</summary>
@@ -283,29 +304,27 @@ Differently: ~10⁴× more data streamed from FineWeb-Edu shards, a 65,536-entry
 
 <details><summary>5. At 100B+ parameters, which stage changes most in <em>kind</em> rather than in size, and why?</summary>
 
-RL infrastructure. At toy scale sampling, scoring and updating happen in one process; at scale the sampler is a separate inference fleet with async rollouts, the trainer tolerates a policy lag corrected by the clipped ratio, and agentic environments are containers started per episode. Data curation and parallelism grow enormously but keep their shape; async RL changes the shape of the loop.
+RL infrastructure. At toy scale sampling, scoring and updating happen in one process; at scale the sampler is a separate inference fleet with async rollouts, the trainer tolerates a policy lag corrected by the clipped ratio, and environments are containers started per episode. Curation and parallelism grow enormously but keep their shape; async RL changes the shape of the loop.
 </details>
 
 ## Key takeaways
 
 - The whole pipeline fits in one script because every stage is a function that loads a checkpoint and saves one; reuse and a lineage rule make it re-runnable.
 - The table of every checkpoint on the same questions is the deliverable; single-stage logs are diagnostics.
-- At toy scale most stages show the right diagnostics rather than large gains: perplexity rises through post-training, GRPO needs correct samples, tool-SFT teaches a format before it teaches copying.
+- At toy scale stages show the right diagnostics rather than large gains: perplexity rises through post-training, GRPO needs correct samples, tool-SFT teaches a format before copying.
 - nanochat is the same pipeline with 10⁴× the data and a GPU; every function maps.
 - What changes at 1B → 100B+ is data volume and curation infrastructure, tokenizer size, FP8/FP4 and Muon, MoE, 4-D parallelism, eval infrastructure, async RL, and safety; what does not change is the loss, the block, the mask, the KL anchor, the group baseline and the verifier.
 - Staying current is a habit: primary sources, one reference per stage, aggregators as pointers, and one toy reproduction a month.
 
 ## Going deeper
 
-- 🆕 Karpathy, A. *nanochat* (October 2025). The $100 end-to-end pipeline; read it file by file against `llm/`. https://github.com/karpathy/nanochat
-- Jordan, K. *modded-nanogpt* (2024–2026). The speedrun lineage (Muon, FP8 head, MTP); reported GPT-2-grade in ~1.35 min on 8×H100 by April 2026. https://github.com/KellerJordan/modded-nanogpt
+- 🆕 Karpathy, A. *nanochat* (October 2025), https://github.com/karpathy/nanochat ; Jordan, K. *modded-nanogpt* (2024–2026), https://github.com/KellerJordan/modded-nanogpt . The $100 pipeline and the speedrun lineage; read them file by file against `llm/`.
 - 🆕 "SOAP, Muon, and Beyond: Pushing LLM Pretraining Scales" (July 2026), https://arxiv.org/abs/2607.20548 ; PyTorch blog on Muon with DeepSpeed, https://pytorch.org/blog/using-muon-optimizer-with-deepspeed/
 - 🆕 DeepSeek-AI, *DeepSeek-V4: Towards Highly Efficient Million-Token Context Intelligence* (2026), https://arxiv.org/abs/2606.19348 ; discussion at https://www.lmsys.org/blog/2026-04-25-deepseek-v4/
 - 🆕 MXFP4 pretraining on native FP4 hardware (2026), https://arxiv.org/abs/2605.09825
 - 🆕 Data at the 10T+ horizon: FineInstructions (2026), https://arxiv.org/abs/2601.22146 ; DataEvolve / "Data Darwinism II" (2026), https://arxiv.org/abs/2603.14420 ; a systematic study of synthetic pretraining data (2026), https://arxiv.org/abs/2604.13977
 - 🆕 RL infrastructure: AgentRL (2025), https://arxiv.org/abs/2510.04206 ; verl agentic RL docs, https://verl.readthedocs.io/en/latest/start/agentic_rl.html ; adaptive rollouts (2026), https://arxiv.org/abs/2602.14338 ; Turing Post, "Reasoning RL in 2026", https://www.turingpost.com/p/reasoning-rl-in-2026
 - 🆕 Thinking Machines, "On-policy distillation" (October 2025), https://thinkingmachines.ai/blog/on-policy-distillation/ ; "Rethinking On-Policy Distillation" (2026), https://arxiv.org/abs/2604.13016
-- 🆕 The open-weight landscape as reported by aggregators (treat as approximate): https://wavect.io/blog/open-weight-llm-comparison-2026/ and https://www.morphllm.com/best-open-source-llm
 
 ---
 
