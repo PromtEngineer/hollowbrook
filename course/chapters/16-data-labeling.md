@@ -131,9 +131,11 @@ Keeping `seconds` and `annotator` in the record is not bureaucracy: items labell
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab16_labeling.py            # quick: 30 prompts, about 50 s
-python3 labs/lab16_labeling.py --full     # 150 prompts, flip-rate sweep, on-policy sampling: a few minutes
+python3 labs/lab16_labeling.py            # quick: 30 prompts, about 5 s on an idle CPU
+python3 labs/lab16_labeling.py --full     # 150 prompts, a finer flip-rate sweep, 40 on-policy prompts: about 5 s more
 ```
+
+(Nothing here trains a model, so both modes are fast; the only slow case is section 7 before Lab 15 has run, when the base model runs every sample to the token limit.)
 
 Section 1 builds the set. Thirty prompts on four tasks, two failure styles each:
 
@@ -224,11 +226,15 @@ stats: {'n_prompts': 8, 'n_pairs': 2, 'n_all_correct': 0, 'n_all_wrong': 6, 'sam
 Six of eight prompts had four wrong samples and produced nothing; two had at least one right and one wrong, and those give pairs whose rejected answer (`WOAT`) is a mistake this model actually makes, not one we invented. That is the difference between on-policy and synthetic preference data, and why the rejected side of a good preference set looks like the model's own near-misses. With `runs/sft_small.pt` from the `--full` run of Lab 15, the `--full` run samples 40 prompts:
 
 ```
-sampling 4 answers x 40 prompts from runs/sft_small.pt: FULL_RS_TIME
-stats: FULL_RS_STATS
+sampling 4 answers x 40 prompts from runs/sft_small.pt: 2.4s
+stats: {'n_prompts': 40, 'n_pairs': 7, 'n_all_correct': 24, 'n_all_wrong': 9, 'sample_accuracy': 0.7}
+  'Reverse the word: rope': chosen 'epor' | rejected 'ypor'
+  'How many words: flag small hat black': chosen '4' | rejected '6'
+  'How many words: frog small': chosen '2' | rejected '4'
+prompts with all-correct samples: 24, all-wrong: 9 — neither kind produces a pair
 ```
 
-FULL_RS_PROSE
+Now the arithmetic runs the other way: the small SFT model gets 70% of its samples right, so 24 of 40 prompts produce four correct answers and teach nothing about ranking either. Only 7 prompts fall in the band where the model is *sometimes* right, and those are the ones worth labelling. This is why rejection-sampling pipelines raise the temperature, sample more than four answers, and steer the prompt distribution toward the model's current frontier (the 2026 papers below make that steering explicit): a preference set is most informative exactly where the policy is undecided.
 
 The lab saves `figures/generated/lab16_labeling.png`: kappa against flip rate on the left; on the right, for each judge, the swap-test failure rate (position bias) next to the error rate on long-but-wrong pairs (verbosity bias), which shows that the two checks catch different judges.
 

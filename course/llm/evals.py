@@ -169,8 +169,11 @@ def contamination_check(train_docs: Sequence[dict], eval_examples: Sequence[Prom
     """Fraction of eval prompts sharing at least one ``n``-word n-gram with the training data.
 
     This is the GPT-3 / Llama style overlap test (``data.decontaminate`` is the
-    training-side version). Prompts shorter than ``n`` words cannot match — pick
-    ``n`` with the prompt length in mind (8 here; 13 in production reports).
+    training-side version). Pick ``n`` with the prompt length in mind (8 here; 13 in
+    production reports): prompts shorter than ``n`` words cannot match, and *templated*
+    prompts ("Reverse the word: X") share their template with clean data and will be
+    flagged at small ``n`` — a false positive, not contamination. Use natural-language
+    items (story_qa) and n ≥ 13 for a meaningful check.
     """
     if not eval_examples:
         return 0.0

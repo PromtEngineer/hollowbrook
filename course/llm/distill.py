@@ -63,6 +63,8 @@ class OPDConfig:
     temperature: float = 1.0
     lr: float = 2e-4
     grad_clip: float = 1.0
+    adv_clip: float = 5.0           # clip |log π_t - log π_s| per token: a sharp teacher can otherwise
+                                    # put a -13-nat "advantage" on one token and dominate the batch
     seed: int = 0
     log_every: int = 1
 
@@ -110,6 +112,8 @@ def on_policy_distill_step(student: TinyLM, teacher: TinyLM, tok: BPETokenizer,
     student.train()
     logp_s = token_logprobs(student, ids)                         # student, with gradient
     adv = (logp_t - logp_s).detach()                              # per-token advantage
+    if cfg.adv_clip:
+        adv = adv.clamp(-cfg.adv_clip, cfg.adv_clip)
     loss = -masked_mean(adv * logp_s, mask)
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
@@ -162,7 +166,11 @@ def sft_steps(model: TinyLM, tok: BPETokenizer, conversations: Sequence[list[dic
     opt = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.95), weight_decay=0.0)
     losses = []
     model.train()
-    for _ in range(steps):
+    from .optim import lr_at
+    warmup = max(1, steps // 10)
+    for step in range(steps):
+        for grp in opt.param_groups:                       # warmup + cosine, like sft_train
+            grp["lr"] = lr_at(step, steps, lr, warmup, "cosine")
         pick = torch.randint(0, len(data), (batch_size,), generator=g).tolist()
         x, y, m = chat.collate([data[i] for i in pick], pad_id)
         _, loss = model(x, y, loss_mask=m)

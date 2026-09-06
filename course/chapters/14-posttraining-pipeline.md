@@ -210,7 +210,7 @@ found runs/sft_nano.pt (saved by Lab 15): same questions after SFT
   correct: 2/3 | in the format (an answer, then <|end|>): 3/3
 ```
 
-All three answers are in the format, short and terminated, which is what SFT reliably teaches; two are right; the third has the shape of a sum and none of the content, which is Chapter 15's warning about what SFT does not teach.
+All three answers are in the format, short and terminated, which is what SFT reliably teaches; two are right; the third has the shape of a sum and none of the content, which is Chapter 15's warning about what SFT does not teach. The small checkpoint from `--full` gives `KITE` ✓, `pmal` ✓ and `23 + 45 = 80` ✗: it now copies the operands and still gets the sum wrong.
 
 Section 7 measures the mask over a realistic set: 500 instruction examples on four tasks are 31,598 tokens, of which 2,499 (7.9%) are trainable, and 43 of the 63.2 average tokens per example are the system prompt. A 2026 SFT set with long system prompts and multi-turn context has the same shape: most of the tokens in the batch are context, and the model's whole learning signal comes from a thin slice of them. That is why SFT packs many conversations into a sequence (Chapter 15) and why it is so much cheaper than pretraining in tokens seen per gradient.
 
