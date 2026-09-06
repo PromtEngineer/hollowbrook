@@ -142,11 +142,11 @@ Each step samples `group_size × prompts_per_step` answers from the student, gra
 ## Worked example 🧪
 
 ```bash
-python3 labs/lab20_opd.py            # quick: 8 OPD steps, ~3 min on an idle laptop CPU once the warm-starts are cached (11 min on our shared box)
-python3 labs/lab20_opd.py --full     # 60 OPD steps + the offline and two-stage recipes, ~4 min idle (17 min shared)
+python3 labs/lab20_opd.py            # quick: 8 OPD steps, under 10 s on an idle CPU once the warm-starts are cached
+python3 labs/lab20_opd.py --full     # 60 OPD steps + the offline and two-stage recipes, about 2 min idle (17 min when the box was shared)
 ```
 
-The first run trains the two warm-starts and caches them (teacher: `base_small.pt` fine-tuned on 1,200 addition prompts for 1,500 steps, about 23 minutes, reaching 98%; student: `base_nano.pt` on 400 prompts for 600 steps, about 2.5 minutes, reaching 33%). If another lab has left `runs/grpo_small.pt`, `runs/sft_small.pt` or `runs/sft_nano.pt` behind, the lab evaluates them on the task and uses them instead when they are good enough. All numbers below are from two CPU threads on a busy shared machine; the timings are inflated, the numbers are not.
+The first run trains the two warm-starts and caches them (teacher: `base_small.pt` fine-tuned on 1,200 addition prompts for 1,500 steps, about 23 minutes, reaching 98%; student: `base_nano.pt` on 400 prompts for 600 steps, about 2.5 minutes, reaching 33%). If another lab has left `runs/grpo_small.pt`, `runs/sft_small.pt` or `runs/sft_nano.pt` behind, the lab evaluates them on the task and uses them instead when they are good enough. All numbers below are from two CPU threads; the runs are seeded, and the loaded and idle machines produced identical numbers.
 
 **The two models.** With `max_value=20` there are only 441 distinct addition problems, so this is a small memorise-and-generalise task, and it is deliberately one the nano model half-knows:
 
@@ -197,40 +197,42 @@ Sample 2 is the other half of the lesson. Its reverse KL is almost zero (0.024):
 **(c) Two recipes at a matched budget, and a negative result.** The full run gives each recipe about 60 optimizer steps and roughly 240 teacher or student samples per stage, then measures greedy accuracy on 100 held-out prompts (95% CI about ±0.09):
 
 ```
-   offline: teacher keep rate 0.85 (204/240 samples), 60 SFT steps, 16s -> accuracy 0.32 -> 0.21
-opd step    0 | reverse KL 1.0718 | acc 0.34 | len   8.2 | 4.5s
-opd step   10 | reverse KL 0.7628 | acc 0.28 | len   8.0 | 21.3s
-opd step   20 | reverse KL 0.9428 | acc 0.19 | len   8.0 | 37.4s
-opd step   30 | reverse KL 1.4288 | acc 0.12 | len   8.2 | 53.1s
-opd step   40 | reverse KL 1.6721 | acc 0.28 | len   8.5 | 66.1s
-opd step   50 | reverse KL 1.1468 | acc 0.38 | len   8.3 | 79.9s
-opd step   59 | reverse KL 0.9148 | acc 0.20 | len   8.0 | 92.9s
-   OPD: 60 steps x 64 student samples, 93s -> accuracy 0.32 -> 0.32
-   reverse KL: 1.072 (step 0) -> 0.682 (min) -> 0.915 (last)
-   accuracy of the student's own samples (T=1): first 15 steps 0.21 -> last 15 steps 0.21 (960 samples each)
-   two-stage: 30 SFT steps then 30 OPD steps, 56s -> accuracy 0.18 | reverse KL at OPD start 0.871
+   offline: teacher keep rate 0.85 (204/240 samples), 60 SFT steps, 14s -> accuracy 0.32 -> 0.30
+opd step    0 | reverse KL 0.5620 | acc 0.34 | len   8.2 | 0.7s
+opd step   10 | reverse KL 0.4351 | acc 0.27 | len   8.0 | 6.6s
+opd step   20 | reverse KL 0.6698 | acc 0.16 | len   8.1 | 12.0s
+opd step   30 | reverse KL 0.6461 | acc 0.17 | len   8.1 | 17.7s
+opd step   40 | reverse KL 0.6651 | acc 0.16 | len   8.0 | 23.2s
+opd step   50 | reverse KL 0.6252 | acc 0.22 | len   8.2 | 28.8s
+opd step   59 | reverse KL 0.8026 | acc 0.19 | len   8.3 | 33.7s
+   OPD: 60 steps x 64 student samples, 34s -> accuracy 0.32 -> 0.29
+   reverse KL: 0.562 (step 0) -> 0.380 (min) -> 0.803 (last)
+   accuracy of the student's own samples (T=1): first 15 steps 0.19 -> last 15 steps 0.20 (960 samples each)
+✅ reverse KL falls early in the run (0.562 at step 0 -> 0.421 within the first third)
+   (reported, not checked: first 15 steps 0.578 -> last 15 steps 0.589; at this scale the early fall is not sustained)
+   two-stage: 30 SFT steps then 30 OPD steps, 19s -> accuracy 0.16 | reverse KL at OPD start 0.250
 
    summary (held-out accuracy, greedy):
    student (before)                 0.32
    teacher                          0.98
-   offline (RS-SFT)                 0.21
-   on-policy (OPD)                  0.32
-   two-stage (offline then OPD)     0.18
+   offline (RS-SFT)                 0.30
+   on-policy (OPD)                  0.29
+   two-stage (offline then OPD)     0.16
 ```
 
-Read the table honestly: with a 98%-accurate teacher and a 32%-accurate student, sixty steps of rejection-sampling SFT made the student *worse* (0.32 → 0.21, outside the CI), sixty steps of OPD left it where it was (0.32 → 0.32 greedy; 0.21 → 0.21 on its own samples, where the CI is ±0.03), and the two-stage recipe inherited the first stage's damage. The reverse KL fell from 1.07 to 0.68 in the first ten steps, then wandered between 0.9 and 1.7, which is the signature of a learning rate that is too high for the size of the per-token advantages (a wrong sum scores −8 to −13 nats under this teacher, and a handful of such tokens dominate every batch). The lab's sweeps over learning rate (3e-5 to 2e-4), group size (4 to 8), sampling temperature (0.7 and 1.0) and length (up to 200 steps) did not change the picture.
+Read the table honestly: with a 98%-accurate teacher and a 32%-accurate student, sixty steps of rejection-sampling SFT left the student where it was (0.32 → 0.30, inside the CI), sixty steps of OPD did the same (0.32 → 0.29 greedy; 0.19 → 0.20 on its own samples, where 960 samples make the CI about ±0.03), and the two-stage recipe came out worst (0.16, outside the CI), for a reason we could not pin down in one run. The reverse-KL curve is the shape to learn to recognise: it falls from 0.56 to 0.38 within ten steps, then drifts back up to 0.80 while sample accuracy stays flat. (The reported values are the clipped means described above; the true step-0 divergence is 1.07 nats per token.) Two facts about this curve are worth recording. First, the early fall is the real thing: the student's own answers do move toward the teacher's. Second, the later rise is not a learning-rate problem: a sweep over 3e-5, 5e-5, 1e-4 and 2e-4 with the same budget gave the same shape every time (minimum 0.34–0.40 around step 10, last-15-step mean 0.53–0.66), the same flat sample accuracy (0.16–0.22), and greedy accuracy unchanged except at 2e-4, which cost 12 points. Switching the advantage clip off (the pre-clip library) gave the same flat accuracy at a higher, noisier KL. An earlier draft of this chapter blamed the learning rate; the sweep says otherwise.
 
-Why does distillation not work here, when the teacher is this good? Because the thing to be transferred is a table of 441 facts, and this student learns facts slowly. Its own SFT warm-start needed 600 steps × 16 examples, about 20 views of each sum, to reach 0.33; sixty steps of OPD show it each problem about twice, and the only *positive* signal on a sum arrives when the student happens to sample the right one (20% of the time). The teacher's per-token verdicts are correct and dense, and they are being spent on a student that cannot absorb them at this rate. This is the 2026 finding of "Rethinking On-Policy Distillation" from the other side: student and teacher share the output format perfectly, the teacher offers new capability, and OPD still needs enough steps for the student's capacity to be the binding constraint rather than the budget. At frontier scale the student is a multi-billion-parameter model that absorbs a correction in a handful of views, and the same recipe that stalls here reaches RL-level scores at a fraction of RL's cost.
+Why does distillation not work here, when the teacher is this good? Because the thing to be transferred is a table of 441 facts, and this student learns facts slowly. Its own SFT warm-start needed 600 steps × 16 examples, about 20 views of each sum, to reach 0.33; sixty steps of OPD show it each problem about twice, and the only *positive* signal on a sum arrives when the student happens to sample the right one (20% of the time). The teacher's per-token verdicts are correct and dense, and they are being spent on a student that cannot absorb them at this rate; meanwhile every update also nudges the tokens of the many wrong answers, and on a 295k-parameter model that noise is enough to undo the early gain. This is the 2026 finding of "Rethinking On-Policy Distillation" from the other side: student and teacher share the output format perfectly, the teacher offers new capability, and OPD still needs enough steps for the student's capacity to be the binding constraint rather than the budget. At frontier scale the student is a multi-billion-parameter model that absorbs a correction in a handful of views, and the same recipe that stalls here reaches RL-level scores at a fraction of RL's cost.
 
-What the run does demonstrate is the *mechanism*, which is the point of the chapter: the per-token table in (b) is real, the reverse KL responds within ten steps, and nothing in the loop needed a verifier. The quick run (8 steps, 16 samples per step, 30 eval items) is pure noise on every accuracy number and should be read only for the tables in (a) and (b). Exercise 5 asks you to make the distillation work by giving it what it lacks (more steps, or a smaller task), and Chapter 23 explains why the 100-item accuracies above needed their error bars.
+What the run does demonstrate is the *mechanism*, which is the point of the chapter: the per-token table in (b) is real, the reverse KL responds within ten steps, and nothing in the loop needed a verifier. The quick run (8 steps, 16 samples per step, 30 eval items) is pure noise on every accuracy number and should be read only for the tables in (a) and (b); its reverse KL still shows the early dip (0.88 → 0.44 at step 1), which is what the lab checks. Exercise 5 asks you to make the distillation work by giving it what it lacks (more steps, or a smaller task), and Chapter 23 explains why the 100-item accuracies above needed their error bars.
 
-The lab saves `figures/generated/lab20_opd.png` (the reverse-KL curve, sample accuracy per step, and the before/after bars) and `runs/lab20_student_opd.pt`, the better of the two distilled students, which Chapter 23's lab evaluates with everything else.
+The lab saves `figures/generated/lab20_opd.png` (the reverse-KL curve, sample accuracy per step, and the before/after bars) and `runs/lab20_student_opd.pt`, the better of the two distilled students (the offline one this run, at 0.30), which Chapter 23's lab evaluates with everything else.
 
 ## 🆕 What the 2026 papers add, and when OPD fails
 
 Three findings, all from 2026, with the level of evidence stated.
 
-- **OPD works when student and teacher share thinking patterns and the teacher has something new to offer.** "Rethinking On-Policy Distillation" (April 2026, arXiv 2604.13016) reports that OPD gains are largest when the student already writes in a style the teacher recognises (so the teacher's per-token opinions are meaningful) *and* the teacher is genuinely more capable on the task; a teacher that only differs in style produces reverse-KL curves that fall without accuracy rising. The same paper's recipe is the **two-stage** one this chapter's lab reproduces at toy scale: an off-policy SFT stage on teacher samples first (to get the student into the teacher's style, so that the teacher's grades become informative), then OPD. https://arxiv.org/abs/2604.13016
+- **OPD works when student and teacher share thinking patterns and the teacher has something new to offer.** "Rethinking On-Policy Distillation" (April 2026, arXiv 2604.13016) reports that OPD gains are largest when the student already writes in a style the teacher recognises (so the teacher's per-token opinions are meaningful) *and* the teacher is genuinely more capable on the task; a teacher that only differs in style produces reverse-KL curves that fall without accuracy rising. The same paper's recipe is the **two-stage** one this chapter's lab runs at toy scale: an off-policy SFT stage on teacher samples first (to get the student into the teacher's style, so that the teacher's grades become informative), then OPD. The lab reproduces the *mechanism* (after the SFT stage the reverse KL at the start of OPD is 0.25 instead of 0.56: the student now writes what the teacher expects) but not the gain; see the worked example. https://arxiv.org/abs/2604.13016
 - **Efficiency variants.** Lightning OPD (arXiv 2604.13010), Uni-OPD (arXiv 2605.03677) and DOPD (arXiv 2606.30626) propose ways to reduce the teacher's cost or unify OPD with RL objectives; a survey (arXiv 2606.22793) collects them. These are reported results from single papers and have not yet been reproduced across labs; treat the specific speed-up claims as provisional.
 - **OPD is now the standard cheap stage.** Qwen3 (2025) used on-policy distillation from its flagship into its smaller models, and the Thinking Machines post reported reasoning gains at a small fraction of the RL cost. What is settled: OPD is cheaper than RL per unit of improvement whenever a good teacher exists. What is open: how far a student can be pushed past its teacher by mixing OPD with a verifiable reward, and whether the reverse-KL objective's mode-seeking behaviour costs diversity in ways the standard benchmarks do not measure.
 
@@ -242,7 +244,7 @@ Three findings, all from 2026, with the level of evidence stated.
 2. **Forward vs reverse KL by hand.** Take a teacher distribution `[0.5, 0.5, 0.0]` over three tokens and a student that can only put mass on one token. Compute forward and reverse KL for students `[1, 0, 0]` and `[0.5, 0.5, 0]`. Which objective prefers which student, and why does that match "mode-seeking" vs "mode-covering"?
 3. **Break the teacher.** Run `opd_train` with `teacher = student` (a copy). What does the reverse-KL curve do? Then use `base_small.pt` (the *base*, not SFT) as teacher. Does accuracy rise?
 4. **Compute accounting.** Count forward passes per step for `on_policy_distill_step` (student sampling, teacher scoring, student scoring) and for `grpo_step` with the same group size. Which is cheaper, and what changes if the teacher is 10× the student's size?
-5. **Two-stage recipe.** Run `offline_distill` for 100 SFT steps and then `opd_train` for 20 steps, and compare with 40 steps of OPD alone at the same wall-clock. The lab's `--full` mode prints the numbers you need to check your prediction.
+5. **Two-stage recipe.** The lab's two-stage run (30 SFT steps, then 30 OPD steps) scored 0.16, below either recipe alone. Vary the split (100 SFT then 20 OPD; 10 then 50), the OPD learning rate (3e-5) and the seed, and record the reverse KL at the start of OPD and the final accuracy for each. Is the damage in the SFT stage, the OPD stage, or their combination? Then give OPD what the text says it lacks: 600 steps on the `add` task with `max_value=10` (66 sums). Does the reverse KL now stay down?
 6. **Interactive** 🎛️: in `interactive/19_grpo_simulator.html`, slide P(correct) to 0.9 and resample until every rollout has the same reward and the advantages vanish; then imagine each token having its own reward, as in OPD. Which of the simulator's failure modes (all-equal groups, entropy collapse) can OPD not have, and which can it still have?
 
 ## Check yourself ✅

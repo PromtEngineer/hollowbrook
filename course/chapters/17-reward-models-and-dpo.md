@@ -266,9 +266,10 @@ Read the last line before the one above it. The headline 0.81 hides a split: the
     16 |           0.34  0.25 |               1.00  0.00 |        1.00
    extract_answer leniency: verify('2 + 18 = 1 2 3 20') = 1.0  (the LAST number after '=' is graded)
    rubric exploit: rubric_reward('0 + 0 = 0') = 1.00 for 'What is 2 + 18?' (the rubric checks shape, never the number); verify = 0.0
+   strict_verify: '2 + 18 = 1 2 3 20' -> 0.0, '0 + 0 = 20' -> 0.0 (verify gives 1.0), '2 + 18 = 20' -> 1.0
 ```
 
-The right-hand column is the ceiling: with 16 samples every prompt has a correct answer *somewhere*. Picking by the rubric reaches a proxy score of 1.00 and a gold accuracy of 0.00, because the rubric never looks at the number. Picking by the reward model reaches 0.25 and its own score flattens at 0.34 by N = 4: the proxy stops discriminating long before the ceiling. That flattening is the overoptimisation picture of Gao et al. (2022) at toy scale. The two static lines show the graders' blind spots directly: the verifier reads the *last* number after `=`, so a policy that lists candidates is graded on its final guess, and the rubric is satisfied by an equation that ignores the question.
+The right-hand column is the ceiling: with 16 samples every prompt has a correct answer *somewhere*. Picking by the rubric reaches a proxy score of 1.00 and a gold accuracy of 0.00, because the rubric never looks at the number. Picking by the reward model reaches 0.25 and its own score flattens at 0.34 by N = 4: the proxy stops discriminating long before the ceiling. That flattening is the overoptimisation picture of Gao et al. (2022) at toy scale. The static lines show the graders' blind spots directly: the verifier reads the *last* number after `=`, so a policy that lists candidates is graded on its final guess, and the rubric is satisfied by an equation that ignores the question. The last line is the repair: `tasks.strict_verify` rejects both exploits and still accepts the real answer, which is why a rubric should carry it as one of its criteria.
 
 Section (d) samples four answers per prompt and pairs a correct one with a wrong one; sections (e)–(g) run DPO, the displacement experiment and SimPO:
 

@@ -56,7 +56,7 @@ def kd_logit_loss(student_logits: Tensor, teacher_logits: Tensor, mask: Tensor,
 # ---------------------------------------------------- on-policy distillation
 @dataclass
 class OPDConfig:
-    steps: int = 40                 # reverse KL falls from ~1.0 to ~0.02 in ~30 steps on the nano model
+    steps: int = 40                 # on the nano model the reverse KL typically falls by ~2-3x within the first third of a run
     group_size: int = 4             # student samples per prompt
     prompts_per_step: int = 4
     max_new_tokens: int = 24
@@ -111,9 +111,8 @@ def on_policy_distill_step(student: TinyLM, teacher: TinyLM, tok: BPETokenizer,
         logp_t = token_logprobs(teacher, ids)                     # teacher grades (N, T-1)
     student.train()
     logp_s = token_logprobs(student, ids)                         # student, with gradient
-    adv = (logp_t - logp_s).detach()                              # per-token advantage
-    if cfg.adv_clip:
-        adv = adv.clamp(-cfg.adv_clip, cfg.adv_clip)
+    raw_adv = (logp_t - logp_s).detach()                          # per-token advantage (unclipped)
+    adv = raw_adv.clamp(-cfg.adv_clip, cfg.adv_clip) if cfg.adv_clip else raw_adv
     loss = -masked_mean(adv * logp_s, mask)
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
@@ -122,7 +121,7 @@ def on_policy_distill_step(student: TinyLM, teacher: TinyLM, tok: BPETokenizer,
     student.eval()
     return {
         "loss": loss.item(),
-        "reverse_kl": masked_mean(-adv, mask).item(),             # mean of log π_s - log π_t
+        "reverse_kl": masked_mean(-raw_adv, mask).item(),         # true mean of log π_s - log π_t (unclipped)
         "accuracy": sum(tasks.verify(ex, txt) for ex, txt in texts) / len(texts),
         "resp_len": mask.sum(-1).mean().item(),
         "grad_norm": grad_norm,

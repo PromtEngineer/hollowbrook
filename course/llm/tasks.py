@@ -47,11 +47,11 @@ class TaskExample:
 def make_example(task: str, rng: random.Random, max_value: int = 99) -> TaskExample:
     if task == "add":
         a, b = rng.randint(0, max_value), rng.randint(0, max_value)
-        return TaskExample(task, f"What is {a} + {b}?", f"{a} + {b} = {a + b}", {"answer": a + b})
+        return TaskExample(task, f"What is {a} + {b}?", f"{a} + {b} = {a + b}", {"answer": a + b, "a": a, "b": b})
     if task == "sub":
         a, b = rng.randint(0, max_value), rng.randint(0, max_value)
         a, b = max(a, b), min(a, b)
-        return TaskExample(task, f"What is {a} - {b}?", f"{a} - {b} = {a - b}", {"answer": a - b})
+        return TaskExample(task, f"What is {a} - {b}?", f"{a} - {b} = {a - b}", {"answer": a - b, "a": a, "b": b})
     word = rng.choice(OBJECTS + COLORS + PLACES + ANIMALS)
     if task == "reverse":
         return TaskExample(task, f"Reverse the word: {word}", word[::-1], {"answer": word[::-1]})
